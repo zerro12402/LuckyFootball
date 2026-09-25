@@ -75,4 +75,3 @@ func _init(
 	_center_circle_radius_m = new_center_circle_radius_m
 	_pixels_per_meter = new_pixels_per_meter
 	_visual_id = new_visual_id
-

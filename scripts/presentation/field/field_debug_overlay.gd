@@ -55,4 +55,3 @@ func _draw() -> void:
 	]
 	for anchor in anchors:
 		draw_circle(_projection.field_to_world(anchor), 4.0, ANCHOR_COLOR)
-
