@@ -23,4 +23,3 @@ func _replace_fields(new_fields: Array[FieldDefinition]) -> void:
 
 func _add_error(message: String) -> void:
 	_errors.append(message)
-

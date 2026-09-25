@@ -135,4 +135,3 @@ func _parse_positive_float(
 		)
 		return -1.0
 	return parsed_value
-

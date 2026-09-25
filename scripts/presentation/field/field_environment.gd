@@ -26,10 +26,16 @@ func configure(new_field_definition: FieldDefinition) -> void:
 	_field_definition = new_field_definition
 	_projection = FieldArtProjection.create_default(_field_definition)
 	_left_goal.position = _projection.field_to_world(
-		Vector2(-_field_definition.length_m * 0.5 - 1.5, 0.0)
+		Vector2(
+			-_field_definition.length_m * 0.5 - _field_definition.goal_depth_m,
+			0.0,
+		)
 	)
 	_right_goal.position = _projection.field_to_world(
-		Vector2(_field_definition.length_m * 0.5  + 1.5, 0.0)
+		Vector2(
+			_field_definition.length_m * 0.5 + _field_definition.goal_depth_m,
+			0.0,
+		)
 	)
 	_debug_overlay.configure(_field_definition, _projection)
 
