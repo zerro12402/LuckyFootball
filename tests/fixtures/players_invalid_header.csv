@@ -1,0 +1,2 @@
+id,name,role,speed,shooting,strength,skill,stamina,tackling,goalkeeping,traits,visual
+invalid_header,错误表头,forward,80,80,80,80,80,80,80,trait_a|trait_b|trait_c,player_blue

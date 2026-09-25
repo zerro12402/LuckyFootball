@@ -1,0 +1,2 @@
+player_id,display_name,default_role,speed,shooting,strength,skill,stamina,tackling,goalkeeping,trait_ids,visual_id
+invalid_stat,越界球员,forward,101,80,80,80,80,80,80,trait_a|trait_b|trait_c,player_blue

@@ -1,0 +1,2 @@
+player_id,display_name,default_role,speed,shooting,strength,skill,stamina,tackling,goalkeeping,trait_ids,visual_id
+invalid_traits,词条不足,forward,80,80,80,80,80,80,80,trait_a|trait_b,player_blue
