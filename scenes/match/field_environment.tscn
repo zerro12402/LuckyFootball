@@ -1,0 +1,89 @@
+[gd_scene format=3 uid="uid://bo36jq2r1mhs7"]
+
+[ext_resource type="Script" uid="uid://c0faub7iesko8" path="res://scripts/presentation/field/field_environment.gd" id="1_field"]
+[ext_resource type="Texture2D" uid="uid://b7c82hlauxi3s" path="res://assets/art/field/pitch_background.png" id="2_background"]
+[ext_resource type="Texture2D" uid="uid://cjo760h5txa0w" path="res://assets/art/field/pitch_pattern.png" id="3_pattern"]
+[ext_resource type="Texture2D" uid="uid://cv4n0o2f54jf6" path="res://assets/art/field/pitch_lines.png" id="4_lines"]
+[ext_resource type="Texture2D" uid="uid://dxkakrgarw5c2" path="res://assets/art/field/goal_bottom.png" id="5_goal_bottom"]
+[ext_resource type="Texture2D" uid="uid://dufevlakt0y8l" path="res://assets/art/field/goal_top.png" id="6_goal_top"]
+[ext_resource type="Script" uid="uid://bjks5gvguadjt" path="res://scripts/presentation/field/field_debug_overlay.gd" id="7_debug"]
+
+[node name="FieldEnvironment" type="Node2D" unique_id=1188271159]
+script = ExtResource("1_field")
+
+[node name="OutsideGround" type="Polygon2D" parent="." unique_id=195398495]
+z_index = -30
+color = Color(0.0941176, 0.145098, 0.109804, 1)
+polygon = PackedVector2Array(-960, -540, 960, -540, 960, 540, -960, 540)
+
+[node name="PitchSurface" type="Node2D" parent="." unique_id=592452869]
+
+[node name="GrassBase" type="Sprite2D" parent="PitchSurface" unique_id=1994105587]
+modulate = Color(0.180392, 0.490196, 0.196078, 1)
+z_index = -20
+texture = ExtResource("2_background")
+
+[node name="GrassPattern" type="Sprite2D" parent="PitchSurface" unique_id=1234397288]
+modulate = Color(0.262745, 0.588235, 0.290196, 0.9)
+z_index = -19
+texture = ExtResource("3_pattern")
+
+[node name="FieldMarkings" type="Sprite2D" parent="PitchSurface" unique_id=1955104616]
+modulate = Color(0.94902, 0.94902, 0.909804, 1)
+z_index = -10
+texture = ExtResource("4_lines")
+
+[node name="Goals" type="Node2D" parent="." unique_id=1149087589]
+
+[node name="LeftGoal" type="Node2D" parent="Goals" unique_id=1656178345]
+unique_name_in_owner = true
+scale = Vector2(0.65, -0.65)
+
+[node name="GoalBottom" type="Sprite2D" parent="Goals/LeftGoal" unique_id=1068733875]
+z_index = -5
+position = Vector2(0, -62.5)
+texture = ExtResource("5_goal_bottom")
+centered = false
+
+[node name="GoalTop" type="Sprite2D" parent="Goals/LeftGoal" unique_id=369279002]
+z_index = 5
+position = Vector2(0, -62.5)
+texture = ExtResource("6_goal_top")
+centered = false
+
+[node name="RightGoal" type="Node2D" parent="Goals" unique_id=1867203033]
+unique_name_in_owner = true
+scale = Vector2(-0.65, -0.65)
+
+[node name="GoalBottom" type="Sprite2D" parent="Goals/RightGoal" unique_id=1361922131]
+z_index = -5
+position = Vector2(0, -62.5)
+texture = ExtResource("5_goal_bottom")
+centered = false
+
+[node name="GoalTop" type="Sprite2D" parent="Goals/RightGoal" unique_id=1305199663]
+z_index = 5
+position = Vector2(0, -62.5)
+texture = ExtResource("6_goal_top")
+centered = false
+
+[node name="WorldActors" type="Node2D" parent="." unique_id=507131791]
+y_sort_enabled = true
+
+[node name="Players" type="Node2D" parent="WorldActors" unique_id=1195728149]
+
+[node name="Ball" type="Node2D" parent="WorldActors" unique_id=1280611499]
+
+[node name="Effects" type="Node2D" parent="WorldActors" unique_id=1562911331]
+
+[node name="BoundaryViews" type="Node2D" parent="." unique_id=326042255]
+
+[node name="CameraRig" type="Node2D" parent="." unique_id=551079047]
+
+[node name="FieldCamera" type="Camera2D" parent="CameraRig" unique_id=1741412]
+unique_name_in_owner = true
+
+[node name="DebugOverlay" type="Node2D" parent="." unique_id=173218072]
+unique_name_in_owner = true
+z_index = 100
+script = ExtResource("7_debug")

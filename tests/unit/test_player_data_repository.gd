@@ -118,6 +118,15 @@ func test_data_repository_when_loaded_indexes_players_by_id() -> void:
 		data_repository.get_player_by_id("unknown_player") == null,
 		"Expected an unknown player lookup to return null",
 	)
+	_expect(
+		data_repository.field_definitions.size() == 1,
+		"Expected DataRepository to expose one field",
+	)
+	var field := data_repository.get_field_by_id("demo_field")
+	_expect(field != null, "Expected field lookup by stable ID")
+	if field != null:
+		_expect(is_equal_approx(field.length_m, 50.0), "Expected field length")
+		_expect(is_equal_approx(field.width_m, 30.0), "Expected field width")
 
 
 func _expect_fixture_failure(file_name: String, failure_message: String) -> void:

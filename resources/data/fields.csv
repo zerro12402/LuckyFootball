@@ -1,0 +1,2 @@
+field_id,length_m,width_m,goal_width_m,goal_depth_m,penalty_area_depth_m,penalty_area_width_m,center_circle_radius_m,pixels_per_meter,visual_id
+demo_field,50,30,4,1.5,8,16,4,32,default_pitch
