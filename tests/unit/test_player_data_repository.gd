@@ -12,6 +12,7 @@ func _init() -> void:
 	test_duplicate_player_id_when_loaded_returns_failure()
 	test_out_of_range_attribute_when_loaded_returns_failure()
 	test_too_few_traits_when_loaded_returns_failure()
+	test_duplicate_traits_when_loaded_returns_failure()
 	test_data_repository_when_loaded_indexes_players_by_id()
 
 	if _failures.is_empty():
@@ -36,7 +37,9 @@ func test_valid_csv_when_loaded_returns_typed_players() -> void:
 	_expect(forward.player_id == "swift_forward", "Expected the first player_id")
 	_expect(forward.display_name == "疾风", "Expected UTF-8 display_name")
 	_expect(forward.speed == 92, "Expected the parsed speed")
+	_expect(forward.technique == 88, "Expected the parsed technique")
 	_expect(forward.trait_ids.size() == 3, "Expected three parsed trait IDs")
+	_expect(forward.trait_ids[0] == "speedster", "Expected ordered trait columns")
 
 
 func test_boundary_values_when_loaded_are_accepted() -> void:
@@ -49,6 +52,7 @@ func test_boundary_values_when_loaded_are_accepted() -> void:
 	var boundary_player := result.players[0]
 	_expect(boundary_player.speed == 1, "Expected minimum attribute value 1")
 	_expect(boundary_player.shooting == 100, "Expected maximum attribute value 100")
+	_expect(boundary_player.technique == 100, "Expected maximum technique value 100")
 	_expect(boundary_player.trait_ids.size() == 5, "Expected maximum trait count 5")
 
 
@@ -99,7 +103,14 @@ func test_out_of_range_attribute_when_loaded_returns_failure() -> void:
 func test_too_few_traits_when_loaded_returns_failure() -> void:
 	_expect_fixture_failure(
 		"players_invalid_traits.csv",
-		"Expected fewer than three traits to fail",
+		"Expected an empty required trait column to fail",
+	)
+
+
+func test_duplicate_traits_when_loaded_returns_failure() -> void:
+	_expect_fixture_failure(
+		"players_duplicate_trait.csv",
+		"Expected duplicate trait columns to fail",
 	)
 
 

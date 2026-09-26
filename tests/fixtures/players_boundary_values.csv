@@ -1,2 +1,2 @@
-player_id,display_name,default_role,speed,shooting,strength,skill,stamina,tackling,goalkeeping,trait_ids,visual_id
-boundary_player,边界球员,utility,1,100,1,100,1,100,1,trait_a|trait_b|trait_c|trait_d|trait_e,player_boundary
+player_id,display_name,default_role,speed,shooting,strength,technique,stamina,tackling,goalkeeping,trait_1_id,trait_2_id,trait_3_id,trait_4_id,trait_5_id,visual_id
+boundary_player,边界球员,utility,1,100,1,100,1,100,1,trait_a,trait_b,trait_c,trait_d,trait_e,player_boundary

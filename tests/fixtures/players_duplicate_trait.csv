@@ -1,0 +1,2 @@
+player_id,display_name,default_role,speed,shooting,strength,technique,stamina,tackling,goalkeeping,trait_1_id,trait_2_id,trait_3_id,trait_4_id,trait_5_id,visual_id
+duplicate_trait,重复词条,forward,80,80,80,80,80,80,80,trait_a,trait_b,trait_a,,,player_blue

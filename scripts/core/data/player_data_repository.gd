@@ -8,17 +8,24 @@ const REQUIRED_HEADERS: Array[String] = [
 	"speed",
 	"shooting",
 	"strength",
-	"skill",
+	"technique",
 	"stamina",
 	"tackling",
 	"goalkeeping",
-	"trait_ids",
+	"trait_1_id",
+	"trait_2_id",
+	"trait_3_id",
+	"trait_4_id",
+	"trait_5_id",
 	"visual_id",
 ]
 const MIN_ATTRIBUTE_VALUE := 1
 const MAX_ATTRIBUTE_VALUE := 100
 const MIN_TRAIT_COUNT := 3
 const MAX_TRAIT_COUNT := 5
+const TRAIT_COLUMN_START := 10
+const TRAIT_COLUMN_END := 15
+const VISUAL_ID_COLUMN := 15
 
 
 func load_from_csv(csv_path: String) -> PlayerDataLoadResult:
@@ -86,7 +93,7 @@ func _parse_player(
 	var player_id := columns[0].strip_edges()
 	var display_name := columns[1].strip_edges()
 	var default_role := columns[2].strip_edges()
-	var visual_id := columns[11].strip_edges()
+	var visual_id := columns[VISUAL_ID_COLUMN].strip_edges()
 	var row_is_valid := true
 
 	if not _is_valid_ascii_id(player_id):
@@ -120,8 +127,8 @@ func _parse_player(
 		if parsed_attribute < MIN_ATTRIBUTE_VALUE:
 			row_is_valid = false
 
-	var trait_ids := columns[10].strip_edges().split("|", false)
-	if not _validate_trait_ids(trait_ids, row_number, result):
+	var trait_ids := _parse_trait_ids(columns, row_number, result)
+	if trait_ids.is_empty():
 		row_is_valid = false
 
 	if not row_is_valid:
@@ -171,20 +178,24 @@ func _parse_attribute(
 	return attribute_value
 
 
-func _validate_trait_ids(
-	trait_ids: PackedStringArray,
+func _parse_trait_ids(
+	columns: PackedStringArray,
 	row_number: int,
 	result: PlayerDataLoadResult,
-) -> bool:
-	if trait_ids.size() < MIN_TRAIT_COUNT or trait_ids.size() > MAX_TRAIT_COUNT:
-		result._add_error(
-			"Row %d has %d traits; expected %d-%d"
-			% [row_number, trait_ids.size(), MIN_TRAIT_COUNT, MAX_TRAIT_COUNT]
-		)
-		return false
+) -> PackedStringArray:
+	var trait_ids := PackedStringArray()
 	var known_trait_ids: Dictionary[String, bool] = {}
 	var trait_ids_are_valid := true
-	for trait_id in trait_ids:
+	for column_index in range(TRAIT_COLUMN_START, TRAIT_COLUMN_END):
+		var trait_id := columns[column_index].strip_edges()
+		if trait_id.is_empty():
+			if column_index < TRAIT_COLUMN_START + MIN_TRAIT_COUNT:
+				result._add_error(
+					"Row %d has an empty %s"
+					% [row_number, REQUIRED_HEADERS[column_index]]
+				)
+				trait_ids_are_valid = false
+			continue
 		if not _is_valid_ascii_id(trait_id):
 			result._add_error("Row %d has an invalid trait_id: %s" % [row_number, trait_id])
 			trait_ids_are_valid = false
@@ -193,7 +204,13 @@ func _validate_trait_ids(
 			trait_ids_are_valid = false
 		else:
 			known_trait_ids[trait_id] = true
-	return trait_ids_are_valid
+			trait_ids.append(trait_id)
+
+	if trait_ids.size() < MIN_TRAIT_COUNT or trait_ids.size() > MAX_TRAIT_COUNT:
+		trait_ids_are_valid = false
+	if not trait_ids_are_valid:
+		return PackedStringArray()
+	return trait_ids
 
 
 func _is_valid_ascii_id(identifier: String) -> bool:

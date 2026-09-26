@@ -25,9 +25,9 @@ var strength: int:
 	get:
 		return _strength
 
-var skill: int:
+var technique: int:
 	get:
-		return _skill
+		return _technique
 
 var stamina: int:
 	get:
@@ -55,7 +55,7 @@ var _default_role: String
 var _speed: int
 var _shooting: int
 var _strength: int
-var _skill: int
+var _technique: int
 var _stamina: int
 var _tackling: int
 var _goalkeeping: int
@@ -70,7 +70,7 @@ func _init(
 	new_speed: int,
 	new_shooting: int,
 	new_strength: int,
-	new_skill: int,
+	new_technique: int,
 	new_stamina: int,
 	new_tackling: int,
 	new_goalkeeping: int,
@@ -83,7 +83,7 @@ func _init(
 	_speed = new_speed
 	_shooting = new_shooting
 	_strength = new_strength
-	_skill = new_skill
+	_technique = new_technique
 	_stamina = new_stamina
 	_tackling = new_tackling
 	_goalkeeping = new_goalkeeping

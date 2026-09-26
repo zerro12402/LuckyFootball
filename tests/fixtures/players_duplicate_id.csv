@@ -1,3 +1,3 @@
-player_id,display_name,default_role,speed,shooting,strength,skill,stamina,tackling,goalkeeping,trait_ids,visual_id
-same_player,甲,forward,80,80,80,80,80,80,80,trait_a|trait_b|trait_c,player_blue
-same_player,乙,defender,70,70,70,70,70,70,70,trait_d|trait_e|trait_f,player_red
+player_id,display_name,default_role,speed,shooting,strength,technique,stamina,tackling,goalkeeping,trait_1_id,trait_2_id,trait_3_id,trait_4_id,trait_5_id,visual_id
+same_player,甲,forward,80,80,80,80,80,80,80,trait_a,trait_b,trait_c,,,player_blue
+same_player,乙,defender,70,70,70,70,70,70,70,trait_d,trait_e,trait_f,,,player_red
