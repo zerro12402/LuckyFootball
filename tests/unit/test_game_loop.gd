@@ -87,7 +87,7 @@ func test_queued_action_before_fixed_step_is_consumed_once() -> void:
 func test_paused_match_when_frames_advance_does_not_change_state() -> void:
 	var runtime := _create_started_runtime(16)
 	runtime.loop.advance_frame(FIXED_DELTA, [])
-	_expect(runtime.controller.pause_match(), "Expected running match to pause")
+	_expect(runtime.simulation.pause_match(), "Expected running match to pause")
 	var paused_frame: MatchFrameResult = runtime.loop.advance_frame(
 		FIXED_DELTA * 4.0,
 		[],
@@ -99,10 +99,10 @@ func test_paused_match_when_frames_advance_does_not_change_state() -> void:
 
 func test_action_received_while_paused_is_discarded() -> void:
 	var runtime := _create_started_runtime(18)
-	_expect(runtime.controller.pause_match(), "Expected running match to pause")
+	_expect(runtime.simulation.pause_match(), "Expected running match to pause")
 	var action := MatchAction.new("swift_forward", MatchAction.Type.SHOOT)
 	runtime.loop.advance_frame(0.0, [action])
-	_expect(runtime.controller.resume_match(), "Expected paused match to resume")
+	_expect(runtime.simulation.resume_match(), "Expected paused match to resume")
 	var resumed_frame: MatchFrameResult = runtime.loop.advance_frame(FIXED_DELTA, [])
 	_expect(
 		not _has_event(resumed_frame.events, MatchEvent.Type.ACTION_ACCEPTED),
@@ -111,17 +111,17 @@ func test_action_received_while_paused_is_discarded() -> void:
 
 
 func test_ready_match_when_finished_is_rejected() -> void:
-	var controller := MatchController.new(19)
-	_expect(not controller.finish_match(), "Expected ready match not to finish")
+	var simulation := MatchSimulation.new(19)
+	_expect(not simulation.finish_match(), "Expected ready match not to finish")
 	_expect(
-		controller.create_snapshot().phase == MatchState.Phase.READY,
+		simulation.create_snapshot().phase == MatchState.Phase.READY,
 		"Expected rejected finish to preserve ready phase",
 	)
 
 
 func test_finished_match_when_frames_advance_does_not_change_state() -> void:
 	var runtime := _create_started_runtime(20)
-	_expect(runtime.controller.finish_match(), "Expected match to finish")
+	_expect(runtime.simulation.finish_match(), "Expected match to finish")
 	var frame: MatchFrameResult = runtime.loop.advance_frame(FIXED_DELTA * 2.0, [])
 	_expect(frame.snapshot.phase == MatchState.Phase.FINISHED, "Expected finished phase")
 	_expect(frame.snapshot.simulation_step == 0, "Expected finished state not to advance")
@@ -155,11 +155,11 @@ func test_same_seed_and_frames_when_replayed_produce_same_snapshot() -> void:
 
 
 func _create_started_runtime(random_seed: int) -> Dictionary:
-	var controller := MatchController.new(random_seed)
-	_expect(controller.start_match(), "Expected a new controller to start")
-	var game_loop := GameLoop.new(controller, FIXED_DELTA, 1.0, 8)
+	var simulation := MatchSimulation.new(random_seed)
+	_expect(simulation.start_match(), "Expected a new simulation to start")
+	var game_loop := GameLoop.new(simulation, FIXED_DELTA, 1.0, 8)
 	return {
-		"controller": controller,
+		"simulation": simulation,
 		"loop": game_loop,
 	}
 

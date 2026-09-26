@@ -110,12 +110,12 @@ func test_knocked_down_player_when_movement_requested_rejects_transition() -> vo
 
 
 func test_registered_player_when_snapshotted_is_at_field_centre() -> void:
-	var controller := MatchController.new(31)
+	var simulation := MatchSimulation.new(31)
 	_expect(
-		controller.register_player("swift_forward", Vector2.ZERO),
+		simulation.register_player("swift_forward", Vector2.ZERO),
 		"Expected player registration before match start",
 	)
-	var snapshot := controller.create_snapshot()
+	var snapshot := simulation.create_snapshot()
 	var player := snapshot.get_player("swift_forward")
 	_expect(player != null, "Expected registered player snapshot")
 	if player == null:
@@ -128,12 +128,12 @@ func test_registered_player_when_snapshotted_is_at_field_centre() -> void:
 
 
 func test_running_match_when_advanced_updates_player_state_time() -> void:
-	var controller := MatchController.new(32)
-	controller.register_player("swift_forward", Vector2.ZERO)
-	controller.start_match()
+	var simulation := MatchSimulation.new(32)
+	simulation.register_player("swift_forward", Vector2.ZERO)
+	simulation.start_match()
 	var no_actions: Array[MatchAction] = []
-	controller.advance_simulation(FIXED_DELTA, no_actions)
-	var player := controller.create_snapshot().get_player("swift_forward")
+	simulation.advance_fixed_step(FIXED_DELTA, no_actions)
+	var player := simulation.create_snapshot().get_player("swift_forward")
 	_expect(player != null, "Expected player snapshot after fixed step")
 	if player == null:
 		return

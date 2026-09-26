@@ -56,13 +56,17 @@ func finish_match() -> bool:
 	return true
 
 
+func is_running() -> bool:
+	return _state.phase == MatchState.Phase.RUNNING
+
+
 func advance_fixed_step(
 	fixed_delta_seconds: float,
 	actions: Array[MatchAction],
 ) -> Array[MatchEvent]:
 	assert(fixed_delta_seconds > 0.0, "Fixed delta must be positive")
 	var step_events: Array[MatchEvent] = []
-	if _state.phase != MatchState.Phase.RUNNING:
+	if not is_running():
 		return step_events
 
 	_state._advance(fixed_delta_seconds)

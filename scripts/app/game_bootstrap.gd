@@ -22,7 +22,7 @@ var data_repository: DataRepository:
 		return _data_repository
 
 var _data_repository: DataRepository
-var _match_controller: MatchController
+var _match_simulation: MatchSimulation
 var _game_loop: GameLoop
 var _queued_actions: Array[MatchAction] = []
 
@@ -47,8 +47,8 @@ func _ready() -> void:
 		return
 	var demo_player := player_definitions[0]
 
-	_match_controller = MatchController.new(random_seed)
-	var did_register_player := _match_controller.register_player(
+	_match_simulation = MatchSimulation.new(random_seed)
+	var did_register_player := _match_simulation.register_player(
 		demo_player.player_id,
 		Vector2.ZERO,
 	)
@@ -56,10 +56,10 @@ func _ready() -> void:
 	if _field_environment != null:
 		_field_environment.set_presented_player(demo_player.player_id)
 
-	_game_loop = GameLoop.new(_match_controller, fixed_delta_seconds)
-	var did_start := _match_controller.start_match()
+	_game_loop = GameLoop.new(_match_simulation, fixed_delta_seconds)
+	var did_start := _match_simulation.start_match()
 	assert(did_start, "A new match must start from the ready phase")
-	var initial_snapshot := _match_controller.create_snapshot()
+	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_publish_frame(0.0)
 	set_process(true)
@@ -75,23 +75,23 @@ func queue_action(action: MatchAction) -> void:
 
 
 func pause_match() -> bool:
-	if _match_controller == null:
+	if _match_simulation == null:
 		return false
-	return _match_controller.pause_match()
+	return _match_simulation.pause_match()
 
 
 func resume_match() -> bool:
-	if _match_controller == null:
+	if _match_simulation == null:
 		return false
-	return _match_controller.resume_match()
+	return _match_simulation.resume_match()
 
 
 func finish_match() -> bool:
-	if _match_controller == null or not _match_controller.finish_match():
+	if _match_simulation == null or not _match_simulation.finish_match():
 		return false
 	_publish_frame(0.0)
 	set_process(false)
-	game_finished.emit(_match_controller.create_snapshot())
+	game_finished.emit(_match_simulation.create_snapshot())
 	return true
 
 
