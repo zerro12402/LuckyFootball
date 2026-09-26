@@ -4,11 +4,23 @@ extends RefCounted
 var _state: MatchState
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _lifecycle_events: Array[MatchEvent] = []
+var _player_runtime_system: PlayerRuntimeSystem = PlayerRuntimeSystem.new()
 
 
 func _init(random_seed: int) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
+
+
+func register_player(player_id: String, initial_position_m: Vector2) -> bool:
+	if _state.phase != MatchState.Phase.READY:
+		return false
+	if _state._get_player_state(player_id) != null:
+		return false
+	var player_state := PlayerMatchState.new(player_id, initial_position_m)
+	_state._register_player(player_state)
+	_player_runtime_system.register_player(player_state)
+	return true
 
 
 func start_match() -> bool:
@@ -56,6 +68,7 @@ func advance_fixed_step(
 		return step_events
 
 	_state._advance(fixed_delta_seconds)
+	_player_runtime_system.advance(fixed_delta_seconds)
 	for action in actions:
 		step_events.append(
 			_create_event(MatchEvent.Type.ACTION_ACCEPTED, action.player_id)
@@ -65,11 +78,15 @@ func advance_fixed_step(
 
 
 func create_snapshot() -> MatchStateSnapshot:
+	var player_snapshots: Array[PlayerStateSnapshot] = []
+	for player_state in _state.player_states:
+		player_snapshots.append(PlayerStateSnapshot.new(player_state))
 	return MatchStateSnapshot.new(
 		_state.phase,
 		_state.elapsed_seconds,
 		_state.simulation_step,
 		_state.random_seed,
+		player_snapshots,
 	)
 
 

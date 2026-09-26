@@ -41,7 +41,21 @@ func _ready() -> void:
 	if _field_environment != null:
 		_field_environment.configure(field_definition)
 
+	var player_definitions := _data_repository.player_definitions
+	if player_definitions.is_empty():
+		startup_failed.emit(PackedStringArray(["At least one player is required"]))
+		return
+	var demo_player := player_definitions[0]
+
 	_match_controller = MatchController.new(random_seed)
+	var did_register_player := _match_controller.register_player(
+		demo_player.player_id,
+		Vector2.ZERO,
+	)
+	assert(did_register_player, "Demo player must register before the match starts")
+	if _field_environment != null:
+		_field_environment.set_presented_player(demo_player.player_id)
+
 	_game_loop = GameLoop.new(_match_controller, fixed_delta_seconds)
 	var did_start := _match_controller.start_match()
 	assert(did_start, "A new match must start from the ready phase")
@@ -85,6 +99,8 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_actions: Array[MatchAction] = _queued_actions.duplicate()
 	_queued_actions.clear()
 	var frame_result := _game_loop.advance_frame(frame_delta_seconds, frame_actions)
+	if _field_environment != null:
+		_field_environment.present(frame_result.snapshot)
 	presentation_frame_ready.emit(
 		frame_result.snapshot,
 		frame_result.events,

@@ -7,6 +7,7 @@ const REQUIRED_VIEW_SIZE := Vector2(960.0, 540.0)
 @onready var _right_goal: Node2D = %RightGoal
 @onready var _camera: Camera2D = %FieldCamera
 @onready var _debug_overlay: FieldDebugOverlay = %DebugOverlay
+@onready var _demo_player: PlayerActor = %DemoPlayer
 
 var field_definition: FieldDefinition:
 	get:
@@ -14,6 +15,7 @@ var field_definition: FieldDefinition:
 
 var _field_definition: FieldDefinition
 var _projection: FieldArtProjection
+var _presented_player_id: String = ""
 
 
 func _ready() -> void:
@@ -52,6 +54,19 @@ func world_to_field(world_position: Vector2) -> Vector2:
 
 func set_debug_enabled(is_enabled: bool) -> void:
 	_debug_overlay.is_debug_enabled = is_enabled
+
+
+func set_presented_player(player_id: String) -> void:
+	_presented_player_id = player_id
+
+
+func present(snapshot: MatchStateSnapshot) -> void:
+	if _projection == null or _presented_player_id.is_empty():
+		return
+	var player_snapshot := snapshot.get_player(_presented_player_id)
+	if player_snapshot == null:
+		return
+	_demo_player.present(player_snapshot, _projection)
 
 
 func _fit_camera_to_viewport() -> void:

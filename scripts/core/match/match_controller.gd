@@ -8,6 +8,10 @@ func _init(random_seed: int) -> void:
 	_simulation = MatchSimulation.new(random_seed)
 
 
+func register_player(player_id: String, initial_position_m: Vector2) -> bool:
+	return _simulation.register_player(player_id, initial_position_m)
+
+
 func start_match() -> bool:
 	return _simulation.start_match()
 
