@@ -42,4 +42,3 @@ func _init(
 	_action_type = new_action_type
 	_direction = new_direction
 	_target_player_id = new_target_player_id
-

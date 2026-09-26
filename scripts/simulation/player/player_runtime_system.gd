@@ -1,22 +1,36 @@
 class_name PlayerRuntimeSystem
 extends RefCounted
 
-var _state_machines: Dictionary[String, PlayerStateMachine] = {}
+var _players_by_id: Dictionary[String, PlayerRuntime] = {}
 
 
-func register_player(player_state: PlayerMatchState) -> void:
-	assert(player_state != null, "Cannot register null player state")
-	assert(
-		not _state_machines.has(player_state.player_id),
-		"Player state is already registered: %s" % player_state.player_id,
-	)
-	_state_machines[player_state.player_id] = PlayerStateMachine.new(player_state)
+func register_player(player_id: String, initial_position_m: Vector2) -> bool:
+	if player_id.is_empty() or _players_by_id.has(player_id):
+		return false
+	_players_by_id[player_id] = PlayerRuntime.new(player_id, initial_position_m)
+	return true
+
+
+func has_player(player_id: String) -> bool:
+	return _players_by_id.has(player_id)
+
+
+func get_player(player_id: String) -> PlayerRuntime:
+	return _players_by_id.get(player_id) as PlayerRuntime
+
+
+func get_players() -> Array[PlayerRuntime]:
+	var player_ids: Array[String] = []
+	for player_id in _players_by_id.keys():
+		player_ids.append(player_id as String)
+	player_ids.sort()
+
+	var players: Array[PlayerRuntime] = []
+	for player_id in player_ids:
+		players.append(_players_by_id[player_id])
+	return players
 
 
 func advance(fixed_delta_seconds: float) -> void:
-	for state_machine in _state_machines.values():
-		state_machine.advance(fixed_delta_seconds)
-
-
-func get_state_machine(player_id: String) -> PlayerStateMachine:
-	return _state_machines.get(player_id) as PlayerStateMachine
+	for player_runtime in get_players():
+		player_runtime.advance(fixed_delta_seconds)

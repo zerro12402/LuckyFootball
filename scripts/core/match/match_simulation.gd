@@ -15,12 +15,10 @@ func _init(random_seed: int) -> void:
 func register_player(player_id: String, initial_position_m: Vector2) -> bool:
 	if _state.phase != MatchState.Phase.READY:
 		return false
-	if _state._get_player_state(player_id) != null:
-		return false
-	var player_state := PlayerMatchState.new(player_id, initial_position_m)
-	_state._register_player(player_state)
-	_player_runtime_system.register_player(player_state)
-	return true
+	return _player_runtime_system.register_player(
+		player_id,
+		initial_position_m,
+	)
 
 
 func start_match() -> bool:
@@ -79,8 +77,8 @@ func advance_fixed_step(
 
 func create_snapshot() -> MatchStateSnapshot:
 	var player_snapshots: Array[PlayerStateSnapshot] = []
-	for player_state in _state.player_states:
-		player_snapshots.append(PlayerStateSnapshot.new(player_state))
+	for player_runtime in _player_runtime_system.get_players():
+		player_snapshots.append(PlayerStateSnapshot.new(player_runtime.state))
 	return MatchStateSnapshot.new(
 		_state.phase,
 		_state.elapsed_seconds,
