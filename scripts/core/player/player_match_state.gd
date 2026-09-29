@@ -43,6 +43,10 @@ var facing_direction: Vector2:
 	get:
 		return _facing_direction
 
+var movement_input: Vector2:
+	get:
+		return _movement_input
+
 var movement_state: int:
 	get:
 		return _movement_state
@@ -70,6 +74,7 @@ var action_state_elapsed_seconds: float:
 var _player_id: String
 var _position_m: Vector2
 var _facing_direction: Vector2 = Vector2.RIGHT
+var _movement_input: Vector2 = Vector2.ZERO
 var _movement_state: int = MovementState.IDLE
 var _possession_state: int = PossessionState.NO_BALL
 var _action_state: int = ActionState.IDLE
@@ -82,6 +87,10 @@ func _init(new_player_id: String, initial_position_m: Vector2) -> void:
 	assert(not new_player_id.is_empty(), "Player state requires a player ID")
 	_player_id = new_player_id
 	_position_m = initial_position_m
+
+
+func _set_movement_input(new_input: Vector2) -> void:
+	_movement_input = new_input
 
 
 func _set_movement_state(new_state: int) -> void:

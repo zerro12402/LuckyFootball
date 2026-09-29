@@ -2,6 +2,7 @@ class_name PlayerActor
 extends Node2D
 
 const IDLE_ANIMATION := &"idle"
+const MOVE_ANIMATION := &"move"
 
 @onready var _body_sprite: Sprite2D = %BodySprite
 @onready var _animation_player: AnimationPlayer = %AnimationPlayer
@@ -23,9 +24,11 @@ func present(
 
 
 func _resolve_animation(player_snapshot: PlayerStateSnapshot) -> StringName:
-	if player_snapshot.action_state == PlayerMatchState.ActionState.IDLE:
+	if player_snapshot.action_state != PlayerMatchState.ActionState.IDLE:
+		# Action animations will be mapped after their sprite sheet rows are confirmed.
 		return IDLE_ANIMATION
-	# Action animations will be mapped after the sprite sheet rows are confirmed.
+	if player_snapshot.movement_state == PlayerMatchState.MovementState.MOVING:
+		return MOVE_ANIMATION
 	return IDLE_ANIMATION
 
 

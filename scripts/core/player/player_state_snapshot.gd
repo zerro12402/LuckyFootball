@@ -13,6 +13,10 @@ var facing_direction: Vector2:
 	get:
 		return _facing_direction
 
+var movement_input: Vector2:
+	get:
+		return _movement_input
+
 var movement_state: int:
 	get:
 		return _movement_state
@@ -40,6 +44,7 @@ var action_state_elapsed_seconds: float:
 var _player_id: String
 var _position_m: Vector2
 var _facing_direction: Vector2
+var _movement_input: Vector2
 var _movement_state: int
 var _possession_state: int
 var _action_state: int
@@ -52,6 +57,7 @@ func _init(player_state: PlayerMatchState) -> void:
 	_player_id = player_state.player_id
 	_position_m = player_state.position_m
 	_facing_direction = player_state.facing_direction
+	_movement_input = player_state.movement_input
 	_movement_state = player_state.movement_state
 	_possession_state = player_state.possession_state
 	_action_state = player_state.action_state

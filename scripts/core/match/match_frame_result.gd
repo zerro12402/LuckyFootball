@@ -33,4 +33,3 @@ func _init(
 	_events = new_events.duplicate()
 	_simulation_steps = new_simulation_steps
 	_interpolation_alpha = new_interpolation_alpha
-

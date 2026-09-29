@@ -10,11 +10,16 @@ signal presentation_frame_ready(
 )
 signal game_finished(snapshot: MatchStateSnapshot)
 
+const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
+
 @export_range(0.001, 0.1, 0.001) var fixed_delta_seconds: float = 1.0 / 60.0
 @export var random_seed: int = 1
 
 @onready var _field_environment: FieldEnvironment = (
 	get_node_or_null("FieldEnvironment") as FieldEnvironment
+)
+@onready var _keyboard_input: KeyboardPlayerInputAdapter = (
+	get_node_or_null("KeyboardPlayerInputAdapter") as KeyboardPlayerInputAdapter
 )
 
 var data_repository: DataRepository:
@@ -51,10 +56,14 @@ func _ready() -> void:
 	var did_register_player := _match_simulation.register_player(
 		demo_player.player_id,
 		Vector2.ZERO,
+		TEST_PLAYER_MOVEMENT_SPEED_MPS,
 	)
 	assert(did_register_player, "Demo player must register before the match starts")
 	if _field_environment != null:
 		_field_environment.set_presented_player(demo_player.player_id)
+	if _keyboard_input != null:
+		_keyboard_input.action_requested.connect(queue_action)
+		_keyboard_input.configure(demo_player.player_id)
 
 	_game_loop = GameLoop.new(_match_simulation, fixed_delta_seconds)
 	var did_start := _match_simulation.start_match()
@@ -83,7 +92,10 @@ func pause_match() -> bool:
 func resume_match() -> bool:
 	if _match_simulation == null:
 		return false
-	return _match_simulation.resume_match()
+	var did_resume := _match_simulation.resume_match()
+	if did_resume and _keyboard_input != null:
+		_keyboard_input.force_resend()
+	return did_resume
 
 
 func finish_match() -> bool:

@@ -12,12 +12,17 @@ func _init(random_seed: int) -> void:
 	_rng.seed = random_seed
 
 
-func register_player(player_id: String, initial_position_m: Vector2) -> bool:
+func register_player(
+	player_id: String,
+	initial_position_m: Vector2,
+	movement_speed_mps: float = PlayerStateMachine.DEFAULT_MOVEMENT_SPEED_MPS,
+) -> bool:
 	if _state.phase != MatchState.Phase.READY:
 		return false
 	return _player_runtime_system.register_player(
 		player_id,
 		initial_position_m,
+		movement_speed_mps,
 	)
 
 
@@ -70,11 +75,12 @@ func advance_fixed_step(
 		return step_events
 
 	_state._advance(fixed_delta_seconds)
-	_player_runtime_system.advance(fixed_delta_seconds)
 	for action in actions:
-		step_events.append(
-			_create_event(MatchEvent.Type.ACTION_ACCEPTED, action.player_id)
-		)
+		if _player_runtime_system.apply_action(action):
+			step_events.append(
+				_create_event(MatchEvent.Type.ACTION_ACCEPTED, action.player_id)
+			)
+	_player_runtime_system.advance(fixed_delta_seconds)
 	step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	return step_events
 
