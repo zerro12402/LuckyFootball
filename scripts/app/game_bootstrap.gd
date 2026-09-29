@@ -11,6 +11,7 @@ signal presentation_frame_ready(
 signal game_finished(snapshot: MatchStateSnapshot)
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
+const TEST_BALL_INITIAL_POSITION_M := Vector2(3.0, 0.0)
 
 @export_range(0.001, 0.1, 0.001) var fixed_delta_seconds: float = 1.0 / 60.0
 @export var random_seed: int = 1
@@ -59,6 +60,10 @@ func _ready() -> void:
 		TEST_PLAYER_MOVEMENT_SPEED_MPS,
 	)
 	assert(did_register_player, "Demo player must register before the match starts")
+	var did_register_ball := _match_simulation.register_ball(
+		TEST_BALL_INITIAL_POSITION_M,
+	)
+	assert(did_register_ball, "Demo ball must register before the match starts")
 	if _field_environment != null:
 		_field_environment.set_presented_player(demo_player.player_id)
 	if _keyboard_input != null:

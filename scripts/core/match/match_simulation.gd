@@ -5,6 +5,7 @@ var _state: MatchState
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _lifecycle_events: Array[MatchEvent] = []
 var _player_runtime_system: PlayerRuntimeSystem = PlayerRuntimeSystem.new()
+var _ball_runtime_system: BallRuntimeSystem = BallRuntimeSystem.new()
 
 
 func _init(random_seed: int) -> void:
@@ -24,6 +25,12 @@ func register_player(
 		initial_position_m,
 		movement_speed_mps,
 	)
+
+
+func register_ball(initial_position_m: Vector2) -> bool:
+	if _state.phase != MatchState.Phase.READY:
+		return false
+	return _ball_runtime_system.register_ball(initial_position_m)
 
 
 func start_match() -> bool:
@@ -81,6 +88,11 @@ func advance_fixed_step(
 				_create_event(MatchEvent.Type.ACTION_ACCEPTED, action.player_id)
 			)
 	_player_runtime_system.advance(fixed_delta_seconds)
+	var new_owner_id := _ball_runtime_system.advance(_player_runtime_system)
+	if not new_owner_id.is_empty():
+		step_events.append(
+			_create_event(MatchEvent.Type.BALL_POSSESSION_GAINED, new_owner_id)
+		)
 	step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	return step_events
 
@@ -95,6 +107,7 @@ func create_snapshot() -> MatchStateSnapshot:
 		_state.simulation_step,
 		_state.random_seed,
 		player_snapshots,
+		_ball_runtime_system.create_snapshot(),
 	)
 
 

@@ -1,13 +1,13 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://dhld5od4vh8as"]
 
-[ext_resource type="Script" path="res://scripts/app/game_bootstrap.gd" id="1_bootstrap"]
-[ext_resource type="PackedScene" path="res://scenes/match/field_environment.tscn" id="2_field"]
-[ext_resource type="Script" path="res://scripts/input/keyboard_player_input_adapter.gd" id="3_input"]
+[ext_resource type="Script" uid="uid://s8tjnne06m3e" path="res://scripts/app/game_bootstrap.gd" id="1_bootstrap"]
+[ext_resource type="PackedScene" uid="uid://bo36jq2r1mhs7" path="res://scenes/match/field_environment.tscn" id="2_field"]
+[ext_resource type="Script" uid="uid://dofps0ivhwmpw" path="res://scripts/input/keyboard_player_input_adapter.gd" id="3_input"]
 
-[node name="GameBootstrap" type="Node"]
+[node name="GameBootstrap" type="Node" unique_id=1859715035]
 script = ExtResource("1_bootstrap")
 
-[node name="FieldEnvironment" parent="." instance=ExtResource("2_field")]
+[node name="FieldEnvironment" parent="." unique_id=1571949427 instance=ExtResource("2_field")]
 
-[node name="KeyboardPlayerInputAdapter" type="Node" parent="."]
+[node name="KeyboardPlayerInputAdapter" type="Node" parent="." unique_id=119357583]
 script = ExtResource("3_input")

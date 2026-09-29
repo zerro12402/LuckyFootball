@@ -8,6 +8,7 @@
 [ext_resource type="Texture2D" uid="uid://dufevlakt0y8l" path="res://assets/art/field/goal_top.png" id="6_goal_top"]
 [ext_resource type="Script" uid="uid://bjks5gvguadjt" path="res://scripts/presentation/field/field_debug_overlay.gd" id="7_debug"]
 [ext_resource type="PackedScene" uid="uid://ccuanmjm7vljg" path="res://scenes/actors/player_actor.tscn" id="8_player"]
+[ext_resource type="PackedScene" path="res://scenes/actors/ball_actor.tscn" id="9_ball"]
 
 [node name="FieldEnvironment" type="Node2D" unique_id=1188271159]
 script = ExtResource("1_field")
@@ -76,7 +77,8 @@ y_sort_enabled = true
 [node name="DemoPlayer" parent="WorldActors/Players" unique_id=345840623 instance=ExtResource("8_player")]
 unique_name_in_owner = true
 
-[node name="Ball" type="Node2D" parent="WorldActors" unique_id=1280611499]
+[node name="Ball" parent="WorldActors" instance=ExtResource("9_ball")]
+unique_name_in_owner = true
 
 [node name="Effects" type="Node2D" parent="WorldActors" unique_id=1562911331]
 

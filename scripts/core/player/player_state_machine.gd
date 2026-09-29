@@ -2,6 +2,7 @@ class_name PlayerStateMachine
 extends RefCounted
 
 const DEFAULT_MOVEMENT_SPEED_MPS := 5.0
+const POSSESSION_MOVEMENT_SPEED_MULTIPLIER := 0.9
 const INPUT_EPSILON := 0.0001
 
 var state: PlayerMatchState:
@@ -31,7 +32,7 @@ func advance(fixed_delta_seconds: float) -> void:
 	if _state.movement_state == PlayerMatchState.MovementState.MOVING:
 		_state._set_position(
 			_state.position_m
-			+ _state.movement_input * _movement_speed_mps * fixed_delta_seconds
+			+ _state.movement_input * _get_current_movement_speed_mps() * fixed_delta_seconds
 		)
 	_state._advance_state_time(fixed_delta_seconds)
 
@@ -109,6 +110,15 @@ func finish_action() -> bool:
 		PlayerMatchState.ActionPhase.NONE,
 	)
 	return true
+
+
+func _get_current_movement_speed_mps() -> float:
+	if (
+		_state.possession_state
+		== PlayerMatchState.PossessionState.POSSESSING
+	):
+		return _movement_speed_mps * POSSESSION_MOVEMENT_SPEED_MULTIPLIER
+	return _movement_speed_mps
 
 
 func _set_movement_state_if_changed(new_state: int) -> void:

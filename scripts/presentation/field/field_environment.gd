@@ -8,6 +8,7 @@ const REQUIRED_VIEW_SIZE := Vector2(960.0, 540.0)
 @onready var _camera: Camera2D = %FieldCamera
 @onready var _debug_overlay: FieldDebugOverlay = %DebugOverlay
 @onready var _demo_player: PlayerActor = %DemoPlayer
+@onready var _ball: BallActor = %Ball
 
 var field_definition: FieldDefinition:
 	get:
@@ -61,12 +62,25 @@ func set_presented_player(player_id: String) -> void:
 
 
 func present(snapshot: MatchStateSnapshot) -> void:
-	if _projection == null or _presented_player_id.is_empty():
+	if _projection == null:
 		return
-	var player_snapshot := snapshot.get_player(_presented_player_id)
-	if player_snapshot == null:
-		return
-	_demo_player.present(player_snapshot, _projection)
+	if not _presented_player_id.is_empty():
+		var player_snapshot := snapshot.get_player(_presented_player_id)
+		if player_snapshot != null:
+			_demo_player.present(player_snapshot, _projection)
+	if snapshot.ball != null:
+		var owner_snapshot := _get_ball_owner(snapshot)
+		_ball.present(snapshot.ball, _projection, owner_snapshot)
+
+
+func _get_ball_owner(snapshot: MatchStateSnapshot) -> PlayerStateSnapshot:
+	if (
+		snapshot.ball == null
+		or snapshot.ball.motion_state != BallMatchState.MotionState.OWNED
+		or snapshot.ball.owner_player_id.is_empty()
+	):
+		return null
+	return snapshot.get_player(snapshot.ball.owner_player_id)
 
 
 func _fit_camera_to_viewport() -> void:
