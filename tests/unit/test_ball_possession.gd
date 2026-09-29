@@ -14,6 +14,10 @@ func _init() -> void:
 	test_owned_ball_when_player_moves_follows_control_point()
 	test_owned_ball_when_player_moves_up_stays_in_front()
 	test_owned_ball_when_player_moves_down_stays_in_front()
+	test_owned_ball_when_player_moves_left_stays_in_front()
+	test_owned_ball_when_player_turns_stays_in_front()
+	test_owned_ball_when_moving_up_after_left_keeps_left_facing()
+	test_owned_ball_when_moving_down_after_left_keeps_left_facing()
 	test_player_with_ball_when_moving_uses_possession_speed_multiplier()
 
 	if _failures.is_empty():
@@ -179,9 +183,73 @@ func _expect_owned_ball_in_direction(direction: Vector2) -> void:
 	if snapshot.ball == null or player == null:
 		_expect(false, "Expected player and ball snapshots")
 		return
+	var expected_facing := Vector2.LEFT if direction.x < 0.0 else Vector2.RIGHT
 	_expect(
 		snapshot.ball.position_m.is_equal_approx(
-			player.position_m + direction * 0.55
+			player.position_m + expected_facing * 0.55
 		),
 		"Expected owned ball to remain in front of the moving player",
+	)
+
+
+func test_owned_ball_when_player_moves_left_stays_in_front() -> void:
+	_expect_owned_ball_in_direction(Vector2.LEFT)
+
+
+func test_owned_ball_when_player_turns_stays_in_front() -> void:
+	var simulation := _create_started_simulation(Vector2(0.5, 0.0))
+	simulation.advance_fixed_step(0.1, _no_actions())
+	var right_actions: Array[MatchAction] = [
+		MatchAction.new("test_player", MatchAction.Type.MOVE, Vector2.RIGHT),
+	]
+	simulation.advance_fixed_step(FIXED_DELTA, right_actions)
+	var up_actions: Array[MatchAction] = [
+		MatchAction.new("test_player", MatchAction.Type.MOVE, Vector2.UP),
+	]
+	simulation.advance_fixed_step(FIXED_DELTA, up_actions)
+	var snapshot := simulation.create_snapshot()
+	var player := snapshot.get_player("test_player")
+	if snapshot.ball == null or player == null:
+		_expect(false, "Expected player and ball snapshots after turning")
+		return
+	_expect(
+		snapshot.ball.position_m.is_equal_approx(
+			player.position_m + Vector2.RIGHT * 0.55
+		),
+		"Expected ball 0.55 m ahead after changing direction",
+	)
+
+func test_owned_ball_when_moving_up_after_left_keeps_left_facing() -> void:
+	_expect_left_facing_ball_after_vertical_movement(Vector2.UP)
+
+
+func test_owned_ball_when_moving_down_after_left_keeps_left_facing() -> void:
+	_expect_left_facing_ball_after_vertical_movement(Vector2.DOWN)
+
+
+func _expect_left_facing_ball_after_vertical_movement(direction: Vector2) -> void:
+	var simulation := _create_started_simulation(Vector2(0.5, 0.0))
+	simulation.advance_fixed_step(0.1, _no_actions())
+	var left_actions: Array[MatchAction] = [
+		MatchAction.new("test_player", MatchAction.Type.MOVE, Vector2.LEFT),
+	]
+	simulation.advance_fixed_step(FIXED_DELTA, left_actions)
+	var vertical_actions: Array[MatchAction] = [
+		MatchAction.new("test_player", MatchAction.Type.MOVE, direction),
+	]
+	simulation.advance_fixed_step(FIXED_DELTA, vertical_actions)
+	var snapshot := simulation.create_snapshot()
+	var player := snapshot.get_player("test_player")
+	if snapshot.ball == null or player == null:
+		_expect(false, "Expected player and ball snapshots after moving vertically")
+		return
+	_expect(
+		player.facing_direction == Vector2.LEFT,
+		"Expected vertical movement to preserve left-facing sprite direction",
+	)
+	_expect(
+		snapshot.ball.position_m.is_equal_approx(
+			player.position_m + Vector2.LEFT * 0.55
+		),
+		"Expected ball 0.55 m left while moving vertically and facing left",
 	)

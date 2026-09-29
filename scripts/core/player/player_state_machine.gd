@@ -50,7 +50,10 @@ func set_movement_input(new_input: Vector2) -> bool:
 		return true
 
 	_state._set_movement_input(clamped_input)
-	_state._set_facing_direction(clamped_input)
+	if clamped_input.x < -INPUT_EPSILON:
+		_state._set_facing_direction(Vector2.LEFT)
+	elif clamped_input.x > INPUT_EPSILON:
+		_state._set_facing_direction(Vector2.RIGHT)
 	_set_movement_state_if_changed(PlayerMatchState.MovementState.MOVING)
 	return true
 

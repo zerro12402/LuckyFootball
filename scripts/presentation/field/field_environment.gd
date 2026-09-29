@@ -69,18 +69,7 @@ func present(snapshot: MatchStateSnapshot) -> void:
 		if player_snapshot != null:
 			_demo_player.present(player_snapshot, _projection)
 	if snapshot.ball != null:
-		var owner_snapshot := _get_ball_owner(snapshot)
-		_ball.present(snapshot.ball, _projection, owner_snapshot)
-
-
-func _get_ball_owner(snapshot: MatchStateSnapshot) -> PlayerStateSnapshot:
-	if (
-		snapshot.ball == null
-		or snapshot.ball.motion_state != BallMatchState.MotionState.OWNED
-		or snapshot.ball.owner_player_id.is_empty()
-	):
-		return null
-	return snapshot.get_player(snapshot.ball.owner_player_id)
+		_ball.present(snapshot.ball, _projection)
 
 
 func _fit_camera_to_viewport() -> void:

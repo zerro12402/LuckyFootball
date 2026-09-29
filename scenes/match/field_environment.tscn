@@ -73,11 +73,12 @@ centered = false
 y_sort_enabled = true
 
 [node name="Players" type="Node2D" parent="WorldActors" unique_id=1195728149]
+y_sort_enabled = true
 
 [node name="DemoPlayer" parent="WorldActors/Players" unique_id=345840623 instance=ExtResource("8_player")]
 unique_name_in_owner = true
 
-[node name="Ball" parent="WorldActors" instance=ExtResource("9_ball")]
+[node name="Ball" parent="WorldActors/Players" instance=ExtResource("9_ball")]
 unique_name_in_owner = true
 
 [node name="Effects" type="Node2D" parent="WorldActors" unique_id=1562911331]

@@ -81,7 +81,6 @@ _data = {
 }
 
 [node name="BallActor" type="Node2D" unique_id=1519147240]
-z_index = 1
 script = ExtResource("1_actor")
 
 [node name="Shadow" type="Sprite2D" parent="." unique_id=482504583]
@@ -90,6 +89,7 @@ position = Vector2(0, 3)
 texture = ExtResource("2_shadow")
 
 [node name="BallSprite" type="Sprite2D" parent="." unique_id=390150922]
+z_index = 1
 unique_name_in_owner = true
 position = Vector2(0, 4)
 texture = ExtResource("3_ball")
