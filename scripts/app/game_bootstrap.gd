@@ -37,6 +37,7 @@ var data_repository: DataRepository:
 		return _data_repository
 
 var _data_repository: DataRepository
+var _match_config: MatchConfigDefinition
 var _match_simulation: MatchSimulation
 var _game_loop: GameLoop
 var _queued_actions: Array[MatchAction] = []
@@ -55,6 +56,10 @@ func _ready() -> void:
 	var field_definition := _data_repository.get_field_by_id("demo_field")
 	if field_definition == null:
 		startup_failed.emit(PackedStringArray(["Missing demo_field definition"]))
+		return
+	_match_config = _data_repository.get_match_config_by_id("demo_match")
+	if _match_config == null:
+		startup_failed.emit(PackedStringArray(["Missing demo_match configuration"]))
 		return
 	if _field_environment != null:
 		_field_environment.configure(field_definition)
@@ -92,20 +97,24 @@ func reset_demo() -> void:
 		return
 	set_process(false)
 	_queued_actions.clear()
-	_match_simulation = MatchSimulation.new(random_seed)
+	_match_simulation = MatchSimulation.new(random_seed, _match_config)
+	var demo_player := _data_repository.get_player_by_id(_demo_player_id)
 	var did_register_player := _match_simulation.register_player(
 		_demo_player_id,
 		Vector2.ZERO,
 		TEST_PLAYER_MOVEMENT_SPEED_MPS,
 		TEST_TEAM_ID,
+		demo_player.shooting,
 	)
 	assert(did_register_player, "Demo player must register before the match starts")
 	if not _demo_teammate_id.is_empty():
+		var demo_teammate := _data_repository.get_player_by_id(_demo_teammate_id)
 		var did_register_teammate := _match_simulation.register_player(
 			_demo_teammate_id,
 			TEST_TEAMMATE_POSITION_M,
 			TEST_PLAYER_MOVEMENT_SPEED_MPS,
 			TEST_TEAM_ID,
+			demo_teammate.shooting,
 		)
 		assert(did_register_teammate, "Demo teammate must register before the match starts")
 	var did_register_ball := _match_simulation.register_ball(

@@ -1,3 +1,4 @@
+## Verifies that demo reset rebuilds runtime state and keyboard control without rendering.
 extends SceneTree
 
 var _started_snapshots: Array[MatchStateSnapshot] = []
@@ -6,10 +7,12 @@ var _actions: Array[MatchAction] = []
 var _failures: PackedStringArray = []
 
 
+## Defers Node-based reset checks until the SceneTree is ready.
 func _init() -> void:
 	call_deferred("_run_tests")
 
 
+## Reports every failed reset expectation as one process result.
 func _run_tests() -> void:
 	test_tilde_when_pressed_restores_demo_and_clears_pending_actions()
 
@@ -21,6 +24,7 @@ func _run_tests() -> void:
 	quit(1)
 
 
+## Resets positions, pending input, clock, and control after tilde.
 func test_tilde_when_pressed_restores_demo_and_clears_pending_actions() -> void:
 	var bootstrap := GameBootstrap.new()
 	var keyboard := KeyboardPlayerInputAdapter.new()
@@ -36,8 +40,10 @@ func test_tilde_when_pressed_restores_demo_and_clears_pending_actions() -> void:
 		return
 
 	var initial_snapshot := _started_snapshots[0]
-	var player_id := initial_snapshot.players[0].player_id
-	var teammate_id := initial_snapshot.players[1].player_id
+	var data_repository := DataRepository.new()
+	_expect(data_repository.load_all(), "Expected demo player definitions")
+	var player_id := data_repository.player_definitions[0].player_id
+	var teammate_id := data_repository.player_definitions[1].player_id
 	bootstrap.queue_action(
 		MatchAction.new(player_id, MatchAction.Type.MOVE, Vector2.RIGHT)
 	)
@@ -92,6 +98,7 @@ func test_tilde_when_pressed_restores_demo_and_clears_pending_actions() -> void:
 	bootstrap.queue_free()
 
 
+## Submits a single key-down event to the demo adapter.
 func _press_key(adapter: KeyboardPlayerInputAdapter, key_code: int) -> void:
 	var key_event := InputEventKey.new()
 	key_event.keycode = key_code
@@ -99,6 +106,7 @@ func _press_key(adapter: KeyboardPlayerInputAdapter, key_code: int) -> void:
 	adapter._unhandled_key_input(key_event)
 
 
+## Submits the physical tilde key used by the reset control.
 func _press_reset_key(adapter: KeyboardPlayerInputAdapter) -> void:
 	var key_event := InputEventKey.new()
 	key_event.physical_keycode = KEY_QUOTELEFT
@@ -107,10 +115,12 @@ func _press_reset_key(adapter: KeyboardPlayerInputAdapter) -> void:
 	adapter._unhandled_key_input(key_event)
 
 
+## Captures each initial state emitted by a fresh demo.
 func _record_start(snapshot: MatchStateSnapshot) -> void:
 	_started_snapshots.append(snapshot)
 
 
+## Stores the latest simulated frame for state assertions.
 func _record_frame(
 	snapshot: MatchStateSnapshot,
 	_events: Array[MatchEvent],
@@ -119,10 +129,12 @@ func _record_frame(
 	_latest_snapshot = snapshot
 
 
+## Records keyboard commands to verify post-reset control.
 func _record_action(action: MatchAction) -> void:
 	_actions.append(action)
 
 
+## Accumulates failures without interrupting cleanup.
 func _expect(condition: bool, failure_message: String) -> void:
 	if not condition:
 		_failures.append(failure_message)

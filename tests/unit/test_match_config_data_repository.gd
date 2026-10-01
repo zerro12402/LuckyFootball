@@ -1,0 +1,76 @@
+## Checks typed CSV match rules and transactional validation.
+extends SceneTree
+
+var _failures: PackedStringArray = []
+
+
+## Runs valid, missing, malformed, and duplicate configuration cases.
+func _init() -> void:
+	test_valid_config_is_indexed_by_stable_id()
+	test_missing_config_reports_error_without_data()
+	test_invalid_header_reports_error_without_data()
+	test_invalid_speed_reports_error_without_data()
+	test_non_ascii_id_reports_error_without_data()
+	test_duplicate_id_reports_error_without_data()
+	for failure in _failures:
+		push_error(failure)
+	quit(0 if _failures.is_empty() else 1)
+
+
+## Reads the production row through both the parser and the aggregate repository.
+func test_valid_config_is_indexed_by_stable_id() -> void:
+	var result := MatchConfigDataRepository.new().load_from_csv(
+		"res://resources/data/match_configs.csv")
+	_expect(result.is_success, "Valid match config CSV did not load")
+	_expect(result.configs.size() == 1, "Expected one typed match config")
+	var repository := DataRepository.new()
+	_expect(repository.load_all(), "DataRepository did not load match config")
+	var config := repository.get_match_config_by_id("demo_match")
+	_expect(config != null, "Match config ID lookup failed")
+	if config != null:
+		_expect(is_equal_approx(config.shot_base_speed_mps, 20.0),
+			"Shot speed was parsed incorrectly")
+		_expect(is_equal_approx(config.shot_windup_seconds, 0.2),
+			"Shot windup was parsed incorrectly")
+	_expect(repository.get_match_config_by_id("unknown") == null,
+		"Unknown match config ID resolved")
+
+
+## Rejects a missing required table with an explicit diagnostic.
+func test_missing_config_reports_error_without_data() -> void:
+	_expect_failure("missing_match_configs.csv")
+
+
+## Rejects an incompatible CSV schema before reading rows.
+func test_invalid_header_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_header.csv")
+
+
+## Rejects negative shot speed as an invalid rule value.
+func test_invalid_speed_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_speed.csv")
+
+
+## Rejects IDs that cannot be used as stable lowercase ASCII keys.
+func test_non_ascii_id_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_id.csv")
+
+
+## Rejects duplicate IDs and discards the otherwise valid first row.
+func test_duplicate_id_reports_error_without_data() -> void:
+	_expect_failure("match_configs_duplicate_id.csv")
+
+
+## Ensures malformed input never exposes a partial configuration set.
+func _expect_failure(file_name: String) -> void:
+	var result := MatchConfigDataRepository.new().load_from_csv(
+		"res://tests/fixtures".path_join(file_name))
+	_expect(not result.is_success, "Invalid config should fail: " + file_name)
+	_expect(result.configs.is_empty(), "Invalid config leaked rows: " + file_name)
+	_expect(not result.errors.is_empty(), "Invalid config lacks error: " + file_name)
+
+
+## Collects all failures before exiting with one process status.
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		_failures.append(message)

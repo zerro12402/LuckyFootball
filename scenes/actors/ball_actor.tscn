@@ -89,8 +89,8 @@ position = Vector2(0, 3)
 texture = ExtResource("2_shadow")
 
 [node name="BallSprite" type="Sprite2D" parent="." unique_id=390150922]
-z_index = 1
 unique_name_in_owner = true
+z_index = 1
 position = Vector2(0, 4)
 texture = ExtResource("3_ball")
 hframes = 4

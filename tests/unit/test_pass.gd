@@ -1,3 +1,4 @@
+## Checks deterministic teammate passes and ground or lofted ball trajectories.
 extends SceneTree
 
 const PASSER_ID := "passer"
@@ -7,6 +8,7 @@ const PASS_SPEED_MPS := 14.0
 var _failures: PackedStringArray = []
 
 
+## Runs independent passing checks and exits with their aggregate status.
 func _init() -> void:
 	test_pass_without_possession_is_rejected()
 	test_pass_to_unknown_or_self_is_rejected()
@@ -34,6 +36,7 @@ func _init() -> void:
 	quit(1)
 
 
+## Requires ball ownership before a pass can start.
 func test_pass_without_possession_is_rejected() -> void:
 	var simulation := _create_simulation(Vector2(6.0, 0.0), "team_a", false)
 	var events := simulation.advance_fixed_step(0.1, _pass_actions())
@@ -43,6 +46,7 @@ func test_pass_without_possession_is_rejected() -> void:
 	)
 
 
+## Rejects absent and identical pass targets without changing possession.
 func test_pass_to_unknown_or_self_is_rejected() -> void:
 	var simulation := _create_simulation()
 	for target_id in ["missing_player", PASSER_ID]:
@@ -60,6 +64,7 @@ func test_pass_to_unknown_or_self_is_rejected() -> void:
 	)
 
 
+## Restricts pass targets to in-range teammates.
 func test_pass_to_opponent_or_distant_teammate_is_rejected() -> void:
 	var opponent_match := _create_simulation(Vector2(6.0, 0.0), "team_b")
 	var opponent_events := opponent_match.advance_fixed_step(0.1, _pass_actions())
@@ -75,6 +80,7 @@ func test_pass_to_opponent_or_distant_teammate_is_rejected() -> void:
 	)
 
 
+## Accepts a teammate just inside the configured range.
 func test_pass_near_maximum_range_is_accepted() -> void:
 	var simulation := _create_simulation(Vector2(20.5, 0.0))
 	var events := simulation.advance_fixed_step(0.1, _pass_actions())
@@ -84,6 +90,7 @@ func test_pass_near_maximum_range_is_accepted() -> void:
 	)
 
 
+## Preserves a single queued pass through windup.
 func test_second_pass_during_windup_is_rejected() -> void:
 	var simulation := _create_simulation()
 	simulation.advance_fixed_step(0.05, _pass_actions())
@@ -97,6 +104,7 @@ func test_second_pass_during_windup_is_rejected() -> void:
 		"Expected ball to remain owned until the first pass reaches its kick frame",
 	)
 
+## Keeps the ball owned until the pass kick frame.
 func test_pass_when_queued_waits_for_windup() -> void:
 	var simulation := _create_simulation()
 	var events := simulation.advance_fixed_step(0.1, _pass_actions())
@@ -117,6 +125,7 @@ func test_pass_when_queued_waits_for_windup() -> void:
 	)
 
 
+## Transfers the ball into its independent pass trajectory.
 func test_pass_after_windup_releases_ball_and_enters_flight() -> void:
 	var simulation := _create_simulation()
 	simulation.advance_fixed_step(0.1, _pass_actions())
@@ -140,6 +149,7 @@ func test_pass_after_windup_releases_ball_and_enters_flight() -> void:
 	)
 
 
+## Lets the intended receiver collect a grounded pass.
 func test_flying_pass_when_crossing_receiver_transfers_possession() -> void:
 	var simulation := _create_simulation()
 	_start_flight(simulation)
@@ -169,6 +179,7 @@ func test_flying_pass_when_crossing_receiver_transfers_possession() -> void:
 	)
 
 
+## Releases an uncaught pass as a loose ball.
 func test_flying_pass_when_receiver_escapes_becomes_loose() -> void:
 	var simulation := _create_simulation(Vector2(6.0, 0.0), "team_a", true, 10.0)
 	_start_flight(simulation)
@@ -190,6 +201,7 @@ func test_flying_pass_when_receiver_escapes_becomes_loose() -> void:
 	)
 
 
+## Allows the new owner to initiate the return pass.
 func test_receiver_when_possessing_can_pass_back() -> void:
 	var simulation := _create_simulation()
 	_start_flight(simulation)
@@ -209,6 +221,7 @@ func test_receiver_when_possessing_can_pass_back() -> void:
 	)
 
 
+## Keeps short passes at ground height.
 func test_short_pass_below_loft_threshold_stays_grounded() -> void:
 	var simulation := _create_simulation(Vector2(6.5, 0.0))
 	_start_flight(simulation)
@@ -217,14 +230,16 @@ func test_short_pass_below_loft_threshold_stays_grounded() -> void:
 	_expect(is_zero_approx(ball.height_m), "Expected short pass to stay on the ground")
 
 
+## Rises once the pass exceeds the current loft threshold.
 func test_long_pass_above_loft_threshold_rises() -> void:
-	var simulation := _create_simulation(Vector2(6.6, 0.0))
+	var simulation := _create_simulation(Vector2(8.6, 0.0))
 	_start_flight(simulation)
 	var ball := simulation.create_snapshot().ball
 	_expect(ball.motion_state == BallMatchState.MotionState.IN_FLIGHT, "Expected long flight")
 	_expect(ball.height_m > 0.0, "Expected long pass to rise above the ground")
 
 
+## Checks height near the rising, apex, and falling phases.
 func test_long_pass_in_flight_follows_parabolic_height() -> void:
 	var simulation := _create_simulation(Vector2(10.55, 0.0))
 	_start_flight(simulation)
@@ -247,6 +262,7 @@ func test_long_pass_in_flight_follows_parabolic_height() -> void:
 	)
 
 
+## Prevents a receiver from catching the high section of an arc.
 func test_long_pass_when_receiver_crosses_high_arc_is_not_caught() -> void:
 	var simulation := _create_simulation(Vector2(10.55, 0.0), "team_a", true, 10.0)
 	_start_flight(simulation)
@@ -262,6 +278,7 @@ func test_long_pass_when_receiver_crosses_high_arc_is_not_caught() -> void:
 		"Expected receiver beneath high ball not to catch it",
 	)
 
+## Resets ball height when a lofted pass is caught.
 func test_long_pass_when_received_returns_to_ground() -> void:
 	var simulation := _create_simulation(Vector2(10.55, 0.0))
 	_start_flight(simulation)
@@ -273,6 +290,7 @@ func test_long_pass_when_received_returns_to_ground() -> void:
 	_expect(_has_event(events, MatchEvent.Type.BALL_PASS_RECEIVED), "Expected receive event")
 
 
+## Lands an uncaught lofted pass at its original target.
 func test_long_pass_when_missed_lands_at_original_target() -> void:
 	var simulation := _create_simulation(Vector2(10.55, 0.0), "team_a", true, 10.0)
 	_start_flight(simulation)
@@ -288,6 +306,7 @@ func test_long_pass_when_missed_lands_at_original_target() -> void:
 	_expect(_has_event(events, MatchEvent.Type.BALL_PASS_MISSED), "Expected missed pass event")
 
 
+## Caps flight distance when the target runs beyond the limit.
 func test_long_pass_when_target_moves_beyond_range_lands_at_maximum() -> void:
 	var simulation := _create_simulation(Vector2(20.5, 0.0), "team_a", true, 10.0)
 	var actions: Array[MatchAction] = [
@@ -306,6 +325,7 @@ func test_long_pass_when_target_moves_beyond_range_lands_at_maximum() -> void:
 	_expect(is_zero_approx(ball.height_m), "Expected maximum-range landing at ground height")
 	_expect(_has_event(events, MatchEvent.Type.BALL_PASS_MISSED), "Expected miss event")
 
+## Builds a fresh deterministic pass scenario.
 func _create_simulation(
 	receiver_position_m: Vector2 = Vector2(6.0, 0.0),
 	receiver_team_id: String = "team_a",
@@ -333,11 +353,13 @@ func _create_simulation(
 	return simulation
 
 
+## Advances through pass windup into independent ball motion.
 func _start_flight(simulation: MatchSimulation) -> void:
 	simulation.advance_fixed_step(0.1, _pass_actions())
 	simulation.advance_fixed_step(0.1, _no_actions())
 
 
+## Builds a typed pass command for the test passer.
 func _pass_actions() -> Array[MatchAction]:
 	return [
 		MatchAction.new(
@@ -349,10 +371,12 @@ func _pass_actions() -> Array[MatchAction]:
 	]
 
 
+## Returns an empty typed command list for fixed-step advancement.
 func _no_actions() -> Array[MatchAction]:
 	return []
 
 
+## Finds an event type in one simulation step.
 func _has_event(events: Array[MatchEvent], event_type: int) -> bool:
 	for event in events:
 		if event.event_type == event_type:
@@ -360,6 +384,7 @@ func _has_event(events: Array[MatchEvent], event_type: int) -> bool:
 	return false
 
 
+## Collects a failed assertion without stopping later checks.
 func _expect(condition: bool, failure_message: String) -> void:
 	if not condition:
 		_failures.append(failure_message)

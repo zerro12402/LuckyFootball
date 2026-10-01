@@ -1,18 +1,22 @@
+## Presents a player snapshot with sprite animations owned by AnimationPlayer.
 class_name PlayerActor
 extends Node2D
 
 const IDLE_ANIMATION := &"idle"
 const MOVE_ANIMATION := &"move"
 const PASS_ANIMATION := &"pass"
+const SHOOT_ANIMATION := &"shoot"
 
 @onready var _body_sprite: Sprite2D = %BodySprite
 @onready var _animation_player: AnimationPlayer = %AnimationPlayer
 
 
+## Starts the actor in its idle animation.
 func _ready() -> void:
 	_play_animation(IDLE_ANIMATION)
 
 
+## Projects the simulated position and action into the actor scene.
 func present(
 	player_snapshot: PlayerStateSnapshot,
 	projection: FieldArtProjection,
@@ -24,9 +28,12 @@ func present(
 	_play_animation(_resolve_animation(player_snapshot))
 
 
+## Maps the action state to a sprite-sheet row animation.
 func _resolve_animation(player_snapshot: PlayerStateSnapshot) -> StringName:
 	if player_snapshot.action_state == PlayerMatchState.ActionState.PASSING:
 		return PASS_ANIMATION
+	if player_snapshot.action_state == PlayerMatchState.ActionState.SHOOTING:
+		return SHOOT_ANIMATION
 	if player_snapshot.action_state != PlayerMatchState.ActionState.IDLE:
 		# Other action rows will be mapped when those actions are implemented.
 		return IDLE_ANIMATION
@@ -35,6 +42,7 @@ func _resolve_animation(player_snapshot: PlayerStateSnapshot) -> StringName:
 	return IDLE_ANIMATION
 
 
+## Avoids restarting an action animation on every presentation frame.
 func _play_animation(animation_name: StringName) -> void:
 	if (
 		_animation_player.current_animation == animation_name

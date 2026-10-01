@@ -1,3 +1,4 @@
+## Advances ownership, passes, and configured ground shots in fixed simulation steps.
 class_name BallRuntimeSystem
 extends RefCounted
 
@@ -22,10 +23,18 @@ var _pass_speed_mps: float
 var _max_pass_distance_m: float
 var _lofted_pass_min_distance_m: float
 var _lofted_pass_apex_height_m: float
+var _shot_config: MatchConfigDefinition
 var _pending_pass_target_id: String = ""
 var _pending_pass_elapsed_seconds: float = 0.0
+var _pending_shot_player_id: String = ""
+var _pending_shot_direction: Vector2 = Vector2.ZERO
+var _pending_shot_power: float = 0.0
+var _pending_shot_elapsed_seconds: float = 0.0
+var _last_shooter_id: String = ""
+var _reacquire_delay_remaining_seconds: float = 0.0
 
 
+## Validates the existing pass parameters before the ball is registered.
 func _init(
 	possession_radius_m: float = DEFAULT_POSSESSION_RADIUS_M,
 	dribble_offset_m: float = DEFAULT_DRIBBLE_OFFSET_M,
@@ -49,6 +58,13 @@ func _init(
 	_lofted_pass_apex_height_m = lofted_pass_apex_height_m
 
 
+## Enables shooting only when validated CSV rules were injected at match creation.
+func configure_shots(config: MatchConfigDefinition) -> void:
+	assert(config != null, "Shooting requires a match configuration")
+	_shot_config = config
+
+
+## Installs the one ball permitted by the current demo match.
 func register_ball(initial_position_m: Vector2) -> bool:
 	if _state != null:
 		return false
@@ -56,12 +72,15 @@ func register_ball(initial_position_m: Vector2) -> bool:
 	return true
 
 
+## Accepts a pass only from the owner to an eligible teammate in range.
 func try_start_pass(passer: PlayerRuntime, receiver: PlayerRuntime) -> bool:
 	if _state == null or passer == null or receiver == null:
 		return false
 	if _state.motion_state != BallMatchState.MotionState.OWNED:
 		return false
 	if _state.owner_player_id != passer.player_id or not _pending_pass_target_id.is_empty():
+		return false
+	if not _pending_shot_player_id.is_empty():
 		return false
 	if passer.player_id == receiver.player_id or passer.team_id != receiver.team_id:
 		return false
@@ -77,6 +96,31 @@ func try_start_pass(passer: PlayerRuntime, receiver: PlayerRuntime) -> bool:
 	return true
 
 
+## Captures normalized direction and clamped power until the shot's kick frame.
+func try_start_shot(shooter: PlayerRuntime, direction: Vector2, power: float) -> bool:
+	if _shot_config == null or _state == null or shooter == null:
+		return false
+	if _state.motion_state != BallMatchState.MotionState.OWNED:
+		return false
+	if _state.owner_player_id != shooter.player_id:
+		return false
+	if not _pending_pass_target_id.is_empty() or not _pending_shot_player_id.is_empty():
+		return false
+	if shooter.shooting_attribute < 1 or not direction.is_finite() or direction.is_zero_approx():
+		return false
+	if not is_finite(power):
+		return false
+	var clamped_power := clampf(power, 0.0, 1.0)
+	if not shooter.state_machine.try_start_shot(_shot_config, direction):
+		return false
+	_pending_shot_player_id = shooter.player_id
+	_pending_shot_direction = direction.normalized()
+	_pending_shot_power = clamped_power
+	_pending_shot_elapsed_seconds = 0.0
+	return true
+
+
+## Advances exactly one ownership or trajectory state per fixed step.
 func advance(
 	fixed_delta_seconds: float,
 	player_runtime_system: PlayerRuntimeSystem,
@@ -86,6 +130,10 @@ func advance(
 	var result := BallAdvanceResult.new()
 	if _state == null:
 		return result
+	_reacquire_delay_remaining_seconds = maxf(
+		_reacquire_delay_remaining_seconds - fixed_delta_seconds,
+		0.0,
+	)
 	if _state.motion_state == BallMatchState.MotionState.OWNED:
 		_advance_owned(fixed_delta_seconds, player_runtime_system, result)
 	if _state.motion_state == BallMatchState.MotionState.IN_FLIGHT:
@@ -101,6 +149,7 @@ func create_snapshot() -> BallStateSnapshot:
 	return BallStateSnapshot.new(_state)
 
 
+## Follows the owner through windup, then releases the queued kick once.
 func _advance_owned(
 	fixed_delta_seconds: float,
 	players: PlayerRuntimeSystem,
@@ -109,18 +158,20 @@ func _advance_owned(
 	_follow_owner(players)
 	if _state.motion_state != BallMatchState.MotionState.OWNED:
 		_pending_pass_target_id = ""
+		_clear_pending_shot()
 		return
-	if _pending_pass_target_id.is_empty():
-		return
-	_pending_pass_elapsed_seconds += fixed_delta_seconds
-	if _pending_pass_elapsed_seconds >= PlayerStateMachine.PASS_WINDUP_SECONDS:
-		_launch_pending_pass(players, result)
+	if not _pending_pass_target_id.is_empty():
+		_pending_pass_elapsed_seconds += fixed_delta_seconds
+		if _pending_pass_elapsed_seconds >= PlayerStateMachine.PASS_WINDUP_SECONDS:
+			_launch_pending_pass(players, result)
+	elif not _pending_shot_player_id.is_empty():
+		_pending_shot_elapsed_seconds += fixed_delta_seconds
+		if _pending_shot_elapsed_seconds >= _shot_config.shot_windup_seconds:
+			_launch_pending_shot(players, result)
 
 
-func _launch_pending_pass(
-	players: PlayerRuntimeSystem,
-	result: BallAdvanceResult,
-) -> void:
+## Launches the existing teammate pass without changing its trajectory rules.
+func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResult) -> void:
 	var passer := players.get_player(_state.owner_player_id)
 	var receiver := players.get_player(_pending_pass_target_id)
 	_pending_pass_target_id = ""
@@ -130,9 +181,7 @@ func _launch_pending_pass(
 	var pass_direction := receiver.state.position_m - _state.position_m
 	if pass_direction.is_zero_approx():
 		pass_direction = passer.state.facing_direction
-	passer.state_machine.set_possession_state(
-		PlayerMatchState.PossessionState.NO_BALL
-	)
+	passer.state_machine.set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
 	var flight_range_m := _max_pass_distance_m
 	var apex_height_m := 0.0
 	var pass_distance_m := pass_direction.length()
@@ -148,19 +197,47 @@ func _launch_pending_pass(
 	result.passed_by_player_id = passer.player_id
 
 
+## Converts CSV shooting strength and power into velocity; zero power drops the ball.
+func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResult) -> void:
+	var shooter := players.get_player(_pending_shot_player_id)
+	var direction := _pending_shot_direction
+	var power := _pending_shot_power
+	_clear_pending_shot()
+	if shooter == null or _state.owner_player_id != shooter.player_id:
+		return
+	var attribute_fraction := float(shooter.shooting_attribute - 1) / 99.0
+	var attribute_multiplier := lerpf(
+		_shot_config.shot_min_attribute_multiplier,
+		_shot_config.shot_max_attribute_multiplier,
+		attribute_fraction,
+	)
+	var initial_speed_mps := _shot_config.shot_base_speed_mps * power * attribute_multiplier
+	var release_position_m := shooter.state.position_m + direction * _dribble_offset_m
+	shooter.state_machine.set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
+	if initial_speed_mps > 0.0:
+		_state._launch_shot(release_position_m, direction * initial_speed_mps)
+	else:
+		_state._release(release_position_m)
+	_last_shooter_id = shooter.player_id
+	_reacquire_delay_remaining_seconds = _shot_config.shot_reacquire_delay_seconds
+	result.shot_by_player_id = shooter.player_id
+
+
+## Routes passes and shots to their own deterministic movement rules.
 func _advance_flight(
 	fixed_delta_seconds: float,
 	players: PlayerRuntimeSystem,
 	result: BallAdvanceResult,
 ) -> void:
+	if _state.flight_kind == BallMatchState.FlightKind.SHOT:
+		_advance_shot(fixed_delta_seconds)
+		return
 	var remaining_distance_m := _state.flight_range_m - _state.flight_distance_m
 	var travel_distance_m := minf(
 		_state.velocity_mps.length() * fixed_delta_seconds,
 		remaining_distance_m,
 	)
-	var next_position_m := (
-		_state.position_m + _state.velocity_mps.normalized() * travel_distance_m
-	)
+	var next_position_m := _state.position_m + _state.velocity_mps.normalized() * travel_distance_m
 	var receiver := players.get_player(_state.target_player_id)
 	if _can_receive_flight(receiver, next_position_m):
 		_receive_pass(receiver, result)
@@ -171,10 +248,30 @@ func _advance_flight(
 		result.was_pass_missed = true
 
 
-func _can_receive_flight(
-	receiver: PlayerRuntime,
-	next_position_m: Vector2,
-) -> bool:
+## Applies constant ground deceleration until the shot is slow enough to stop.
+func _advance_shot(fixed_delta_seconds: float) -> void:
+	var speed_mps := _state.velocity_mps.length()
+	if speed_mps <= _shot_config.shot_stop_speed_mps:
+		_state._release(_state.position_m)
+		return
+	var deceleration := _shot_config.shot_ground_deceleration_mps2
+	var seconds_until_stop := (speed_mps - _shot_config.shot_stop_speed_mps) / deceleration
+	var moving_seconds := minf(fixed_delta_seconds, seconds_until_stop)
+	var travel_distance_m := (
+		speed_mps * moving_seconds
+		- 0.5 * deceleration * moving_seconds * moving_seconds
+	)
+	var direction := _state.velocity_mps / speed_mps
+	var next_position_m := _state.position_m + direction * travel_distance_m
+	if moving_seconds + DISTANCE_EPSILON >= seconds_until_stop:
+		_state._release(next_position_m)
+	else:
+		var next_speed_mps := speed_mps - deceleration * fixed_delta_seconds
+		_state._advance_shot(next_position_m, direction * next_speed_mps)
+
+
+## Allows a teammate to receive only a pass close enough to the ground.
+func _can_receive_flight(receiver: PlayerRuntime, next_position_m: Vector2) -> bool:
 	if receiver == null:
 		return false
 	if receiver.state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
@@ -190,9 +287,7 @@ func _can_receive_flight(
 		1.0,
 	)
 	var closest_position_m := _state.position_m + segment * segment_fraction
-	var closest_flight_distance_m := (
-		_state.flight_distance_m + segment.length() * segment_fraction
-	)
+	var closest_flight_distance_m := _state.flight_distance_m + segment.length() * segment_fraction
 	if _state.calculate_height_at_distance(closest_flight_distance_m) > MAX_RECEIVE_HEIGHT_M:
 		return false
 	return closest_position_m.distance_squared_to(receiver.state.position_m) <= (
@@ -200,40 +295,40 @@ func _can_receive_flight(
 	)
 
 
+## Transfers an intercepted pass into owned-ball state at the receiver's control point.
 func _receive_pass(receiver: PlayerRuntime, result: BallAdvanceResult) -> void:
 	_state._set_owner(receiver.player_id)
-	receiver.state_machine.set_possession_state(
-		PlayerMatchState.PossessionState.POSSESSING
-	)
+	receiver.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
 	_set_ball_at_control_point(receiver)
 	result.new_owner_player_id = receiver.player_id
 	result.received_by_player_id = receiver.player_id
 
 
-func _try_acquire_loose_ball(
-	players: PlayerRuntimeSystem,
-	result: BallAdvanceResult,
-) -> void:
+## Gives a stopped or free ball to the nearest eligible player.
+func _try_acquire_loose_ball(players: PlayerRuntimeSystem, result: BallAdvanceResult) -> void:
 	var new_owner := _find_possession_candidate(players)
 	if new_owner == null:
 		return
 	_state._set_owner(new_owner.player_id)
-	new_owner.state_machine.set_possession_state(
-		PlayerMatchState.PossessionState.POSSESSING
-	)
+	new_owner.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
 	_set_ball_at_control_point(new_owner)
 	result.new_owner_player_id = new_owner.player_id
 
 
+## Skips recovering shooters and recently released balls during reacquisition.
 func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 	var nearest_player: PlayerRuntime
-	var nearest_distance_squared := (
-		_possession_radius_m * _possession_radius_m + DISTANCE_EPSILON
-	)
+	var nearest_distance_squared := _possession_radius_m * _possession_radius_m + DISTANCE_EPSILON
 	for player_runtime in players.get_players():
+		if player_runtime.state.possession_state != PlayerMatchState.PossessionState.NO_BALL:
+			continue
+		if player_runtime.state.action_state == PlayerMatchState.ActionState.SHOOTING:
+			continue
+		if player_runtime.state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
+			continue
 		if (
-			player_runtime.state.possession_state
-			!= PlayerMatchState.PossessionState.NO_BALL
+			player_runtime.player_id == _last_shooter_id
+			and _reacquire_delay_remaining_seconds > 0.0
 		):
 			continue
 		var distance_squared := player_runtime.state.position_m.distance_squared_to(
@@ -245,6 +340,7 @@ func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 	return nearest_player
 
 
+## Follows the current owner or releases a ball whose owner disappeared.
 func _follow_owner(players: PlayerRuntimeSystem) -> void:
 	var owner := players.get_player(_state.owner_player_id)
 	if owner == null:
@@ -253,8 +349,16 @@ func _follow_owner(players: PlayerRuntimeSystem) -> void:
 	_set_ball_at_control_point(owner)
 
 
+## Holds the ball in front of the owner's current horizontal facing.
 func _set_ball_at_control_point(owner: PlayerRuntime) -> void:
 	_state._set_position(
-		owner.state.position_m
-		+ owner.state.facing_direction * _dribble_offset_m
+		owner.state.position_m + owner.state.facing_direction * _dribble_offset_m
 	)
+
+
+## Clears a queued shot after it is launched or ownership is cancelled.
+func _clear_pending_shot() -> void:
+	_pending_shot_player_id = ""
+	_pending_shot_direction = Vector2.ZERO
+	_pending_shot_power = 0.0
+	_pending_shot_elapsed_seconds = 0.0

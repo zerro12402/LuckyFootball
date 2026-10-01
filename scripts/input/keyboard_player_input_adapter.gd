@@ -11,6 +11,7 @@ const INPUT_DEADZONE := 0.1
 var _player_id: String = ""
 var _teammate_id: String = ""
 var _last_direction: Vector2 = Vector2.ZERO
+var _last_aim_direction: Vector2 = Vector2.RIGHT
 var _has_sent_direction: bool = false
 
 
@@ -27,6 +28,7 @@ func configure(player_id: String, teammate_id: String = "") -> void:
 	_player_id = player_id
 	_teammate_id = teammate_id
 	_last_direction = Vector2.ZERO
+	_last_aim_direction = Vector2.RIGHT
 	_has_sent_direction = false
 	set_process(true)
 	set_process_unhandled_key_input(true)
@@ -49,6 +51,8 @@ func _process(_delta: float) -> void:
 	if _has_sent_direction and direction.is_equal_approx(_last_direction):
 		return
 	_last_direction = direction
+	if not direction.is_zero_approx():
+		_last_aim_direction = direction.normalized()
 	_has_sent_direction = true
 	action_requested.emit(
 		MatchAction.new(_player_id, MatchAction.Type.MOVE, direction)
@@ -68,6 +72,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		reset_requested.emit()
 	elif key_event.keycode == KEY_M or key_event.physical_keycode == KEY_M:
 		meter_ticks_toggle_requested.emit()
+	elif (
+		(key_event.keycode == KEY_K or key_event.physical_keycode == KEY_K)
+		and not _teammate_id.is_empty()
+	):
+		_request_shot()
 	elif key_event.keycode == KEY_J and not _teammate_id.is_empty():
 		action_requested.emit(
 			MatchAction.new(
@@ -90,3 +99,21 @@ func _switch_controlled_player() -> void:
 	_player_id = _teammate_id
 	_teammate_id = previous_player_id
 	force_resend()
+
+
+## Uses held movement keys or the last nonzero aim for a full-power test shot.
+func _request_shot() -> void:
+	var direction := Input.get_vector(
+		&"move_left",
+		&"move_right",
+		&"move_up",
+		&"move_down",
+		INPUT_DEADZONE,
+	)
+	if direction.is_zero_approx():
+		direction = _last_aim_direction
+	else:
+		_last_aim_direction = direction.normalized()
+	action_requested.emit(
+		MatchAction.new(_player_id, MatchAction.Type.SHOOT, direction, "", 1.0)
+	)

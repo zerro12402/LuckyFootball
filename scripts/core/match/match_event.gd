@@ -1,5 +1,7 @@
+## Identifies observable results emitted by deterministic match steps.
 class_name MatchEvent
 extends RefCounted
+
 
 enum Type {
 	MATCH_STARTED,
@@ -12,6 +14,7 @@ enum Type {
 	BALL_PASS_RECEIVED,
 	BALL_PASS_MISSED,
 	SIMULATION_ADVANCED,
+	BALL_SHOT,
 }
 
 var event_type: int:

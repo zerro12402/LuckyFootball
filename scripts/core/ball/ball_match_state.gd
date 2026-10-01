@@ -1,3 +1,4 @@
+## Holds the ball's ownership and one active pass or shot trajectory.
 class_name BallMatchState
 extends RefCounted
 
@@ -8,6 +9,12 @@ enum MotionState {
 	IN_FLIGHT,
 }
 
+enum FlightKind {
+	NONE,
+	PASS,
+	SHOT,
+}
+
 var position_m: Vector2:
 	get:
 		return _position_m
@@ -15,6 +22,10 @@ var position_m: Vector2:
 var motion_state: int:
 	get:
 		return _motion_state
+
+var flight_kind: int:
+	get:
+		return _flight_kind
 
 var owner_player_id: String:
 	get:
@@ -42,6 +53,7 @@ var height_m: float:
 
 var _position_m: Vector2
 var _motion_state: int = MotionState.LOOSE
+var _flight_kind: int = FlightKind.NONE
 var _owner_player_id: String = ""
 var _target_player_id: String = ""
 var _velocity_mps: Vector2 = Vector2.ZERO
@@ -59,6 +71,7 @@ func _set_position(new_position_m: Vector2) -> void:
 	_position_m = new_position_m
 
 
+## Atomically assigns ownership and clears any previous trajectory.
 func _set_owner(player_id: String) -> void:
 	assert(not player_id.is_empty(), "Ball owner ID cannot be empty")
 	_owner_player_id = player_id
@@ -66,6 +79,7 @@ func _set_owner(player_id: String) -> void:
 	_clear_flight()
 
 
+## Releases a pass with its fixed target and possible parabolic height.
 func _launch_pass(
 	target_id: String,
 	pass_velocity_mps: Vector2,
@@ -83,16 +97,42 @@ func _launch_pass(
 	_flight_range_m = flight_range_m
 	_flight_apex_height_m = apex_height_m
 	_height_m = 0.0
+	_flight_kind = FlightKind.PASS
 	_motion_state = MotionState.IN_FLIGHT
 
 
+## Releases a ground shot at the requested direction's control point.
+func _launch_shot(release_position_m: Vector2, shot_velocity_mps: Vector2) -> void:
+	assert(shot_velocity_mps.is_finite() and not shot_velocity_mps.is_zero_approx())
+	_position_m = release_position_m
+	_owner_player_id = ""
+	_target_player_id = ""
+	_velocity_mps = shot_velocity_mps
+	_flight_distance_m = 0.0
+	_flight_range_m = 0.0
+	_flight_apex_height_m = 0.0
+	_height_m = 0.0
+	_flight_kind = FlightKind.SHOT
+	_motion_state = MotionState.IN_FLIGHT
+
+
+## Advances a pass while keeping its parabolic height synchronized with distance.
 func _advance_flight(new_position_m: Vector2, traveled_distance_m: float) -> void:
 	assert(_motion_state == MotionState.IN_FLIGHT, "Ball must be in flight")
+	assert(_flight_kind == FlightKind.PASS, "Pass distance requires a pass trajectory")
 	_position_m = new_position_m
 	_flight_distance_m += traveled_distance_m
 	_height_m = calculate_height_at_distance(_flight_distance_m)
 
 
+## Updates a shot's ground position and decelerating velocity.
+func _advance_shot(new_position_m: Vector2, new_velocity_mps: Vector2) -> void:
+	assert(_motion_state == MotionState.IN_FLIGHT and _flight_kind == FlightKind.SHOT)
+	_position_m = new_position_m
+	_velocity_mps = new_velocity_mps
+
+
+## Computes pass height from a reproducible parabola.
 func calculate_height_at_distance(distance_m: float) -> float:
 	if _flight_apex_height_m <= 0.0:
 		return 0.0
@@ -100,6 +140,7 @@ func calculate_height_at_distance(distance_m: float) -> float:
 	return 4.0 * _flight_apex_height_m * progress * (1.0 - progress)
 
 
+## Leaves the ball free and motionless after a trajectory ends.
 func _release(new_position_m: Vector2) -> void:
 	_position_m = new_position_m
 	_owner_player_id = ""
@@ -107,7 +148,9 @@ func _release(new_position_m: Vector2) -> void:
 	_clear_flight()
 
 
+## Removes pass and shot metadata whenever the ball changes ownership or stops.
 func _clear_flight() -> void:
+	_flight_kind = FlightKind.NONE
 	_target_player_id = ""
 	_velocity_mps = Vector2.ZERO
 	_flight_distance_m = 0.0
