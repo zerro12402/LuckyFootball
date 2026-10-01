@@ -11,7 +11,9 @@ signal presentation_frame_ready(
 signal game_finished(snapshot: MatchStateSnapshot)
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
+const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
 const TEST_BALL_INITIAL_POSITION_M := Vector2(3.0, 0.0)
+const TEST_TEAM_ID := "demo_team"
 
 @export_range(0.001, 0.1, 0.001) var fixed_delta_seconds: float = 1.0 / 60.0
 @export var random_seed: int = 1
@@ -31,6 +33,8 @@ var _data_repository: DataRepository
 var _match_simulation: MatchSimulation
 var _game_loop: GameLoop
 var _queued_actions: Array[MatchAction] = []
+var _demo_player_id: String = ""
+var _demo_teammate_id: String = ""
 
 
 func _ready() -> void:
@@ -48,36 +52,57 @@ func _ready() -> void:
 		_field_environment.configure(field_definition)
 
 	var player_definitions := _data_repository.player_definitions
-	if player_definitions.is_empty():
-		startup_failed.emit(PackedStringArray(["At least one player is required"]))
+	if player_definitions.size() < 2:
+		startup_failed.emit(PackedStringArray(["Two demo players are required"]))
 		return
-	var demo_player := player_definitions[0]
+	_demo_player_id = player_definitions[0].player_id
+	_demo_teammate_id = player_definitions[1].player_id
+	if _field_environment != null:
+		_field_environment.set_presented_players(
+			_demo_player_id,
+			_demo_teammate_id,
+		)
+	if _keyboard_input != null:
+		_keyboard_input.action_requested.connect(queue_action)
+		_keyboard_input.reset_requested.connect(reset_demo)
 
+	reset_demo()
+
+
+func reset_demo() -> void:
+	if _data_repository == null or _demo_player_id.is_empty():
+		return
+	set_process(false)
+	_queued_actions.clear()
 	_match_simulation = MatchSimulation.new(random_seed)
 	var did_register_player := _match_simulation.register_player(
-		demo_player.player_id,
+		_demo_player_id,
 		Vector2.ZERO,
 		TEST_PLAYER_MOVEMENT_SPEED_MPS,
+		TEST_TEAM_ID,
+	)
+	var did_register_teammate := _match_simulation.register_player(
+		_demo_teammate_id,
+		TEST_TEAMMATE_POSITION_M,
+		TEST_PLAYER_MOVEMENT_SPEED_MPS,
+		TEST_TEAM_ID,
 	)
 	assert(did_register_player, "Demo player must register before the match starts")
+	assert(did_register_teammate, "Demo teammate must register before the match starts")
 	var did_register_ball := _match_simulation.register_ball(
 		TEST_BALL_INITIAL_POSITION_M,
 	)
 	assert(did_register_ball, "Demo ball must register before the match starts")
-	if _field_environment != null:
-		_field_environment.set_presented_player(demo_player.player_id)
-	if _keyboard_input != null:
-		_keyboard_input.action_requested.connect(queue_action)
-		_keyboard_input.configure(demo_player.player_id)
-
 	_game_loop = GameLoop.new(_match_simulation, fixed_delta_seconds)
+	if _keyboard_input != null:
+		_keyboard_input.configure(_demo_player_id, _demo_teammate_id)
+
 	var did_start := _match_simulation.start_match()
 	assert(did_start, "A new match must start from the ready phase")
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_publish_frame(0.0)
 	set_process(true)
-
 
 func _process(delta: float) -> void:
 	_publish_frame(delta)

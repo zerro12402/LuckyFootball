@@ -4,6 +4,9 @@ extends RefCounted
 const DEFAULT_MOVEMENT_SPEED_MPS := 5.0
 const POSSESSION_MOVEMENT_SPEED_MULTIPLIER := 0.9
 const INPUT_EPSILON := 0.0001
+const PASS_WINDUP_SECONDS := 0.2
+const PASS_RECOVERY_SECONDS := 0.3
+const PASS_ACTION_DURATION_SECONDS := 0.4
 
 var state: PlayerMatchState:
 	get:
@@ -35,6 +38,8 @@ func advance(fixed_delta_seconds: float) -> void:
 			+ _state.movement_input * _get_current_movement_speed_mps() * fixed_delta_seconds
 		)
 	_state._advance_state_time(fixed_delta_seconds)
+	if _state.action_state == PlayerMatchState.ActionState.PASSING:
+		_advance_pass_action()
 
 
 func set_movement_input(new_input: Vector2) -> bool:
@@ -127,3 +132,11 @@ func _get_current_movement_speed_mps() -> float:
 func _set_movement_state_if_changed(new_state: int) -> void:
 	if _state.movement_state != new_state:
 		_state._set_movement_state(new_state)
+func _advance_pass_action() -> void:
+	var elapsed_seconds := _state.action_state_elapsed_seconds
+	if elapsed_seconds >= PASS_ACTION_DURATION_SECONDS:
+		finish_action()
+	elif elapsed_seconds >= PASS_RECOVERY_SECONDS:
+		set_action_phase(PlayerMatchState.ActionPhase.RECOVERY)
+	elif elapsed_seconds >= PASS_WINDUP_SECONDS:
+		set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)

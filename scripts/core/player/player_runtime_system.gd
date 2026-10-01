@@ -8,13 +8,15 @@ func register_player(
 	player_id: String,
 	initial_position_m: Vector2,
 	movement_speed_mps: float = PlayerStateMachine.DEFAULT_MOVEMENT_SPEED_MPS,
+	team_id: String = "default_team",
 ) -> bool:
-	if player_id.is_empty() or _players_by_id.has(player_id):
+	if player_id.is_empty() or team_id.is_empty() or _players_by_id.has(player_id):
 		return false
 	_players_by_id[player_id] = PlayerRuntime.new(
 		player_id,
 		initial_position_m,
 		movement_speed_mps,
+		team_id,
 	)
 	return true
 

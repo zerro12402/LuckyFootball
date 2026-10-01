@@ -4,6 +4,7 @@ extends RefCounted
 enum Type {
 	NONE,
 	MOVE,
+	PASS,
 	SHOOT,
 	TACKLE,
 	ATTACK,

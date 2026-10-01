@@ -17,6 +17,7 @@ func register_player(
 	player_id: String,
 	initial_position_m: Vector2,
 	movement_speed_mps: float = PlayerStateMachine.DEFAULT_MOVEMENT_SPEED_MPS,
+	team_id: String = "default_team",
 ) -> bool:
 	if _state.phase != MatchState.Phase.READY:
 		return false
@@ -24,6 +25,7 @@ func register_player(
 		player_id,
 		initial_position_m,
 		movement_speed_mps,
+		team_id,
 	)
 
 
@@ -83,16 +85,42 @@ func advance_fixed_step(
 
 	_state._advance(fixed_delta_seconds)
 	for action in actions:
-		if _player_runtime_system.apply_action(action):
+		if action == null:
+			continue
+		var was_accepted := false
+		if action.action_type == MatchAction.Type.PASS:
+			was_accepted = _try_start_pass(action)
+		else:
+			was_accepted = _player_runtime_system.apply_action(action)
+		if was_accepted:
 			step_events.append(
 				_create_event(MatchEvent.Type.ACTION_ACCEPTED, action.player_id)
 			)
 	_player_runtime_system.advance(fixed_delta_seconds)
-	var new_owner_id := _ball_runtime_system.advance(_player_runtime_system)
-	if not new_owner_id.is_empty():
+	var ball_result := _ball_runtime_system.advance(
+		fixed_delta_seconds,
+		_player_runtime_system,
+	)
+	if not ball_result.passed_by_player_id.is_empty():
 		step_events.append(
-			_create_event(MatchEvent.Type.BALL_POSSESSION_GAINED, new_owner_id)
+			_create_event(MatchEvent.Type.BALL_PASSED, ball_result.passed_by_player_id)
 		)
+	if not ball_result.new_owner_player_id.is_empty():
+		step_events.append(
+			_create_event(
+				MatchEvent.Type.BALL_POSSESSION_GAINED,
+				ball_result.new_owner_player_id,
+			)
+		)
+	if not ball_result.received_by_player_id.is_empty():
+		step_events.append(
+			_create_event(
+				MatchEvent.Type.BALL_PASS_RECEIVED,
+				ball_result.received_by_player_id,
+			)
+		)
+	if ball_result.was_pass_missed:
+		step_events.append(_create_event(MatchEvent.Type.BALL_PASS_MISSED))
 	step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	return step_events
 
@@ -115,6 +143,12 @@ func drain_lifecycle_events() -> Array[MatchEvent]:
 	var drained_events: Array[MatchEvent] = _lifecycle_events.duplicate()
 	_lifecycle_events.clear()
 	return drained_events
+
+
+func _try_start_pass(action: MatchAction) -> bool:
+	var passer := _player_runtime_system.get_player(action.player_id)
+	var receiver := _player_runtime_system.get_player(action.target_player_id)
+	return _ball_runtime_system.try_start_pass(passer, receiver)
 
 
 func _create_event(event_type: int, subject_id: String = "") -> MatchEvent:

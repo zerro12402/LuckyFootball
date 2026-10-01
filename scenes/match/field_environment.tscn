@@ -78,6 +78,10 @@ y_sort_enabled = true
 [node name="DemoPlayer" parent="WorldActors/Players" unique_id=345840623 instance=ExtResource("8_player")]
 unique_name_in_owner = true
 
+[node name="DemoTeammate" parent="WorldActors/Players" instance=ExtResource("8_player")]
+unique_name_in_owner = true
+modulate = Color(0.55, 0.9, 1, 1)
+
 [node name="Ball" parent="WorldActors/Players" instance=ExtResource("9_ball")]
 unique_name_in_owner = true
 

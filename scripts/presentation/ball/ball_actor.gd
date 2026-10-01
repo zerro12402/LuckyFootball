@@ -6,9 +6,13 @@ const OWNED_ANIMATION := &"owned"
 const IN_FLIGHT_ANIMATION := &"in_flight"
 
 @onready var _animation_player: AnimationPlayer = %AnimationPlayer
+@onready var _ball_sprite: Sprite2D = %BallSprite
+
+var _ground_sprite_position: Vector2
 
 
 func _ready() -> void:
+	_ground_sprite_position = _ball_sprite.position
 	_play_animation(LOOSE_ANIMATION)
 
 
@@ -18,7 +22,15 @@ func present(
 ) -> void:
 	assert(ball_snapshot != null, "BallActor requires a ball snapshot")
 	assert(projection != null, "BallActor requires a field projection")
-	position = projection.field_to_world(ball_snapshot.position_m)
+	var ground_position := projection.field_to_world(ball_snapshot.position_m)
+	position = ground_position
+	var pixels_per_meter := ground_position.distance_to(
+		projection.field_to_world(ball_snapshot.position_m + Vector2.RIGHT)
+	)
+	_ball_sprite.position = (
+		_ground_sprite_position
+		+ Vector2.UP * ball_snapshot.height_m * pixels_per_meter
+	)
 	_play_animation(_resolve_animation(ball_snapshot))
 
 
