@@ -1,0 +1,16 @@
+{
+  "godotTools.editorPath.godot4": "F:\\setup\\Godot_v4.7.2-stable_win64.exe\\Godot_v4.7.2-stable_win64.exe",
+  "godotTools.lsp.headless": true,
+  "[gdscript]": {
+    "editor.defaultFormatter": "geequlim.godot-tools",
+    "editor.insertSpaces": false,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false,
+    "editor.rulers": [
+      100
+    ]
+  },
+  "files.associations": {
+    "*.gd": "gdscript"
+  }
+}
