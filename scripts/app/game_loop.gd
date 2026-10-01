@@ -1,3 +1,4 @@
+## Bridges variable display frames to deterministic match steps without scene-tree dependencies.
 class_name GameLoop
 extends RefCounted
 
@@ -14,6 +15,7 @@ var _accumulator_seconds: float = 0.0
 var _pending_actions: Array[MatchAction] = []
 
 
+## Validates the timing limits shared by every frame of this match.
 func _init(
 	simulation: MatchSimulation,
 	fixed_delta_seconds: float = DEFAULT_FIXED_DELTA_SECONDS,
@@ -30,6 +32,7 @@ func _init(
 	_max_steps_per_frame = max_steps_per_frame
 
 
+## Buffers commands until the next fixed step and returns the latest state and events.
 func advance_frame(
 	frame_delta_seconds: float,
 	new_actions: Array[MatchAction],
@@ -68,6 +71,7 @@ func advance_frame(
 	)
 
 
+## Discards unfinished frame time and commands when starting a fresh timing sequence.
 func reset_timing() -> void:
 	_accumulator_seconds = 0.0
 	_pending_actions.clear()
