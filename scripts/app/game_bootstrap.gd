@@ -1,3 +1,4 @@
+## Builds test matches and connects input, fixed simulation, and presentation.
 class_name GameBootstrap
 extends Node
 
@@ -43,6 +44,7 @@ var _demo_player_id: String = ""
 var _demo_teammate_id: String = ""
 
 
+## Loads static data, wires demo controls, and starts a reproducible match.
 func _ready() -> void:
 	set_process(false)
 	_data_repository = DataRepository.new()
@@ -76,10 +78,15 @@ func _ready() -> void:
 	if _keyboard_input != null:
 		_keyboard_input.action_requested.connect(queue_action)
 		_keyboard_input.reset_requested.connect(reset_demo)
+		if _field_environment != null:
+			_keyboard_input.meter_ticks_toggle_requested.connect(
+				_field_environment.toggle_meter_ticks
+			)
 
 	reset_demo()
 
 
+## Builds fresh runtime objects while retaining display-only test overlays.
 func reset_demo() -> void:
 	if _data_repository == null or _demo_player_id.is_empty():
 		return
@@ -116,21 +123,25 @@ func reset_demo() -> void:
 	_publish_frame(0.0)
 	set_process(true)
 
+## Advances and presents the match from the display frame clock.
 func _process(delta: float) -> void:
 	_publish_frame(delta)
 
 
+## Buffers commands for the next fixed simulation step.
 func queue_action(action: MatchAction) -> void:
 	assert(action != null, "Cannot queue a null MatchAction")
 	_queued_actions.append(action)
 
 
+## Pauses the active match when one exists.
 func pause_match() -> bool:
 	if _match_simulation == null:
 		return false
 	return _match_simulation.pause_match()
 
 
+## Resumes the match and refreshes movement input.
 func resume_match() -> bool:
 	if _match_simulation == null:
 		return false
@@ -140,6 +151,7 @@ func resume_match() -> bool:
 	return did_resume
 
 
+## Publishes the final frame before stopping updates.
 func finish_match() -> bool:
 	if _match_simulation == null or not _match_simulation.finish_match():
 		return false
@@ -149,6 +161,7 @@ func finish_match() -> bool:
 	return true
 
 
+## Feeds queued actions to the fixed loop and broadcasts the resulting snapshot.
 func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_actions: Array[MatchAction] = _queued_actions.duplicate()
 	_queued_actions.clear()

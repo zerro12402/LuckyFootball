@@ -1,3 +1,4 @@
+## Presents field art, actors, and optional guides from immutable match snapshots.
 class_name FieldEnvironment
 extends Node2D
 
@@ -20,11 +21,13 @@ var _projection: FieldArtProjection
 var _presented_player_ids: Array[String] = []
 
 
+## Keeps the fixed full-field camera fitted to the current viewport.
 func _ready() -> void:
 	get_viewport().size_changed.connect(_fit_camera_to_viewport)
 	_fit_camera_to_viewport()
 
 
+## Aligns goal art and overlays with the loaded field dimensions.
 func configure(new_field_definition: FieldDefinition) -> void:
 	assert(new_field_definition != null, "FieldEnvironment requires a FieldDefinition")
 	_field_definition = new_field_definition
@@ -44,20 +47,29 @@ func configure(new_field_definition: FieldDefinition) -> void:
 	_debug_overlay.configure(_field_definition, _projection)
 
 
+## Converts a metre position through the perspective art projection.
 func field_to_world(field_position_m: Vector2) -> Vector2:
 	assert(_projection != null, "FieldEnvironment must be configured before conversion")
 	return _projection.field_to_world(field_position_m)
 
 
+## Converts a projected position back into field metres.
 func world_to_field(world_position: Vector2) -> Vector2:
 	assert(_projection != null, "FieldEnvironment must be configured before conversion")
 	return _projection.world_to_field(world_position)
 
 
+## Changes the existing boundary and axis guide visibility.
 func set_debug_enabled(is_enabled: bool) -> void:
 	_debug_overlay.is_debug_enabled = is_enabled
 
 
+## Toggles metre ticks independently of the other debug guides.
+func toggle_meter_ticks() -> void:
+	_debug_overlay.are_meter_ticks_enabled = not _debug_overlay.are_meter_ticks_enabled
+
+
+## Assigns the actors displayed by the current test scene.
 func set_presented_players(player_id: String, teammate_id: String = "") -> void:
 	assert(not player_id.is_empty(), "The controlled player requires an ID")
 	assert(player_id != teammate_id, "Demo players require distinct IDs")
@@ -67,6 +79,7 @@ func set_presented_players(player_id: String, teammate_id: String = "") -> void:
 		_presented_player_ids.append(teammate_id)
 
 
+## Copies a match snapshot into visible actors without changing simulation state.
 func present(snapshot: MatchStateSnapshot) -> void:
 	if _projection == null:
 		return
@@ -79,6 +92,7 @@ func present(snapshot: MatchStateSnapshot) -> void:
 		_ball.present(snapshot.ball, _projection)
 
 
+## Preserves pitch proportions while fitting the design viewport.
 func _fit_camera_to_viewport() -> void:
 	var viewport_size := get_viewport_rect().size
 	var uniform_zoom := minf(
