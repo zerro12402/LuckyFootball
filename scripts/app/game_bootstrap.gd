@@ -10,6 +10,11 @@ signal presentation_frame_ready(
 )
 signal game_finished(snapshot: MatchStateSnapshot)
 
+enum DemoMode {
+	TOUCH_AND_DRIBBLE,
+	PASS_AND_SHOOT,
+}
+
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
 const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
 const TEST_BALL_INITIAL_POSITION_M := Vector2(3.0, 0.0)
@@ -17,6 +22,7 @@ const TEST_TEAM_ID := "demo_team"
 
 @export_range(0.001, 0.1, 0.001) var fixed_delta_seconds: float = 1.0 / 60.0
 @export var random_seed: int = 1
+@export var demo_mode: DemoMode = DemoMode.PASS_AND_SHOOT
 
 @onready var _field_environment: FieldEnvironment = (
 	get_node_or_null("FieldEnvironment") as FieldEnvironment
@@ -52,11 +58,16 @@ func _ready() -> void:
 		_field_environment.configure(field_definition)
 
 	var player_definitions := _data_repository.player_definitions
-	if player_definitions.size() < 2:
-		startup_failed.emit(PackedStringArray(["Two demo players are required"]))
+	var required_player_count := 1
+	if demo_mode == DemoMode.PASS_AND_SHOOT:
+		required_player_count = 2
+	if player_definitions.size() < required_player_count:
+		startup_failed.emit(PackedStringArray(["Demo players are missing"]))
 		return
 	_demo_player_id = player_definitions[0].player_id
-	_demo_teammate_id = player_definitions[1].player_id
+	_demo_teammate_id = ""
+	if demo_mode == DemoMode.PASS_AND_SHOOT:
+		_demo_teammate_id = player_definitions[1].player_id
 	if _field_environment != null:
 		_field_environment.set_presented_players(
 			_demo_player_id,
@@ -81,14 +92,15 @@ func reset_demo() -> void:
 		TEST_PLAYER_MOVEMENT_SPEED_MPS,
 		TEST_TEAM_ID,
 	)
-	var did_register_teammate := _match_simulation.register_player(
-		_demo_teammate_id,
-		TEST_TEAMMATE_POSITION_M,
-		TEST_PLAYER_MOVEMENT_SPEED_MPS,
-		TEST_TEAM_ID,
-	)
 	assert(did_register_player, "Demo player must register before the match starts")
-	assert(did_register_teammate, "Demo teammate must register before the match starts")
+	if not _demo_teammate_id.is_empty():
+		var did_register_teammate := _match_simulation.register_player(
+			_demo_teammate_id,
+			TEST_TEAMMATE_POSITION_M,
+			TEST_PLAYER_MOVEMENT_SPEED_MPS,
+			TEST_TEAM_ID,
+		)
+		assert(did_register_teammate, "Demo teammate must register before the match starts")
 	var did_register_ball := _match_simulation.register_ball(
 		TEST_BALL_INITIAL_POSITION_M,
 	)

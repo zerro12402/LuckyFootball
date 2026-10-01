@@ -58,11 +58,13 @@ func set_debug_enabled(is_enabled: bool) -> void:
 	_debug_overlay.is_debug_enabled = is_enabled
 
 
-func set_presented_players(player_id: String, teammate_id: String) -> void:
+func set_presented_players(player_id: String, teammate_id: String = "") -> void:
 	assert(not player_id.is_empty(), "The controlled player requires an ID")
-	assert(not teammate_id.is_empty(), "The teammate requires an ID")
 	assert(player_id != teammate_id, "Demo players require distinct IDs")
-	_presented_player_ids = [player_id, teammate_id]
+	_presented_player_ids = [player_id]
+	_demo_teammate.visible = not teammate_id.is_empty()
+	if not teammate_id.is_empty():
+		_presented_player_ids.append(teammate_id)
 
 
 func present(snapshot: MatchStateSnapshot) -> void:
