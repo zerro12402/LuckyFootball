@@ -10,6 +10,7 @@ func _init() -> void:
 	test_missing_config_reports_error_without_data()
 	test_invalid_header_reports_error_without_data()
 	test_invalid_speed_reports_error_without_data()
+	test_invalid_shot_height_reports_error_without_data()
 	test_non_ascii_id_reports_error_without_data()
 	test_duplicate_id_reports_error_without_data()
 	for failure in _failures:
@@ -32,6 +33,8 @@ func test_valid_config_is_indexed_by_stable_id() -> void:
 			"Shot speed was parsed incorrectly")
 		_expect(is_equal_approx(config.shot_windup_seconds, 0.2),
 			"Shot windup was parsed incorrectly")
+		_expect(is_equal_approx(config.shot_apex_height_m, 0.75),
+			"Shot apex height was parsed incorrectly")
 	_expect(repository.get_match_config_by_id("unknown") == null,
 		"Unknown match config ID resolved")
 
@@ -49,6 +52,11 @@ func test_invalid_header_reports_error_without_data() -> void:
 ## Rejects negative shot speed as an invalid rule value.
 func test_invalid_speed_reports_error_without_data() -> void:
 	_expect_failure("match_configs_invalid_speed.csv")
+
+
+## Rejects a nonpositive fixed shot apex.
+func test_invalid_shot_height_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_shot_height.csv")
 
 
 ## Rejects IDs that cannot be used as stable lowercase ASCII keys.

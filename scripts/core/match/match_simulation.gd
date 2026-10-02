@@ -7,6 +7,7 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _lifecycle_events: Array[MatchEvent] = []
 var _player_runtime_system: PlayerRuntimeSystem = PlayerRuntimeSystem.new()
 var _ball_runtime_system: BallRuntimeSystem = BallRuntimeSystem.new()
+var _attacking_goals_by_team: Dictionary[String, Vector2] = {}
 
 
 ## Injects deterministic randomness and optional validated shooting rules.
@@ -34,6 +35,18 @@ func register_player(
 		team_id,
 		shooting_attribute,
 	)
+
+
+## Associates a team with its opponent goal center before the match starts.
+func register_team_attacking_goal(team_id: String, goal_center_m: Vector2) -> bool:
+	if _state.phase != MatchState.Phase.READY:
+		return false
+	if team_id.is_empty() or not goal_center_m.is_finite():
+		return false
+	if _attacking_goals_by_team.has(team_id):
+		return false
+	_attacking_goals_by_team[team_id] = goal_center_m
+	return true
 
 
 ## Registers the sole ball before the match starts.
@@ -157,10 +170,14 @@ func _try_start_pass(action: MatchAction) -> bool:
 	return _ball_runtime_system.try_start_pass(passer, receiver)
 
 
-## Validates a shoot command through the same ball ownership authority as passes.
+## Resolves every shot from the shooter's position toward its team's opponent goal.
 func _try_start_shot(action: MatchAction) -> bool:
 	var shooter := _player_runtime_system.get_player(action.player_id)
-	return _ball_runtime_system.try_start_shot(shooter, action.direction, action.power)
+	if shooter == null or not _attacking_goals_by_team.has(shooter.team_id):
+		return false
+	var goal_center_m: Vector2 = _attacking_goals_by_team[shooter.team_id]
+	var shot_direction := goal_center_m - shooter.state.position_m
+	return _ball_runtime_system.try_start_shot(shooter, shot_direction, action.power)
 
 
 func _create_event(event_type: int, subject_id: String = "") -> MatchEvent:

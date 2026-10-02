@@ -37,6 +37,7 @@ var data_repository: DataRepository:
 		return _data_repository
 
 var _data_repository: DataRepository
+var _field_definition: FieldDefinition
 var _match_config: MatchConfigDefinition
 var _match_simulation: MatchSimulation
 var _game_loop: GameLoop
@@ -53,8 +54,8 @@ func _ready() -> void:
 		startup_failed.emit(_data_repository.last_errors)
 		return
 
-	var field_definition := _data_repository.get_field_by_id("demo_field")
-	if field_definition == null:
+	_field_definition = _data_repository.get_field_by_id("demo_field")
+	if _field_definition == null:
 		startup_failed.emit(PackedStringArray(["Missing demo_field definition"]))
 		return
 	_match_config = _data_repository.get_match_config_by_id("demo_match")
@@ -62,7 +63,7 @@ func _ready() -> void:
 		startup_failed.emit(PackedStringArray(["Missing demo_match configuration"]))
 		return
 	if _field_environment != null:
-		_field_environment.configure(field_definition)
+		_field_environment.configure(_field_definition)
 
 	var player_definitions := _data_repository.player_definitions
 	var required_player_count := 1
@@ -91,13 +92,19 @@ func _ready() -> void:
 	reset_demo()
 
 
-## Builds fresh runtime objects while retaining display-only test overlays.
+## Rebuilds demo runtimes with a field-derived opponent goal and fresh input.
 func reset_demo() -> void:
 	if _data_repository == null or _demo_player_id.is_empty():
 		return
 	set_process(false)
 	_queued_actions.clear()
 	_match_simulation = MatchSimulation.new(random_seed, _match_config)
+	var opponent_goal_center_m := Vector2(_field_definition.length_m * 0.5, 0.0)
+	var did_register_goal := _match_simulation.register_team_attacking_goal(
+		TEST_TEAM_ID,
+		opponent_goal_center_m,
+	)
+	assert(did_register_goal, "Demo team requires an opponent goal before play")
 	var demo_player := _data_repository.get_player_by_id(_demo_player_id)
 	var did_register_player := _match_simulation.register_player(
 		_demo_player_id,

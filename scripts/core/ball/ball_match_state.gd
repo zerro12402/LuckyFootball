@@ -101,16 +101,23 @@ func _launch_pass(
 	_motion_state = MotionState.IN_FLIGHT
 
 
-## Releases a ground shot at the requested direction's control point.
-func _launch_shot(release_position_m: Vector2, shot_velocity_mps: Vector2) -> void:
+## Starts a shot from the control point with a fixed apex over its stopping distance.
+func _launch_shot(
+	release_position_m: Vector2,
+	shot_velocity_mps: Vector2,
+	flight_range_m: float,
+	apex_height_m: float,
+) -> void:
 	assert(shot_velocity_mps.is_finite() and not shot_velocity_mps.is_zero_approx())
+	assert(flight_range_m > 0.0, "A shot requires positive flight range")
+	assert(apex_height_m > 0.0, "Shot apex height must be positive")
 	_position_m = release_position_m
 	_owner_player_id = ""
 	_target_player_id = ""
 	_velocity_mps = shot_velocity_mps
 	_flight_distance_m = 0.0
-	_flight_range_m = 0.0
-	_flight_apex_height_m = 0.0
+	_flight_range_m = flight_range_m
+	_flight_apex_height_m = apex_height_m
 	_height_m = 0.0
 	_flight_kind = FlightKind.SHOT
 	_motion_state = MotionState.IN_FLIGHT
@@ -125,14 +132,21 @@ func _advance_flight(new_position_m: Vector2, traveled_distance_m: float) -> voi
 	_height_m = calculate_height_at_distance(_flight_distance_m)
 
 
-## Updates a shot's ground position and decelerating velocity.
-func _advance_shot(new_position_m: Vector2, new_velocity_mps: Vector2) -> void:
+## Advances shot position, speed, and height from the same traveled distance.
+func _advance_shot(
+	new_position_m: Vector2,
+	new_velocity_mps: Vector2,
+	traveled_distance_m: float,
+) -> void:
 	assert(_motion_state == MotionState.IN_FLIGHT and _flight_kind == FlightKind.SHOT)
+	assert(traveled_distance_m >= 0.0, "Shot travel cannot be negative")
 	_position_m = new_position_m
 	_velocity_mps = new_velocity_mps
+	_flight_distance_m += traveled_distance_m
+	_height_m = calculate_height_at_distance(_flight_distance_m)
 
 
-## Computes pass height from a reproducible parabola.
+## Computes pass or shot height from a reproducible parabola.
 func calculate_height_at_distance(distance_m: float) -> float:
 	if _flight_apex_height_m <= 0.0:
 		return 0.0

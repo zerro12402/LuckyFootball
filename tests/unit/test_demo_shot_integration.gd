@@ -11,7 +11,7 @@ func _init() -> void:
 	call_deferred("_run_test")
 
 
-## Moves into possession, shoots with K, and checks the integrated event and state.
+## Moves above the center line, then checks K shoots toward the right goal center.
 func _run_test() -> void:
 	var bootstrap := GameBootstrap.new()
 	var keyboard := KeyboardPlayerInputAdapter.new()
@@ -34,8 +34,15 @@ func _run_test() -> void:
 			break
 	_expect(_snapshot.ball.owner_player_id == shooter_id,
 		"Demo player did not acquire the ball")
+	bootstrap.queue_action(MatchAction.new(shooter_id, MatchAction.Type.MOVE, Vector2.UP))
+	for step_index in range(12):
+		bootstrap._process(bootstrap.fixed_delta_seconds)
 	bootstrap.queue_action(MatchAction.new(shooter_id, MatchAction.Type.MOVE, Vector2.ZERO))
 	bootstrap._process(bootstrap.fixed_delta_seconds)
+	var shot_origin_m := _snapshot.get_player(shooter_id).position_m
+	var field_definition := repository.get_field_by_id("demo_field")
+	var goal_center_m := Vector2(field_definition.length_m * 0.5, 0.0)
+	var expected_direction := (goal_center_m - shot_origin_m).normalized()
 	var key_event := InputEventKey.new()
 	key_event.keycode = KEY_K
 	key_event.pressed = true
@@ -46,6 +53,8 @@ func _run_test() -> void:
 	_expect(_snapshot.ball.owner_player_id.is_empty(), "Demo shot retained ball ownership")
 	_expect(_snapshot.ball.velocity_mps.length() > 0.0,
 		"Demo shot did not launch the ball")
+	_expect(_snapshot.ball.velocity_mps.normalized().is_equal_approx(expected_direction),
+		"Demo shot did not aim at the opponent goal center")
 	bootstrap.queue_free()
 	_finish()
 

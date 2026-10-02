@@ -1,3 +1,4 @@
+## Verifies demo pass and reset keys without rendering or leaking test nodes.
 extends SceneTree
 
 var _actions: Array[MatchAction] = []
@@ -5,6 +6,7 @@ var _reset_count: int = 0
 var _failures: PackedStringArray = []
 
 
+## Checks one-shot keyboard commands and reports aggregated failures.
 func _init() -> void:
 	test_j_when_pressed_requests_pass_to_teammate()
 	test_space_when_pressed_does_not_request_pass()
@@ -19,12 +21,14 @@ func _init() -> void:
 	quit(1)
 
 
+## Routes J to the active player and its teammate.
 func test_j_when_pressed_requests_pass_to_teammate() -> void:
 	_actions.clear()
 	var adapter := _create_adapter()
 	_press_key(adapter, KEY_J)
 	_expect(_actions.size() == 1, "Expected one pass command")
 	if _actions.size() != 1:
+		adapter.free()
 		return
 	_expect(_actions[0].action_type == MatchAction.Type.PASS, "Expected PASS action")
 	_expect(_actions[0].player_id == "player_a", "Expected current player as passer")
@@ -32,15 +36,19 @@ func test_j_when_pressed_requests_pass_to_teammate() -> void:
 		_actions[0].target_player_id == "player_b",
 		"Expected teammate as pass target",
 	)
+	adapter.free()
 
 
+## Keeps Space unbound to passing.
 func test_space_when_pressed_does_not_request_pass() -> void:
 	_actions.clear()
 	var adapter := _create_adapter()
 	_press_key(adapter, KEY_SPACE)
 	_expect(_actions.is_empty(), "Expected Space to be unbound")
+	adapter.free()
 
 
+## Updates the active player before the next pass.
 func test_tab_when_pressed_switches_pass_direction() -> void:
 	_actions.clear()
 	var adapter := _create_adapter()
@@ -48,6 +56,7 @@ func test_tab_when_pressed_switches_pass_direction() -> void:
 	_press_key(adapter, KEY_J)
 	_expect(_actions.size() == 2, "Expected stop and pass commands")
 	if _actions.size() != 2:
+		adapter.free()
 		return
 	_expect(
 		_actions[0].action_type == MatchAction.Type.MOVE
@@ -59,8 +68,10 @@ func test_tab_when_pressed_switches_pass_direction() -> void:
 		_actions[1].target_player_id == "player_a",
 		"Expected original player as return-pass target",
 	)
+	adapter.free()
 
 
+## Recognizes physical and logical reset keys once per press.
 func test_tilde_key_when_pressed_requests_reset() -> void:
 	_actions.clear()
 	_reset_count = 0
@@ -83,8 +94,10 @@ func test_tilde_key_when_pressed_requests_reset() -> void:
 	key_event.pressed = true
 	adapter._unhandled_key_input(key_event)
 	_expect(_reset_count == 2, "Expected logical tilde key to request reset")
+	adapter.free()
 
 
+## Connects a fresh input adapter to test recorders.
 func _create_adapter() -> KeyboardPlayerInputAdapter:
 	var adapter := KeyboardPlayerInputAdapter.new()
 	adapter.action_requested.connect(_record_action)
@@ -93,6 +106,7 @@ func _create_adapter() -> KeyboardPlayerInputAdapter:
 	return adapter
 
 
+## Delivers one key-down event directly to the adapter.
 func _press_key(adapter: KeyboardPlayerInputAdapter, key_code: int) -> void:
 	var key_event := InputEventKey.new()
 	key_event.keycode = key_code
@@ -100,14 +114,17 @@ func _press_key(adapter: KeyboardPlayerInputAdapter, key_code: int) -> void:
 	adapter._unhandled_key_input(key_event)
 
 
+## Captures emitted typed match actions.
 func _record_action(action: MatchAction) -> void:
 	_actions.append(action)
 
 
+## Counts reset requests without rebuilding a match.
 func _record_reset() -> void:
 	_reset_count += 1
 
 
+## Collects failures without stopping later keyboard cases.
 func _expect(condition: bool, failure_message: String) -> void:
 	if not condition:
 		_failures.append(failure_message)

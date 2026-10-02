@@ -1,4 +1,4 @@
-## Advances ownership, passes, and configured ground shots in fixed simulation steps.
+## Advances ownership, passes, and configured arcing shots in fixed simulation steps.
 class_name BallRuntimeSystem
 extends RefCounted
 
@@ -197,7 +197,7 @@ func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResul
 	result.passed_by_player_id = passer.player_id
 
 
-## Converts CSV shooting strength and power into velocity; zero power drops the ball.
+## Computes shot speed from attributes, then applies the CSV apex independently.
 func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResult) -> void:
 	var shooter := players.get_player(_pending_shot_player_id)
 	var direction := _pending_shot_direction
@@ -214,8 +214,17 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 	var initial_speed_mps := _shot_config.shot_base_speed_mps * power * attribute_multiplier
 	var release_position_m := shooter.state.position_m + direction * _dribble_offset_m
 	shooter.state_machine.set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
-	if initial_speed_mps > 0.0:
-		_state._launch_shot(release_position_m, direction * initial_speed_mps)
+	if initial_speed_mps > _shot_config.shot_stop_speed_mps:
+		var stop_speed_mps := _shot_config.shot_stop_speed_mps
+		var flight_range_m := (
+			initial_speed_mps * initial_speed_mps - stop_speed_mps * stop_speed_mps
+		) / (2.0 * _shot_config.shot_ground_deceleration_mps2)
+		_state._launch_shot(
+			release_position_m,
+			direction * initial_speed_mps,
+			flight_range_m,
+			_shot_config.shot_apex_height_m,
+		)
 	else:
 		_state._release(release_position_m)
 	_last_shooter_id = shooter.player_id
@@ -248,7 +257,7 @@ func _advance_flight(
 		result.was_pass_missed = true
 
 
-## Applies constant ground deceleration until the shot is slow enough to stop.
+## Decelerates the shot horizontally while height follows its fixed-distance arc.
 func _advance_shot(fixed_delta_seconds: float) -> void:
 	var speed_mps := _state.velocity_mps.length()
 	if speed_mps <= _shot_config.shot_stop_speed_mps:
@@ -267,7 +276,7 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 		_state._release(next_position_m)
 	else:
 		var next_speed_mps := speed_mps - deceleration * fixed_delta_seconds
-		_state._advance_shot(next_position_m, direction * next_speed_mps)
+		_state._advance_shot(next_position_m, direction * next_speed_mps, travel_distance_m)
 
 
 ## Allows a teammate to receive only a pass close enough to the ground.
