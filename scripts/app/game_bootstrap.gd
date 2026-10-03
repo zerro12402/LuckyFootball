@@ -197,6 +197,7 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 			break
 	if _field_environment != null:
 		_field_environment.present(frame_result.snapshot)
+		_field_environment.present_events(frame_result.events)
 	if _result_hud != null:
 		_result_hud.present(frame_result.snapshot, frame_result.events)
 	presentation_frame_ready.emit(

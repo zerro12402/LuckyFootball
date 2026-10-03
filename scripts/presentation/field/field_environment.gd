@@ -6,6 +6,8 @@ const REQUIRED_VIEW_SIZE := Vector2(960.0, 540.0)
 
 @onready var _left_goal: Node2D = %LeftGoal
 @onready var _right_goal: Node2D = %RightGoal
+@onready var _left_goal_top: Sprite2D = $Goals/LeftGoal/GoalTop
+@onready var _right_goal_top: Sprite2D = $Goals/RightGoal/GoalTop
 @onready var _camera: Camera2D = %FieldCamera
 @onready var _debug_overlay: FieldDebugOverlay = %DebugOverlay
 @onready var _demo_player: PlayerActor = %DemoPlayer
@@ -19,6 +21,8 @@ var field_definition: FieldDefinition:
 var _field_definition: FieldDefinition
 var _projection: FieldArtProjection
 var _presented_player_ids: Array[String] = []
+var _left_net_tween: Tween
+var _right_net_tween: Tween
 
 
 ## Keeps the fixed full-field camera fitted to the current viewport.
@@ -90,6 +94,30 @@ func present(snapshot: MatchStateSnapshot) -> void:
 			player_actors[player_index].present(player_snapshot, _projection)
 	if snapshot.ball != null:
 		_ball.present(snapshot.ball, _projection)
+
+
+## Shakes only the contacted goal art in response to an immutable simulation event.
+func present_events(events: Array[MatchEvent]) -> void:
+	for event in events:
+		if event.event_type != MatchEvent.Type.GOAL_NET_CONTACT:
+			continue
+		var goal_top := _left_goal_top if event.side == MatchBoundaryResult.Side.LEFT else _right_goal_top
+		if event.side == MatchBoundaryResult.Side.LEFT:
+			if _left_net_tween != null:
+				_left_net_tween.kill()
+		else:
+			if _right_net_tween != null:
+				_right_net_tween.kill()
+		goal_top.position = Vector2(0.0, -62.5)
+		var kick_pixels := clampf(event.velocity_before_mps.length() * 0.18, 1.0, 5.0)
+		var tween := create_tween()
+		tween.tween_property(goal_top, "position:y", -62.5 - kick_pixels, 0.07)
+		tween.tween_property(goal_top, "position:y", -62.5 + kick_pixels * 0.4, 0.12)
+		tween.tween_property(goal_top, "position:y", -62.5, 0.18)
+		if event.side == MatchBoundaryResult.Side.LEFT:
+			_left_net_tween = tween
+		else:
+			_right_net_tween = tween
 
 
 ## Preserves pitch proportions while fitting the design viewport.

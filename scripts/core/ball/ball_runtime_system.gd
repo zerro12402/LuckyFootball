@@ -1,4 +1,4 @@
-## Advances ownership, passes, and configured arcing shots in fixed simulation steps.
+## Advances ball ownership, shots, and deterministic post-goal net motion.
 class_name BallRuntimeSystem
 extends RefCounted
 
@@ -11,6 +11,7 @@ const DEFAULT_LOFTED_PASS_APEX_HEIGHT_M := 1.8
 const MAX_RECEIVE_HEIGHT_M := 0.2
 const MIN_PASS_DISTANCE_M := 1.0
 const DISTANCE_EPSILON := 0.000001
+const NET_CONTACT_TIME_EPSILON := 0.0000001
 
 var state: BallMatchState:
 	get:
@@ -214,6 +215,82 @@ func advance_out_of_play(
 			_state._advance_flight(next_position_m, displacement_m.length())
 	else:
 		_state._set_position(next_position_m)
+
+
+## Starts post-goal travel at the whole-ball crossing, independent of the shot arc.
+func begin_post_goal_motion(crossing_position_m: Vector2, velocity_mps: Vector2) -> void:
+	assert(_state != null and crossing_position_m.is_finite() and velocity_mps.is_finite())
+	_state._set_post_goal_motion(crossing_position_m, velocity_mps)
+
+
+## Sweeps the scored ball against the back and side nets, retaining unused step time.
+func advance_post_goal_motion(
+	fixed_delta_seconds: float,
+	field: FieldDefinition,
+	config: MatchConfigDefinition,
+	side: int,
+) -> Array[GoalNetContact]:
+	assert(fixed_delta_seconds >= 0.0 and field != null and config != null)
+	var contacts: Array[GoalNetContact] = []
+	var remaining_seconds := fixed_delta_seconds
+	var position_m := _state.position_m
+	var velocity_mps := _state.velocity_mps
+	var goal_sign := -1.0 if side == MatchBoundaryResult.Side.LEFT else 1.0
+	var goal_line_x := goal_sign * field.length_m * 0.5
+	var back_x := goal_sign * (field.length_m * 0.5 + field.goal_depth_m - config.ball_radius_m)
+	var side_y := field.goal_width_m * 0.5 - config.ball_radius_m
+	for contact_index in range(4):
+		if remaining_seconds <= DISTANCE_EPSILON or velocity_mps.is_zero_approx():
+			break
+		var next_m := position_m + velocity_mps * remaining_seconds
+		var best_fraction := INF
+		var best_surface := -1
+		if velocity_mps.x * goal_sign > 0.0:
+			var fraction := (back_x - position_m.x) / (next_m.x - position_m.x)
+			if fraction >= 0.0 and fraction <= 1.0:
+				var hit_y := lerpf(position_m.y, next_m.y, fraction)
+				if absf(hit_y) <= field.goal_width_m * 0.5:
+					best_fraction = fraction
+					best_surface = GoalNetContact.Surface.BACK
+		if velocity_mps.y < 0.0:
+			var fraction := (-side_y - position_m.y) / (next_m.y - position_m.y)
+			if fraction >= 0.0 and fraction < best_fraction - NET_CONTACT_TIME_EPSILON:
+				var hit_x := lerpf(position_m.x, next_m.x, fraction)
+				if (hit_x - goal_line_x) * goal_sign >= 0.0 and (hit_x - goal_line_x) * goal_sign <= field.goal_depth_m:
+					best_fraction = fraction
+					best_surface = GoalNetContact.Surface.TOP
+		if velocity_mps.y > 0.0:
+			var fraction := (side_y - position_m.y) / (next_m.y - position_m.y)
+			if fraction >= 0.0 and fraction < best_fraction - NET_CONTACT_TIME_EPSILON:
+				var hit_x := lerpf(position_m.x, next_m.x, fraction)
+				if (hit_x - goal_line_x) * goal_sign >= 0.0 and (hit_x - goal_line_x) * goal_sign <= field.goal_depth_m:
+					best_fraction = fraction
+					best_surface = GoalNetContact.Surface.BOTTOM
+		if best_surface < 0:
+			position_m = next_m
+			break
+		position_m = position_m.lerp(next_m, best_fraction)
+		var velocity_before := velocity_mps
+		var net_position_m := position_m
+		if best_surface == GoalNetContact.Surface.BACK:
+			net_position_m.x = goal_sign * (field.length_m * 0.5 + field.goal_depth_m)
+			velocity_mps = Vector2(
+				-velocity_mps.x * config.goal_net_back_restitution,
+				velocity_mps.y * config.goal_net_tangent_retention
+			)
+		else:
+			net_position_m.y = -field.goal_width_m * 0.5 if best_surface == GoalNetContact.Surface.TOP else field.goal_width_m * 0.5
+			velocity_mps = Vector2(
+				velocity_mps.x * config.goal_net_tangent_retention,
+				-velocity_mps.y * config.goal_net_side_restitution
+			)
+		contacts.append(GoalNetContact.new(best_surface, net_position_m, velocity_before, velocity_mps))
+		remaining_seconds *= 1.0 - best_fraction
+		if velocity_mps.length() < config.goal_net_stop_speed_mps:
+			velocity_mps = Vector2.ZERO
+			break
+	_state._set_post_goal_motion(position_m, velocity_mps)
+	return contacts
 
 
 func create_snapshot() -> BallStateSnapshot:

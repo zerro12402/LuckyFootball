@@ -16,6 +16,7 @@ enum Type {
 	SIMULATION_ADVANCED,
 	BALL_SHOT,
 	GOAL_SCORED,
+	GOAL_NET_CONTACT,
 	BALL_OUT_OF_BOUNDS,
 	RESET_COMPLETED,
 }
@@ -68,6 +69,26 @@ var is_corner: bool:
 	get:
 		return _is_corner
 
+var net_surface: int:
+	get:
+		return _net_surface
+
+var contact_position_m: Vector2:
+	get:
+		return _contact_position_m
+
+var velocity_before_mps: Vector2:
+	get:
+		return _velocity_before_mps
+
+var velocity_after_mps: Vector2:
+	get:
+		return _velocity_after_mps
+
+var _net_surface: int
+var _contact_position_m: Vector2
+var _velocity_before_mps: Vector2
+var _velocity_after_mps: Vector2
 var _event_type: int
 var _reason: int
 var _side: int
@@ -91,6 +112,7 @@ func _init(
 	new_last_kicker_id: String = "",
 	new_goal_count: int = 0,
 	new_is_corner: bool = false,
+	new_net_contact: GoalNetContact = null,
 ) -> void:
 	_event_type = new_event_type
 	_match_time_seconds = new_match_time_seconds
@@ -102,3 +124,8 @@ func _init(
 	_last_kicker_id = new_last_kicker_id
 	_goal_count = new_goal_count
 	_is_corner = new_is_corner
+	if new_net_contact != null:
+		_net_surface = new_net_contact.surface
+		_contact_position_m = new_net_contact.contact_position_m
+		_velocity_before_mps = new_net_contact.velocity_before_mps
+		_velocity_after_mps = new_net_contact.velocity_after_mps

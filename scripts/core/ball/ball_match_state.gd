@@ -154,6 +154,20 @@ func calculate_height_at_distance(distance_m: float) -> float:
 	return 4.0 * _flight_apex_height_m * progress * (1.0 - progress)
 
 
+## Keeps a scored ball visually in flight while its net response uses ground-plane velocity.
+func _set_post_goal_motion(new_position_m: Vector2, new_velocity_mps: Vector2) -> void:
+	_position_m = new_position_m
+	_velocity_mps = new_velocity_mps
+	_owner_player_id = ""
+	_target_player_id = ""
+	_flight_kind = FlightKind.SHOT
+	_motion_state = MotionState.IN_FLIGHT
+	_flight_distance_m = 0.0
+	_flight_range_m = 0.0
+	_flight_apex_height_m = 0.0
+	_height_m = 0.0
+
+
 ## Leaves the ball free and motionless after a trajectory ends.
 func _release(new_position_m: Vector2) -> void:
 	_position_m = new_position_m

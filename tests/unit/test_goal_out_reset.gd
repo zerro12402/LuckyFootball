@@ -36,7 +36,7 @@ func _init() -> void:
 	_finish()
 
 
-## Both physical goals count once, remain visible, and reset after two seconds.
+## Both physical goals count once and reset after bounded net motion.
 func test_right_and_left_goals_count_once() -> void:
 	for attacks_left in [false, true]:
 		var goal_x := -_field.length_m * 0.5 if attacks_left else _field.length_m * 0.5
@@ -55,7 +55,7 @@ func test_right_and_left_goals_count_once() -> void:
 			_expect(goal.last_kicker_id == SHOOTER_ID, "Goal lost the latest kicker")
 			_expect(goal.goal_count == 1, "Goal event lacked updated count")
 		var waiting_snapshot := simulation.create_snapshot()
-		_expect(waiting_snapshot.round_phase == MatchState.RoundPhase.GOAL_RESOLVED,
+		_expect(waiting_snapshot.round_phase == MatchState.RoundPhase.POST_GOAL_MOTION,
 			"Goal did not enter the settlement phase")
 		_expect(waiting_snapshot.left_goal_count == (1 if attacks_left else 0)
 			and waiting_snapshot.right_goal_count == (0 if attacks_left else 1),
@@ -68,8 +68,8 @@ func test_right_and_left_goals_count_once() -> void:
 		_expect(reset != null and reset.side == expected_side,
 			"Goal was not followed by a delayed goal reset")
 		if goal != null and reset != null:
-			_expect(reset.simulation_step - goal.simulation_step == 20,
-				"Goal reset did not wait exactly two simulated seconds")
+			_expect(reset.simulation_step - goal.simulation_step <= 12,
+				"Goal net motion exceeded its configured maximum")
 		var snapshot := simulation.create_snapshot()
 		_expect(snapshot.round_phase == MatchState.RoundPhase.PLAYING
 			and snapshot.ball.position_m == Vector2.ZERO
@@ -276,38 +276,43 @@ func test_vertical_dribble_waits_until_visible_ball_clears_line() -> void:
 			"Vertical dribble did not settle after the visible ball cleared the line")
 
 
-## A scored shot remains in motion throughout the two-second result window.
+## A scored shot contacts the back net before its bounded reset.
 func test_goal_waits_while_shot_ball_keeps_moving() -> void:
 	var simulation := _create_match(Vector2(_field.length_m * 0.5, 0.0))
 	var result_events := _shoot_until_result(simulation)
 	_expect(_find_event(result_events, MatchEvent.Type.GOAL_SCORED) != null,
-		"Expected a goal before waiting")
-	_expect(_find_event(result_events, MatchEvent.Type.RESET_COMPLETED) == null,
-		"Goal reset without waiting")
-	var initial_position_m := simulation.create_snapshot().ball.position_m
-	var previous_position_m := initial_position_m
-	for step_index in range(19):
+		"Expected a goal before net motion")
+	var all_events: Array[MatchEvent] = result_events.duplicate()
+	var reset: MatchEvent
+	for step_index in range(20):
 		var events := simulation.advance_fixed_step(FIXED_DELTA, [
 			MatchAction.new(SHOOTER_ID, MatchAction.Type.SHOOT),
 		])
 		_expect(_find_event(events, MatchEvent.Type.ACTION_ACCEPTED) == null,
-			"Shot command was accepted during goal settlement")
+			"Shot command was accepted during goal net motion")
 		_expect(_find_event(events, MatchEvent.Type.GOAL_SCORED) == null,
-			"Goal was counted again during settlement")
-		_expect(_find_event(events, MatchEvent.Type.RESET_COMPLETED) == null,
-			"Goal reset before two seconds")
-		var current_position_m := simulation.create_snapshot().ball.position_m
-		_expect(current_position_m.x > previous_position_m.x,
-			"Scored ball stopped moving before the two-second reset")
-		previous_position_m = current_position_m
-	_expect(previous_position_m.x > initial_position_m.x,
-		"Scored ball did not travel beyond the goal")
-	var reset_events := simulation.advance_fixed_step(FIXED_DELTA, [])
-	_expect(_find_event(reset_events, MatchEvent.Type.RESET_COMPLETED) != null,
-		"Goal did not reset at two seconds")
-	_expect(simulation.create_snapshot().ball.position_m == Vector2.ZERO,
-		"Delayed goal reset did not center the ball")
-
+			"Goal was counted again during net motion")
+		all_events.append_array(events)
+		reset = _find_event(events, MatchEvent.Type.RESET_COMPLETED)
+		if reset != null:
+			break
+	var contact := _find_event(all_events, MatchEvent.Type.GOAL_NET_CONTACT)
+	_expect(contact != null and contact.net_surface == GoalNetContact.Surface.BACK,
+		"Scored ball did not contact the back net")
+	if contact != null:
+		_expect(absf(contact.contact_position_m.x
+			- (_field.length_m * 0.5 + _field.goal_depth_m)) < 0.001,
+			"Back-net contact used the wrong plane")
+		_expect(contact.velocity_after_mps.x < 0.0
+			and contact.velocity_after_mps.length() < contact.velocity_before_mps.length(),
+			"Back net did not slow and reverse the ball")
+	_expect(reset != null and reset.reason == MatchEvent.ResetReason.GOAL,
+		"Goal net motion did not end in a goal reset")
+	_expect(_event_index(all_events, MatchEvent.Type.GOAL_SCORED)
+		< _event_index(all_events, MatchEvent.Type.GOAL_NET_CONTACT)
+		and _event_index(all_events, MatchEvent.Type.GOAL_NET_CONTACT)
+		< _event_index(all_events, MatchEvent.Type.RESET_COMPLETED),
+		"Goal, net, and reset events were out of order")
 
 
 ## A shot that misses the goal also keeps moving until its delayed reset.
@@ -505,23 +510,23 @@ func _shoot_until_result(simulation: MatchSimulation) -> Array[MatchEvent]:
 	return empty_events
 
 
-## Advances exactly two seconds and rejects early or repeated results.
+## Waits for the configured goal limit or the existing two-second out window.
 func _advance_until_auto_reset(
 	simulation: MatchSimulation,
 	expected_reason: int,
 ) -> Array[MatchEvent]:
-	for step_index in range(19):
+	for step_index in range(20):
 		var events := simulation.advance_fixed_step(FIXED_DELTA, [])
-		_expect(_find_event(events, MatchEvent.Type.RESET_COMPLETED) == null,
-			"Automatic reset happened before two simulated seconds")
 		_expect(_find_event(events, MatchEvent.Type.GOAL_SCORED) == null
 			and _find_event(events, MatchEvent.Type.BALL_OUT_OF_BOUNDS) == null,
 			"Boundary result repeated during settlement")
-	var reset_events := simulation.advance_fixed_step(FIXED_DELTA, [])
-	var reset := _find_event(reset_events, MatchEvent.Type.RESET_COMPLETED)
-	_expect(reset != null and reset.reason == expected_reason,
-		"Automatic reset was missing at two simulated seconds")
-	return reset_events
+		if _find_event(events, MatchEvent.Type.RESET_COMPLETED) != null:
+			_expect(_find_event(events, MatchEvent.Type.RESET_COMPLETED).reason
+				== expected_reason, "Automatic reset used the wrong reason")
+			return events
+	_expect(false, "Automatic reset did not occur by two simulated seconds")
+	var empty_events: Array[MatchEvent] = []
+	return empty_events
 
 
 ## Finds a type in the ordered events from one fixed simulation step.

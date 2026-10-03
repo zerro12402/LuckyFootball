@@ -12,6 +12,7 @@ enum Phase {
 enum RoundPhase {
 	PLAYING,
 	GOAL_RESOLVED,
+	POST_GOAL_MOTION,
 	OUT_RESOLVED,
 	RESETTING,
 }

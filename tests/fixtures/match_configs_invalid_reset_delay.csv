@@ -1,2 +1,2 @@
-config_id,shot_base_speed_mps,shot_min_attribute_multiplier,shot_max_attribute_multiplier,shot_ground_deceleration_mps2,shot_stop_speed_mps,shot_windup_seconds,shot_recovery_seconds,shot_action_duration_seconds,shot_reacquire_delay_seconds,shot_apex_height_m,ball_radius_m,boundary_reset_delay_seconds
-demo_match,20,0.75,1.35,12,0.5,0.20,0.30,0.45,0.15,0.75,0.11,0
+config_id,shot_base_speed_mps,shot_min_attribute_multiplier,shot_max_attribute_multiplier,shot_ground_deceleration_mps2,shot_stop_speed_mps,shot_windup_seconds,shot_recovery_seconds,shot_action_duration_seconds,shot_reacquire_delay_seconds,shot_apex_height_m,ball_radius_m,boundary_reset_delay_seconds,goal_net_back_restitution,goal_net_side_restitution,goal_net_tangent_retention,goal_net_stop_speed_mps,goal_net_max_motion_seconds
+demo_match,20,0.75,1.35,12,0.5,0.20,0.30,0.45,0.15,0.75,0.11,0,0.08,0.05,0.35,0.3,1.2

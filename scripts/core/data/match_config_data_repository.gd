@@ -16,6 +16,11 @@ const REQUIRED_HEADERS: Array[String] = [
 	"shot_apex_height_m",
 	"ball_radius_m",
 	"boundary_reset_delay_seconds",
+	"goal_net_back_restitution",
+	"goal_net_side_restitution",
+	"goal_net_tangent_retention",
+	"goal_net_stop_speed_mps",
+	"goal_net_max_motion_seconds",
 ]
 
 
@@ -99,10 +104,15 @@ func _parse_config(
 			"Match config row %d has invalid boundary_reset_delay_seconds" % row_number
 		)
 		return null
+	if (values[10] >= 0.75 or values[12] < 0.0 or values[12] > 1.0
+		or values[13] < 0.0 or values[13] > 1.0 or values[14] < 0.0
+		or values[14] > 1.0 or values[15] <= 0.0 or values[16] <= 0.0):
+		result._add_error("Match config row %d has invalid goal net parameters" % row_number)
+		return null
 	return MatchConfigDefinition.new(
 		config_id, values[0], values[1], values[2], values[3],
 		values[4], values[5], values[6], values[7], values[8], values[9], values[10],
-		values[11],
+		values[11], values[12], values[13], values[14], values[15], values[16],
 	)
 
 

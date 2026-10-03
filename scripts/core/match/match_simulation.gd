@@ -13,6 +13,9 @@ var _ball_runtime_system: BallRuntimeSystem = BallRuntimeSystem.new()
 var _match_rules: MatchRules
 var _initial_ball_position_m: Vector2 = Vector2.ZERO
 var _boundary_reset_delay_seconds: float = 0.0
+var _match_config: MatchConfigDefinition
+var _field_definition: FieldDefinition
+var _goal_motion_elapsed_seconds: float = 0.0
 var _settlement_remaining_seconds: float = 0.0
 var _pending_reset_reason: int = MatchEvent.ResetReason.NONE
 var _pending_reset_side: int = MatchBoundaryResult.Side.NONE
@@ -29,11 +32,15 @@ func _init(
 ) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
+	_match_config = match_config
+	_field_definition = field_definition
 	if match_config != null:
 		_ball_runtime_system.configure_shots(match_config)
 		_boundary_reset_delay_seconds = match_config.boundary_reset_delay_seconds
 	if field_definition != null:
 		assert(match_config != null, "Field boundaries require a ball radius configuration")
+		assert(field_definition.goal_depth_m > match_config.ball_radius_m * 2.0,
+			"Ball must fit between the score line and back net")
 		_match_rules = MatchRules.new(field_definition, match_config.ball_radius_m)
 
 
@@ -188,6 +195,9 @@ func advance_fixed_step(
 			step_events,
 			is_carried_boundary,
 			exit_velocity_mps,
+			ball_result.motion_start_position_m,
+			ball_result.motion_end_position_m,
+			fixed_delta_seconds,
 		)
 	_append_post_motion_events(ball_result, step_events)
 	if can_acquire_after_motion:
@@ -250,33 +260,58 @@ func _complete_boundary_step(
 	events: Array[MatchEvent],
 	is_carried_boundary: bool,
 	exit_velocity_mps: Vector2,
+	motion_start_m: Vector2 = Vector2.ZERO,
+	motion_end_m: Vector2 = Vector2.ZERO,
+	fixed_delta_seconds: float = 0.0,
 ) -> Array[MatchEvent]:
-	_settle_boundary(boundary, events, is_carried_boundary, exit_velocity_mps)
+	_settle_boundary(boundary, events, is_carried_boundary, exit_velocity_mps, motion_start_m, motion_end_m, fixed_delta_seconds)
 	events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	_record_step_events(events)
 	return events
 
 
-## Holds controls during settlement and resets only after the configured duration.
+## Holds controls during settlement and gives scored balls a bounded net response.
 func _advance_settlement_step(
 	fixed_delta_seconds: float,
 	events: Array[MatchEvent],
 ) -> Array[MatchEvent]:
 	var active_delta_seconds := minf(fixed_delta_seconds, _settlement_remaining_seconds)
 	if active_delta_seconds > 0.0:
-		if not _is_carried_settlement:
+		if _pending_reset_reason == MatchEvent.ResetReason.GOAL:
+			_advance_goal_motion(active_delta_seconds, events)
+		elif not _is_carried_settlement:
 			_ball_runtime_system.advance_out_of_play(
 				active_delta_seconds, _out_of_play_velocity_mps
 			)
-			_player_runtime_system.advance(active_delta_seconds)
+		_player_runtime_system.advance(active_delta_seconds)
 	_settlement_remaining_seconds = maxf(
 		_settlement_remaining_seconds - fixed_delta_seconds, 0.0
 	)
-	if _settlement_remaining_seconds <= SETTLEMENT_TIME_EPSILON:
+	if _pending_reset_reason == MatchEvent.ResetReason.GOAL:
+		if _goal_motion_elapsed_seconds >= _match_config.goal_net_max_motion_seconds - SETTLEMENT_TIME_EPSILON:
+			_reset_round(MatchEvent.ResetReason.GOAL, Vector2.ZERO, events, _pending_reset_side)
+		elif _ball_runtime_system.state.velocity_mps.is_zero_approx():
+			_reset_round(MatchEvent.ResetReason.GOAL, Vector2.ZERO, events, _pending_reset_side)
+	elif _settlement_remaining_seconds <= SETTLEMENT_TIME_EPSILON:
 		_reset_round(_pending_reset_reason, Vector2.ZERO, events, _pending_reset_side)
 	events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	_record_step_events(events)
 	return events
+
+
+## Emits net contacts in sweep order without reopening scoring or player input.
+func _advance_goal_motion(delta_seconds: float, events: Array[MatchEvent]) -> void:
+	if delta_seconds <= 0.0 or _ball_runtime_system.state.velocity_mps.is_zero_approx():
+		return
+	var contacts := _ball_runtime_system.advance_post_goal_motion(
+		delta_seconds, _field_definition, _match_config, _pending_reset_side
+	)
+	_goal_motion_elapsed_seconds += delta_seconds
+	for contact in contacts:
+		events.append(_create_event(
+			MatchEvent.Type.GOAL_NET_CONTACT, "", MatchEvent.ResetReason.GOAL,
+			_pending_reset_side, contact.contact_position_m, "", 0, false, contact
+		))
 
 
 ## Records observable events while omitting the per-step clock tick.
@@ -323,12 +358,15 @@ func _append_post_motion_events(result: BallAdvanceResult, events: Array[MatchEv
 		events.append(_create_event(MatchEvent.Type.BALL_PASS_MISSED))
 
 
-## Records one physical goal or out and starts its delayed reset window.
+## Records one boundary result and starts its out or post-goal motion window.
 func _settle_boundary(
 	boundary: MatchBoundaryResult,
 	events: Array[MatchEvent],
 	is_carried_boundary: bool,
 	exit_velocity_mps: Vector2,
+	motion_start_m: Vector2,
+	motion_end_m: Vector2,
+	fixed_delta_seconds: float,
 ) -> void:
 	assert(_pending_reset_reason == MatchEvent.ResetReason.NONE)
 	assert(_boundary_reset_delay_seconds > 0.0)
@@ -348,7 +386,8 @@ func _settle_boundary(
 	_player_runtime_system.stop_all_players_for_settlement(is_carried_boundary)
 	if boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
 		_pending_reset_reason = MatchEvent.ResetReason.GOAL
-		_state._set_round_phase(MatchState.RoundPhase.GOAL_RESOLVED)
+		_settlement_remaining_seconds = _match_config.goal_net_max_motion_seconds
+		_state._set_round_phase(MatchState.RoundPhase.POST_GOAL_MOTION)
 		_state._record_goal(boundary.side)
 		var goal_count := _state.left_goal_count
 		if boundary.side == MatchBoundaryResult.Side.RIGHT:
@@ -362,6 +401,17 @@ func _settle_boundary(
 			last_kicker_id,
 			goal_count,
 		))
+		if fixed_delta_seconds > 0.0:
+			var crossing_x := _field_definition.length_m * 0.5 + _match_config.ball_radius_m
+			if boundary.side == MatchBoundaryResult.Side.LEFT:
+				crossing_x = -crossing_x
+			var denominator := motion_end_m.x - motion_start_m.x
+			var crossing_fraction := clampf(
+				(crossing_x - motion_start_m.x) / denominator, 0.0, 1.0
+			)
+			var crossing_m := motion_start_m.lerp(motion_end_m, crossing_fraction)
+			_ball_runtime_system.begin_post_goal_motion(crossing_m, exit_velocity_mps)
+			_advance_goal_motion(fixed_delta_seconds * (1.0 - crossing_fraction), events)
 	else:
 		_pending_reset_reason = MatchEvent.ResetReason.OUT
 		_state._set_round_phase(MatchState.RoundPhase.OUT_RESOLVED)
@@ -392,6 +442,7 @@ func _reset_round(
 	_settlement_remaining_seconds = 0.0
 	_is_carried_settlement = false
 	_out_of_play_velocity_mps = Vector2.ZERO
+	_goal_motion_elapsed_seconds = 0.0
 	if reason == MatchEvent.ResetReason.RESTART_TEST:
 		_state._restart_test()
 		_lifecycle_events.clear()
@@ -432,6 +483,7 @@ func _create_event(
 	last_kicker_id: String = "",
 	goal_count: int = 0,
 	is_corner: bool = false,
+	net_contact: GoalNetContact = null,
 ) -> MatchEvent:
 	return MatchEvent.new(
 		event_type,
@@ -444,4 +496,5 @@ func _create_event(
 		last_kicker_id,
 		goal_count,
 		is_corner,
+		net_contact,
 	)
