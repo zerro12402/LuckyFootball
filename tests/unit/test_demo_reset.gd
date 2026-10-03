@@ -1,8 +1,9 @@
-## Verifies that demo reset rebuilds runtime state and keyboard control without rendering.
+## Verifies round and full-test reset commands without rendering.
 extends SceneTree
 
 var _started_snapshots: Array[MatchStateSnapshot] = []
 var _latest_snapshot: MatchStateSnapshot
+var _latest_events: Array[MatchEvent] = []
 var _actions: Array[MatchAction] = []
 var _failures: PackedStringArray = []
 
@@ -14,7 +15,7 @@ func _init() -> void:
 
 ## Reports every failed reset expectation as one process result.
 func _run_tests() -> void:
-	test_tilde_when_pressed_restores_demo_and_clears_pending_actions()
+	test_tilde_when_pressed_restores_round_and_clears_pending_actions()
 
 	if _failures.is_empty():
 		quit(0)
@@ -24,8 +25,8 @@ func _run_tests() -> void:
 	quit(1)
 
 
-## Resets positions, pending input, clock, and control after tilde.
-func test_tilde_when_pressed_restores_demo_and_clears_pending_actions() -> void:
+## Resets positions and pending input while preserving time on a round reset.
+func test_tilde_when_pressed_restores_round_and_clears_pending_actions() -> void:
 	var bootstrap := GameBootstrap.new()
 	var keyboard := KeyboardPlayerInputAdapter.new()
 	keyboard.name = "KeyboardPlayerInputAdapter"
@@ -58,10 +59,12 @@ func test_tilde_when_pressed_restores_demo_and_clears_pending_actions() -> void:
 	)
 	_press_key(keyboard, KEY_TAB)
 	_press_reset_key(keyboard)
-	_expect(_started_snapshots.size() == 2, "Expected tilde to start a fresh demo")
+	bootstrap._process(bootstrap.fixed_delta_seconds)
+	_expect(_started_snapshots.size() == 1, "Round reset rebuilt the demo")
 	_expect(_latest_snapshot.phase == MatchState.Phase.RUNNING, "Expected running demo")
-	_expect(_latest_snapshot.simulation_step == 0, "Expected simulation step zero")
-	_expect(is_zero_approx(_latest_snapshot.elapsed_seconds), "Expected time zero")
+	_expect(_latest_snapshot.simulation_step > 0, "Round reset erased the match clock")
+	_expect(_has_reset_reason(MatchEvent.ResetReason.MANUAL_ROUND),
+		"Expected a manual round reset event")
 	_expect(
 		_latest_snapshot.get_player(player_id).position_m == Vector2.ZERO,
 		"Expected first player at initial position",
@@ -91,9 +94,15 @@ func test_tilde_when_pressed_restores_demo_and_clears_pending_actions() -> void:
 		"Expected reset to restore control to first player",
 	)
 
+	_press_restart_key(keyboard)
+	bootstrap._process(bootstrap.fixed_delta_seconds)
+	_expect(_latest_snapshot.simulation_step == 0, "Restart did not reset step number")
+	_expect(is_zero_approx(_latest_snapshot.elapsed_seconds), "Restart did not reset time")
+	_expect(_has_reset_reason(MatchEvent.ResetReason.RESTART_TEST),
+		"Expected a full test restart event")
 	_expect(bootstrap.finish_match(), "Expected demo to finish")
-	_press_reset_key(keyboard)
-	_expect(_started_snapshots.size() == 3, "Expected reset to restart finished demo")
+	_press_restart_key(keyboard)
+	_expect(_started_snapshots.size() == 2, "Expected finished demo to rebuild")
 	_expect(_latest_snapshot.phase == MatchState.Phase.RUNNING, "Expected restarted demo")
 	bootstrap.queue_free()
 
@@ -115,6 +124,24 @@ func _press_reset_key(adapter: KeyboardPlayerInputAdapter) -> void:
 	adapter._unhandled_key_input(key_event)
 
 
+## Submits the Ctrl+tilde restart shortcut.
+func _press_restart_key(adapter: KeyboardPlayerInputAdapter) -> void:
+	var key_event := InputEventKey.new()
+	key_event.physical_keycode = KEY_QUOTELEFT
+	key_event.shift_pressed = true
+	key_event.ctrl_pressed = true
+	key_event.pressed = true
+	adapter._unhandled_key_input(key_event)
+
+
+## Finds the reset reason in the latest delivered frame.
+func _has_reset_reason(reason: int) -> bool:
+	for event in _latest_events:
+		if event.event_type == MatchEvent.Type.RESET_COMPLETED and event.reason == reason:
+			return true
+	return false
+
+
 ## Captures each initial state emitted by a fresh demo.
 func _record_start(snapshot: MatchStateSnapshot) -> void:
 	_started_snapshots.append(snapshot)
@@ -123,10 +150,11 @@ func _record_start(snapshot: MatchStateSnapshot) -> void:
 ## Stores the latest simulated frame for state assertions.
 func _record_frame(
 	snapshot: MatchStateSnapshot,
-	_events: Array[MatchEvent],
+	events: Array[MatchEvent],
 	_interpolation_alpha: float,
 ) -> void:
 	_latest_snapshot = snapshot
+	_latest_events = events.duplicate()
 
 
 ## Records keyboard commands to verify post-reset control.

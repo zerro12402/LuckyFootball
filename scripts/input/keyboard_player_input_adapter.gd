@@ -3,7 +3,6 @@ class_name KeyboardPlayerInputAdapter
 extends Node
 
 signal action_requested(action: MatchAction)
-signal reset_requested
 signal meter_ticks_toggle_requested
 
 const INPUT_DEADZONE := 0.1
@@ -65,7 +64,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		or key_event.keycode == KEY_QUOTELEFT
 		or key_event.keycode == KEY_ASCIITILDE
 	):
-		reset_requested.emit()
+		var reset_type := MatchAction.Type.RESET_ROUND
+		if key_event.ctrl_pressed:
+			reset_type = MatchAction.Type.RESTART_TEST
+		action_requested.emit(MatchAction.new("", reset_type))
 	elif key_event.keycode == KEY_M or key_event.physical_keycode == KEY_M:
 		meter_ticks_toggle_requested.emit()
 	elif (

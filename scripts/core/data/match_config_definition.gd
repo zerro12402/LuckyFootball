@@ -46,6 +46,14 @@ var shot_apex_height_m: float:
 	get:
 		return _shot_apex_height_m
 
+var ball_radius_m: float:
+	get:
+		return _ball_radius_m
+
+var boundary_reset_delay_seconds: float:
+	get:
+		return _boundary_reset_delay_seconds
+
 var _config_id: String
 var _shot_base_speed_mps: float
 var _shot_min_attribute_multiplier: float
@@ -57,6 +65,8 @@ var _shot_recovery_seconds: float
 var _shot_action_duration_seconds: float
 var _shot_reacquire_delay_seconds: float
 var _shot_apex_height_m: float
+var _ball_radius_m: float
+var _boundary_reset_delay_seconds: float
 
 
 ## Rejects impossible timings and velocities before any match uses the definition.
@@ -72,6 +82,8 @@ func _init(
 	new_shot_action_duration_seconds: float,
 	new_shot_reacquire_delay_seconds: float,
 	new_shot_apex_height_m: float,
+	new_ball_radius_m: float,
+	new_boundary_reset_delay_seconds: float,
 ) -> void:
 	assert(not new_config_id.is_empty(), "Match config requires an ID")
 	assert(new_shot_base_speed_mps > 0.0, "Shot base speed must be positive")
@@ -90,6 +102,8 @@ func _init(
 	)
 	assert(new_shot_reacquire_delay_seconds >= 0.0, "Shot reacquire delay cannot be negative")
 	assert(new_shot_apex_height_m > 0.0, "Shot apex height must be positive")
+	assert(new_ball_radius_m > 0.0, "Ball radius must be positive")
+	assert(new_boundary_reset_delay_seconds > 0.0, "Boundary reset delay must be positive")
 	_config_id = new_config_id
 	_shot_base_speed_mps = new_shot_base_speed_mps
 	_shot_min_attribute_multiplier = new_shot_min_attribute_multiplier
@@ -101,3 +115,5 @@ func _init(
 	_shot_action_duration_seconds = new_shot_action_duration_seconds
 	_shot_reacquire_delay_seconds = new_shot_reacquire_delay_seconds
 	_shot_apex_height_m = new_shot_apex_height_m
+	_ball_radius_m = new_ball_radius_m
+	_boundary_reset_delay_seconds = new_boundary_reset_delay_seconds

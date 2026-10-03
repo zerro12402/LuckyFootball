@@ -47,6 +47,19 @@ func get_players() -> Array[PlayerRuntime]:
 	return players
 
 
+## Restores every registered player in stable order for a new round.
+func reset_all_players() -> void:
+	for player_runtime in get_players():
+		player_runtime.reset_to_spawn()
+
+
+
+## Stops every player, cancelling actions when carried-ball out requires idle.
+func stop_all_players_for_settlement(should_cancel_actions: bool) -> void:
+	for player_runtime in get_players():
+		player_runtime.state_machine.stop_for_settlement(should_cancel_actions)
+
+
 ## Delegates a validated command to its registered player.
 func apply_action(action: MatchAction) -> bool:
 	var player_runtime := get_player(action.player_id)

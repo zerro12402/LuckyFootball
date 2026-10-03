@@ -16,7 +16,12 @@ var state: BallMatchState:
 	get:
 		return _state
 
+var last_kicker_id: String:
+	get:
+		return _last_kicker_id
+
 var _state: BallMatchState
+var _last_kicker_id: String = ""
 var _possession_radius_m: float
 var _dribble_offset_m: float
 var _pass_speed_mps: float
@@ -124,6 +129,7 @@ func try_start_shot(shooter: PlayerRuntime, direction: Vector2, power: float) ->
 func advance(
 	fixed_delta_seconds: float,
 	player_runtime_system: PlayerRuntimeSystem,
+	should_acquire_loose_ball: bool = true,
 ) -> BallAdvanceResult:
 	assert(fixed_delta_seconds > 0.0, "Fixed delta must be positive")
 	assert(player_runtime_system != null, "Ball system requires player runtimes")
@@ -138,9 +144,76 @@ func advance(
 		_advance_owned(fixed_delta_seconds, player_runtime_system, result)
 	if _state.motion_state == BallMatchState.MotionState.IN_FLIGHT:
 		_advance_flight(fixed_delta_seconds, player_runtime_system, result)
-	elif _state.motion_state == BallMatchState.MotionState.LOOSE:
+	elif _state.motion_state == BallMatchState.MotionState.LOOSE and should_acquire_loose_ball:
 		_try_acquire_loose_ball(player_runtime_system, result)
 	return result
+
+
+## Defers free-ball acquisition until boundary rules have had the first chance to settle.
+func acquire_loose_ball(players: PlayerRuntimeSystem) -> BallAdvanceResult:
+	var result := BallAdvanceResult.new()
+	if _state != null and _state.motion_state == BallMatchState.MotionState.LOOSE:
+		_try_acquire_loose_ball(players, result)
+	return result
+
+
+## Clears possession, trajectories, windups, and reacquisition protection atomically.
+func reset_ball(reset_position_m: Vector2) -> void:
+	assert(_state != null, "Cannot reset an unregistered ball")
+	assert(reset_position_m.is_finite(), "Reset position must be finite")
+	_state._release(reset_position_m)
+	_pending_pass_target_id = ""
+	_pending_pass_elapsed_seconds = 0.0
+	_clear_pending_shot()
+	_last_shooter_id = ""
+	_last_kicker_id = ""
+	_reacquire_delay_remaining_seconds = 0.0
+
+
+
+## Freezes a carried exit at its last position or detaches a received ball.
+func prepare_for_settlement(
+	players: PlayerRuntimeSystem,
+	is_carried_boundary: bool,
+	boundary_position_m: Vector2,
+) -> void:
+	assert(_state != null, "Settlement requires a registered ball")
+	assert(boundary_position_m.is_finite(), "Boundary position must be finite")
+	if _state.motion_state == BallMatchState.MotionState.OWNED:
+		var owner := players.get_player(_state.owner_player_id)
+		if owner != null:
+			owner.state_machine.set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
+	if is_carried_boundary:
+		_state._release(boundary_position_m)
+	elif _state.motion_state == BallMatchState.MotionState.OWNED:
+		_state._release(_state.position_m)
+	_pending_pass_target_id = ""
+	_pending_pass_elapsed_seconds = 0.0
+	_clear_pending_shot()
+
+
+## Continues out-of-play travel at the captured exit velocity without new contests.
+func advance_out_of_play(
+	fixed_delta_seconds: float,
+	continuation_velocity_mps: Vector2,
+) -> void:
+	assert(fixed_delta_seconds > 0.0, "Out-of-play delta must be positive")
+	assert(continuation_velocity_mps.is_finite(), "Out-of-play velocity must be finite")
+	if _state == null or continuation_velocity_mps.is_zero_approx():
+		return
+	var displacement_m := continuation_velocity_mps * fixed_delta_seconds
+	var next_position_m := _state.position_m + displacement_m
+	if _state.motion_state == BallMatchState.MotionState.IN_FLIGHT:
+		if _state.flight_kind == BallMatchState.FlightKind.SHOT:
+			_state._advance_shot(
+				next_position_m,
+				continuation_velocity_mps,
+				displacement_m.length(),
+			)
+		else:
+			_state._advance_flight(next_position_m, displacement_m.length())
+	else:
+		_state._set_position(next_position_m)
 
 
 func create_snapshot() -> BallStateSnapshot:
@@ -155,11 +228,16 @@ func _advance_owned(
 	players: PlayerRuntimeSystem,
 	result: BallAdvanceResult,
 ) -> void:
+	var previous_position_m := _state.position_m
 	_follow_owner(players)
 	if _state.motion_state != BallMatchState.MotionState.OWNED:
 		_pending_pass_target_id = ""
 		_clear_pending_shot()
 		return
+	# Preserve the carried segment even if a queued kick releases the ball this step.
+	result.has_owned_motion_segment = true
+	result.owned_motion_start_position_m = previous_position_m
+	result.owned_motion_end_position_m = _state.position_m
 	if not _pending_pass_target_id.is_empty():
 		_pending_pass_elapsed_seconds += fixed_delta_seconds
 		if _pending_pass_elapsed_seconds >= PlayerStateMachine.PASS_WINDUP_SECONDS:
@@ -194,6 +272,7 @@ func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResul
 		flight_range_m,
 		apex_height_m,
 	)
+	_last_kicker_id = passer.player_id
 	result.passed_by_player_id = passer.player_id
 
 
@@ -228,6 +307,7 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 	else:
 		_state._release(release_position_m)
 	_last_shooter_id = shooter.player_id
+	_last_kicker_id = shooter.player_id
 	_reacquire_delay_remaining_seconds = _shot_config.shot_reacquire_delay_seconds
 	result.shot_by_player_id = shooter.player_id
 
@@ -238,8 +318,11 @@ func _advance_flight(
 	players: PlayerRuntimeSystem,
 	result: BallAdvanceResult,
 ) -> void:
+	result.has_motion_segment = true
+	result.motion_start_position_m = _state.position_m
 	if _state.flight_kind == BallMatchState.FlightKind.SHOT:
 		_advance_shot(fixed_delta_seconds)
+		result.motion_end_position_m = _state.position_m
 		return
 	var remaining_distance_m := _state.flight_range_m - _state.flight_distance_m
 	var travel_distance_m := minf(
@@ -247,6 +330,7 @@ func _advance_flight(
 		remaining_distance_m,
 	)
 	var next_position_m := _state.position_m + _state.velocity_mps.normalized() * travel_distance_m
+	result.motion_end_position_m = next_position_m
 	var receiver := players.get_player(_state.target_player_id)
 	if _can_receive_flight(receiver, next_position_m):
 		_receive_pass(receiver, result)

@@ -11,6 +11,8 @@ enum Type {
 	TACKLE,
 	ATTACK,
 	DODGE,
+	RESET_ROUND,
+	RESTART_TEST,
 }
 
 var player_id: String:

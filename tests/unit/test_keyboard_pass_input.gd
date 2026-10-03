@@ -2,7 +2,6 @@
 extends SceneTree
 
 var _actions: Array[MatchAction] = []
-var _reset_count: int = 0
 var _failures: PackedStringArray = []
 
 
@@ -74,26 +73,31 @@ func test_tab_when_pressed_switches_pass_direction() -> void:
 ## Recognizes physical and logical reset keys once per press.
 func test_tilde_key_when_pressed_requests_reset() -> void:
 	_actions.clear()
-	_reset_count = 0
 	var adapter := _create_adapter()
 	var key_event := InputEventKey.new()
 	key_event.physical_keycode = KEY_QUOTELEFT
 	key_event.shift_pressed = true
 	key_event.pressed = true
 	adapter._unhandled_key_input(key_event)
-	_expect(_reset_count == 1, "Expected tilde key to request one reset")
-	_expect(_actions.is_empty(), "Expected reset key not to submit a match action")
+	_expect(_actions.size() == 1, "Expected tilde key to submit one reset")
+	_expect(_actions[0].action_type == MatchAction.Type.RESET_ROUND,
+		"Expected tilde to reset the current round")
 	key_event.echo = true
 	adapter._unhandled_key_input(key_event)
 	key_event.echo = false
 	key_event.pressed = false
 	adapter._unhandled_key_input(key_event)
-	_expect(_reset_count == 1, "Expected repeat and release events to be ignored")
+	_expect(_actions.size() == 1, "Expected repeat and release events to be ignored")
 	key_event.physical_keycode = KEY_NONE
 	key_event.keycode = KEY_ASCIITILDE
 	key_event.pressed = true
 	adapter._unhandled_key_input(key_event)
-	_expect(_reset_count == 2, "Expected logical tilde key to request reset")
+	_expect(_actions.size() == 2, "Expected logical tilde key to request reset")
+	key_event.ctrl_pressed = true
+	adapter._unhandled_key_input(key_event)
+	_expect(_actions.size() == 3
+		and _actions[2].action_type == MatchAction.Type.RESTART_TEST,
+		"Expected Ctrl+tilde to restart the test")
 	adapter.free()
 
 
@@ -101,7 +105,6 @@ func test_tilde_key_when_pressed_requests_reset() -> void:
 func _create_adapter() -> KeyboardPlayerInputAdapter:
 	var adapter := KeyboardPlayerInputAdapter.new()
 	adapter.action_requested.connect(_record_action)
-	adapter.reset_requested.connect(_record_reset)
 	adapter.configure("player_a", "player_b")
 	return adapter
 
@@ -117,11 +120,6 @@ func _press_key(adapter: KeyboardPlayerInputAdapter, key_code: int) -> void:
 ## Captures emitted typed match actions.
 func _record_action(action: MatchAction) -> void:
 	_actions.append(action)
-
-
-## Counts reset requests without rebuilding a match.
-func _record_reset() -> void:
-	_reset_count += 1
 
 
 ## Collects failures without stopping later keyboard cases.

@@ -146,6 +146,29 @@ func finish_action() -> bool:
 	return true
 
 
+
+## Stops movement for a resolved round, optionally cancelling an unfinished action.
+func stop_for_settlement(should_cancel_action: bool) -> void:
+	_state._set_movement_input(Vector2.ZERO)
+	_set_movement_state_if_changed(PlayerMatchState.MovementState.IDLE)
+	if should_cancel_action and _state.action_state != PlayerMatchState.ActionState.IDLE:
+		finish_action()
+
+
+## Restores an actionable player without carrying an old windup or movement intent.
+func reset_to_spawn(spawn_position_m: Vector2) -> void:
+	_state._set_position(spawn_position_m)
+	_state._set_facing_direction(Vector2.RIGHT)
+	_state._set_movement_input(Vector2.ZERO)
+	_state._set_movement_state(PlayerMatchState.MovementState.IDLE)
+	_state._set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
+	_state._set_action_state(
+		PlayerMatchState.ActionState.IDLE,
+		PlayerMatchState.ActionPhase.NONE,
+	)
+	_shot_config = null
+
+
 ## Applies the existing dribble speed reduction without changing the base speed.
 func _get_current_movement_speed_mps() -> float:
 	if _state.possession_state == PlayerMatchState.PossessionState.POSSESSING:

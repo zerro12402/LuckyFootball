@@ -23,6 +23,7 @@ var state_machine: PlayerStateMachine:
 		return _state_machine
 
 var _state_machine: PlayerStateMachine
+var _spawn_position_m: Vector2
 var _team_id: String
 var _shooting_attribute: int
 
@@ -39,8 +40,14 @@ func _init(
 	assert(new_shooting_attribute >= 0 and new_shooting_attribute <= 100)
 	var initial_state := PlayerMatchState.new(new_player_id, initial_position_m)
 	_state_machine = PlayerStateMachine.new(initial_state, movement_speed_mps)
+	_spawn_position_m = initial_position_m
 	_team_id = new_team_id
 	_shooting_attribute = new_shooting_attribute
+
+
+## Returns the runtime to its registered spawn without changing static attributes.
+func reset_to_spawn() -> void:
+	_state_machine.reset_to_spawn(_spawn_position_m)
 
 
 ## Applies only commands whose player ID matches this runtime.

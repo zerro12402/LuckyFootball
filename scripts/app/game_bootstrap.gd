@@ -31,6 +31,9 @@ const TEST_TEAM_ID := "demo_team"
 @onready var _keyboard_input: KeyboardPlayerInputAdapter = (
 	get_node_or_null("KeyboardPlayerInputAdapter") as KeyboardPlayerInputAdapter
 )
+@onready var _result_hud: MatchResultHud = (
+	get_node_or_null("MatchResultHud") as MatchResultHud
+)
 
 var data_repository: DataRepository:
 	get:
@@ -83,7 +86,6 @@ func _ready() -> void:
 		)
 	if _keyboard_input != null:
 		_keyboard_input.action_requested.connect(queue_action)
-		_keyboard_input.reset_requested.connect(reset_demo)
 		if _field_environment != null:
 			_keyboard_input.meter_ticks_toggle_requested.connect(
 				_field_environment.toggle_meter_ticks
@@ -98,7 +100,7 @@ func reset_demo() -> void:
 		return
 	set_process(false)
 	_queued_actions.clear()
-	_match_simulation = MatchSimulation.new(random_seed, _match_config)
+	_match_simulation = MatchSimulation.new(random_seed, _match_config, _field_definition)
 	var opponent_goal_center_m := Vector2(_field_definition.length_m * 0.5, 0.0)
 	var did_register_goal := _match_simulation.register_team_attacking_goal(
 		TEST_TEAM_ID,
@@ -144,9 +146,16 @@ func _process(delta: float) -> void:
 	_publish_frame(delta)
 
 
-## Buffers commands for the next fixed simulation step.
+## Buffers commands for the next fixed step, including in-match reset requests.
 func queue_action(action: MatchAction) -> void:
 	assert(action != null, "Cannot queue a null MatchAction")
+	if (
+		action.action_type == MatchAction.Type.RESTART_TEST
+		and _match_simulation != null
+		and not _match_simulation.is_running()
+	):
+		reset_demo()
+		return
 	_queued_actions.append(action)
 
 
@@ -182,8 +191,14 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_actions: Array[MatchAction] = _queued_actions.duplicate()
 	_queued_actions.clear()
 	var frame_result := _game_loop.advance_frame(frame_delta_seconds, frame_actions)
+	for event in frame_result.events:
+		if event.event_type == MatchEvent.Type.RESET_COMPLETED and _keyboard_input != null:
+			_keyboard_input.configure(_demo_player_id, _demo_teammate_id)
+			break
 	if _field_environment != null:
 		_field_environment.present(frame_result.snapshot)
+	if _result_hud != null:
+		_result_hud.present(frame_result.snapshot, frame_result.events)
 	presentation_frame_ready.emit(
 		frame_result.snapshot,
 		frame_result.events,

@@ -15,6 +15,17 @@ enum Type {
 	BALL_PASS_MISSED,
 	SIMULATION_ADVANCED,
 	BALL_SHOT,
+	GOAL_SCORED,
+	BALL_OUT_OF_BOUNDS,
+	RESET_COMPLETED,
+}
+
+enum ResetReason {
+	NONE,
+	GOAL,
+	OUT,
+	MANUAL_ROUND,
+	RESTART_TEST,
 }
 
 var event_type: int:
@@ -33,7 +44,37 @@ var subject_id: String:
 	get:
 		return _subject_id
 
+var reason: int:
+	get:
+		return _reason
+
+var side: int:
+	get:
+		return _side
+
+var ball_position_m: Vector2:
+	get:
+		return _ball_position_m
+
+var last_kicker_id: String:
+	get:
+		return _last_kicker_id
+
+var goal_count: int:
+	get:
+		return _goal_count
+
+var is_corner: bool:
+	get:
+		return _is_corner
+
 var _event_type: int
+var _reason: int
+var _side: int
+var _ball_position_m: Vector2
+var _last_kicker_id: String
+var _goal_count: int
+var _is_corner: bool
 var _match_time_seconds: float
 var _simulation_step: int
 var _subject_id: String
@@ -44,8 +85,20 @@ func _init(
 	new_match_time_seconds: float,
 	new_simulation_step: int,
 	new_subject_id: String = "",
+	new_reason: int = ResetReason.NONE,
+	new_side: int = MatchBoundaryResult.Side.NONE,
+	new_ball_position_m: Vector2 = Vector2.ZERO,
+	new_last_kicker_id: String = "",
+	new_goal_count: int = 0,
+	new_is_corner: bool = false,
 ) -> void:
 	_event_type = new_event_type
 	_match_time_seconds = new_match_time_seconds
 	_simulation_step = new_simulation_step
 	_subject_id = new_subject_id
+	_reason = new_reason
+	_side = new_side
+	_ball_position_m = new_ball_position_m
+	_last_kicker_id = new_last_kicker_id
+	_goal_count = new_goal_count
+	_is_corner = new_is_corner

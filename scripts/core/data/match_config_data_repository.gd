@@ -14,6 +14,8 @@ const REQUIRED_HEADERS: Array[String] = [
 	"shot_action_duration_seconds",
 	"shot_reacquire_delay_seconds",
 	"shot_apex_height_m",
+	"ball_radius_m",
+	"boundary_reset_delay_seconds",
 ]
 
 
@@ -88,13 +90,19 @@ func _parse_config(
 		values[0] <= 0.0 or values[1] <= 0.0 or values[2] < values[1]
 		or values[3] <= 0.0 or values[4] < 0.0 or values[5] <= 0.0
 		or values[6] <= values[5] or values[7] <= values[6] or values[8] < 0.0
-		or values[9] <= 0.0
+		or values[9] <= 0.0 or values[10] <= 0.0
 	):
-		result._add_error("Match config row %d has invalid shot parameters" % row_number)
+		result._add_error("Match config row %d has invalid match parameters" % row_number)
+		return null
+	if values[11] <= 0.0:
+		result._add_error(
+			"Match config row %d has invalid boundary_reset_delay_seconds" % row_number
+		)
 		return null
 	return MatchConfigDefinition.new(
 		config_id, values[0], values[1], values[2], values[3],
-		values[4], values[5], values[6], values[7], values[8], values[9],
+		values[4], values[5], values[6], values[7], values[8], values[9], values[10],
+		values[11],
 	)
 
 

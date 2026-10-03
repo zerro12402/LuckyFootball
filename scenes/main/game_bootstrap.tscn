@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://s8tjnne06m3e" path="res://scripts/app/game_bootstrap.gd" id="1_bootstrap"]
 [ext_resource type="PackedScene" uid="uid://bo36jq2r1mhs7" path="res://scenes/match/field_environment.tscn" id="2_field"]
 [ext_resource type="Script" uid="uid://dofps0ivhwmpw" path="res://scripts/input/keyboard_player_input_adapter.gd" id="3_input"]
+[ext_resource type="PackedScene" path="res://scenes/ui/match_result_hud.tscn" id="4_result_hud"]
 
 [node name="GameBootstrap" type="Node" unique_id=1859715035]
 script = ExtResource("1_bootstrap")
@@ -11,3 +12,5 @@ script = ExtResource("1_bootstrap")
 
 [node name="KeyboardPlayerInputAdapter" type="Node" parent="." unique_id=119357583]
 script = ExtResource("3_input")
+
+[node name="MatchResultHud" parent="." instance=ExtResource("4_result_hud")]

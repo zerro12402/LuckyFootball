@@ -11,6 +11,8 @@ func _init() -> void:
 	test_invalid_header_reports_error_without_data()
 	test_invalid_speed_reports_error_without_data()
 	test_invalid_shot_height_reports_error_without_data()
+	test_invalid_ball_radius_reports_error_without_data()
+	test_invalid_reset_delay_reports_error_without_data()
 	test_non_ascii_id_reports_error_without_data()
 	test_duplicate_id_reports_error_without_data()
 	for failure in _failures:
@@ -35,6 +37,10 @@ func test_valid_config_is_indexed_by_stable_id() -> void:
 			"Shot windup was parsed incorrectly")
 		_expect(is_equal_approx(config.shot_apex_height_m, 0.75),
 			"Shot apex height was parsed incorrectly")
+		_expect(is_equal_approx(config.ball_radius_m, 0.55),
+			"Ball radius was parsed incorrectly")
+		_expect(is_equal_approx(config.boundary_reset_delay_seconds, 2.0),
+			"Boundary reset delay was parsed incorrectly")
 	_expect(repository.get_match_config_by_id("unknown") == null,
 		"Unknown match config ID resolved")
 
@@ -57,6 +63,16 @@ func test_invalid_speed_reports_error_without_data() -> void:
 ## Rejects a nonpositive fixed shot apex.
 func test_invalid_shot_height_reports_error_without_data() -> void:
 	_expect_failure("match_configs_invalid_shot_height.csv")
+
+
+## Rejects a nonpositive effective ball radius.
+func test_invalid_ball_radius_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_ball_radius.csv")
+
+
+## Rejects zero seconds because result and reset must occupy separate steps.
+func test_invalid_reset_delay_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_reset_delay.csv")
 
 
 ## Rejects IDs that cannot be used as stable lowercase ASCII keys.

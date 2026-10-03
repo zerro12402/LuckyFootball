@@ -85,12 +85,11 @@ script = ExtResource("1_actor")
 
 [node name="Shadow" type="Sprite2D" parent="." unique_id=482504583]
 z_index = -1
-position = Vector2(0, 3)
+position = Vector2(0, -1)
 texture = ExtResource("2_shadow")
 
 [node name="BallSprite" type="Sprite2D" parent="." unique_id=390150922]
 unique_name_in_owner = true
-position = Vector2(0, 4)
 texture = ExtResource("3_ball")
 hframes = 4
 
