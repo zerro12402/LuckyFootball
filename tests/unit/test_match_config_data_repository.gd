@@ -13,6 +13,8 @@ func _init() -> void:
 	test_invalid_shot_height_reports_error_without_data()
 	test_invalid_ball_radius_reports_error_without_data()
 	test_invalid_reset_delay_reports_error_without_data()
+	test_invalid_hit_stun_reports_error_without_data()
+	test_invalid_lunge_distance_reports_error_without_data()
 	test_non_ascii_id_reports_error_without_data()
 	test_duplicate_id_reports_error_without_data()
 	for failure in _failures:
@@ -41,6 +43,12 @@ func test_valid_config_is_indexed_by_stable_id() -> void:
 			"Ball radius was parsed incorrectly")
 		_expect(is_equal_approx(config.boundary_reset_delay_seconds, 2.0),
 			"Boundary reset delay was parsed incorrectly")
+		_expect(is_equal_approx(config.tackle_hit_stun_seconds, 1.0),
+			"Tackle hit stun was parsed incorrectly")
+		_expect(is_equal_approx(config.tackle_action_duration_seconds, 1.0),
+			"Tackle action duration was parsed incorrectly")
+		_expect(is_equal_approx(config.tackle_lunge_distance_m, 1.0),
+			"Tackle lunge distance was parsed incorrectly")
 	_expect(repository.get_match_config_by_id("unknown") == null,
 		"Unknown match config ID resolved")
 
@@ -73,6 +81,16 @@ func test_invalid_ball_radius_reports_error_without_data() -> void:
 ## Rejects zero seconds because result and reset must occupy separate steps.
 func test_invalid_reset_delay_reports_error_without_data() -> void:
 	_expect_failure("match_configs_invalid_reset_delay.csv")
+
+
+## Rejects zero seconds so a successful tackle always has a visible hit reaction.
+func test_invalid_hit_stun_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_hit_stun.csv")
+
+
+## Rejects a nonpositive lunge distance before constructing match rules.
+func test_invalid_lunge_distance_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_lunge_distance.csv")
 
 
 ## Rejects IDs that cannot be used as stable lowercase ASCII keys.

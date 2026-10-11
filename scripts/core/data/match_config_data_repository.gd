@@ -21,6 +21,14 @@ const REQUIRED_HEADERS: Array[String] = [
 	"goal_net_tangent_retention",
 	"goal_net_stop_speed_mps",
 	"goal_net_max_motion_seconds",
+	"tackle_range_m",
+	"tackle_min_facing_dot",
+	"tackle_windup_seconds",
+	"tackle_recovery_seconds",
+	"tackle_action_duration_seconds",
+	"tackle_cooldown_seconds",
+	"tackle_hit_stun_seconds",
+	"tackle_lunge_distance_m",
 ]
 
 
@@ -109,10 +117,18 @@ func _parse_config(
 		or values[14] > 1.0 or values[15] <= 0.0 or values[16] <= 0.0):
 		result._add_error("Match config row %d has invalid goal net parameters" % row_number)
 		return null
+	if (values[17] <= 0.0 or values[18] < -1.0 or values[18] > 1.0
+		or values[19] <= 0.0 or values[20] <= values[19]
+		or values[21] <= values[20] or values[22] < 0.0
+		or values[23] <= 0.0 or values[24] <= 0.0):
+		result._add_error("Match config row %d has invalid tackle parameters" % row_number)
+		return null
 	return MatchConfigDefinition.new(
 		config_id, values[0], values[1], values[2], values[3],
 		values[4], values[5], values[6], values[7], values[8], values[9], values[10],
 		values[11], values[12], values[13], values[14], values[15], values[16],
+		values[17], values[18], values[19], values[20], values[21], values[22],
+		values[23], values[24],
 	)
 
 

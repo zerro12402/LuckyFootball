@@ -14,10 +14,13 @@ signal game_finished(snapshot: MatchStateSnapshot)
 enum DemoMode {
 	TOUCH_AND_DRIBBLE,
 	PASS_AND_SHOOT,
+	TACKLE_TEST,
 }
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
 const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
+const TEST_OPPONENT_POSITION_M := Vector2(6.0, 0.0)
+const TEST_OPPONENT_TEAM_ID := "opponent_team"
 const TEST_BALL_INITIAL_POSITION_M := Vector2(3.0, 0.0)
 const TEST_TEAM_ID := "demo_team"
 
@@ -47,6 +50,7 @@ var _game_loop: GameLoop
 var _queued_actions: Array[MatchAction] = []
 var _demo_player_id: String = ""
 var _demo_teammate_id: String = ""
+var _demo_opponent_id: String = ""
 
 
 ## Loads static data, wires demo controls, and starts a reproducible match.
@@ -67,22 +71,31 @@ func _ready() -> void:
 		return
 	if _field_environment != null:
 		_field_environment.configure(_field_definition)
+		_field_environment.configure_hit_stun(_match_config.tackle_hit_stun_seconds)
+		_field_environment.configure_tackle_duration(_match_config.tackle_action_duration_seconds)
 
 	var player_definitions := _data_repository.player_definitions
 	var required_player_count := 1
-	if demo_mode == DemoMode.PASS_AND_SHOOT:
+	if demo_mode != DemoMode.TOUCH_AND_DRIBBLE:
 		required_player_count = 2
 	if player_definitions.size() < required_player_count:
 		startup_failed.emit(PackedStringArray(["Demo players are missing"]))
 		return
 	_demo_player_id = player_definitions[0].player_id
 	_demo_teammate_id = ""
+	_demo_opponent_id = ""
 	if demo_mode == DemoMode.PASS_AND_SHOOT:
 		_demo_teammate_id = player_definitions[1].player_id
+	elif demo_mode == DemoMode.TACKLE_TEST:
+		_demo_opponent_id = player_definitions[1].player_id
 	if _field_environment != null:
+		var second_player_id := _demo_teammate_id
+		if not _demo_opponent_id.is_empty():
+			second_player_id = _demo_opponent_id
 		_field_environment.set_presented_players(
 			_demo_player_id,
-			_demo_teammate_id,
+			second_player_id,
+			demo_mode == DemoMode.TACKLE_TEST,
 		)
 	if _keyboard_input != null:
 		_keyboard_input.action_requested.connect(queue_action)
@@ -126,11 +139,33 @@ func reset_demo() -> void:
 			demo_teammate.shooting,
 		)
 		assert(did_register_teammate, "Demo teammate must register before the match starts")
+	if not _demo_opponent_id.is_empty():
+		var opponent := _data_repository.get_player_by_id(_demo_opponent_id)
+		assert(_match_simulation.register_player(
+			_demo_opponent_id, TEST_OPPONENT_POSITION_M,
+			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID, opponent.shooting
+		))
+	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
+	if demo_mode == DemoMode.TACKLE_TEST:
+		initial_ball_position_m = Vector2(0.5, 0.0)
 	var did_register_ball := _match_simulation.register_ball(
-		TEST_BALL_INITIAL_POSITION_M,
+		initial_ball_position_m,
 	)
 	assert(did_register_ball, "Demo ball must register before the match starts")
-	_game_loop = GameLoop.new(_match_simulation, fixed_delta_seconds)
+	var tackle_ai: TackleChaseAI
+	if not _demo_opponent_id.is_empty():
+		var defender_goal_center_m := Vector2(-_field_definition.length_m * 0.5, 0.0)
+		assert(_match_simulation.register_team_attacking_goal(
+			TEST_OPPONENT_TEAM_ID, defender_goal_center_m
+		))
+		tackle_ai = TackleChaseAI.new(
+			_demo_opponent_id, _demo_player_id, _match_config, defender_goal_center_m
+		)
+	_game_loop = GameLoop.new(
+		_match_simulation, fixed_delta_seconds,
+		GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS,
+		GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, tackle_ai
+	)
 	if _keyboard_input != null:
 		_keyboard_input.configure(_demo_player_id, _demo_teammate_id)
 

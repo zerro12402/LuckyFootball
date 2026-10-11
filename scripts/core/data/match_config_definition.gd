@@ -74,6 +74,38 @@ var goal_net_max_motion_seconds: float:
 	get:
 		return _goal_net_max_motion_seconds
 
+var tackle_range_m: float:
+	get:
+		return _tackle_range_m
+
+var tackle_min_facing_dot: float:
+	get:
+		return _tackle_min_facing_dot
+
+var tackle_windup_seconds: float:
+	get:
+		return _tackle_windup_seconds
+
+var tackle_recovery_seconds: float:
+	get:
+		return _tackle_recovery_seconds
+
+var tackle_action_duration_seconds: float:
+	get:
+		return _tackle_action_duration_seconds
+
+var tackle_cooldown_seconds: float:
+	get:
+		return _tackle_cooldown_seconds
+
+var tackle_hit_stun_seconds: float:
+	get:
+		return _tackle_hit_stun_seconds
+
+var tackle_lunge_distance_m: float:
+	get:
+		return _tackle_lunge_distance_m
+
 var _config_id: String
 var _shot_base_speed_mps: float
 var _shot_min_attribute_multiplier: float
@@ -92,6 +124,15 @@ var _goal_net_side_restitution: float
 var _goal_net_tangent_retention: float
 var _goal_net_stop_speed_mps: float
 var _goal_net_max_motion_seconds: float
+var _tackle_range_m: float
+var _tackle_min_facing_dot: float
+var _tackle_windup_seconds: float
+var _tackle_recovery_seconds: float
+var _tackle_action_duration_seconds: float
+var _tackle_cooldown_seconds: float
+var _tackle_hit_stun_seconds: float
+var _tackle_lunge_distance_m: float
+
 
 
 ## Rejects impossible timings and velocities before any match uses the definition.
@@ -114,6 +155,14 @@ func _init(
 	new_goal_net_tangent_retention: float,
 	new_goal_net_stop_speed_mps: float,
 	new_goal_net_max_motion_seconds: float,
+	new_tackle_range_m: float,
+	new_tackle_min_facing_dot: float,
+	new_tackle_windup_seconds: float,
+	new_tackle_recovery_seconds: float,
+	new_tackle_action_duration_seconds: float,
+	new_tackle_cooldown_seconds: float,
+	new_tackle_hit_stun_seconds: float,
+	new_tackle_lunge_distance_m: float,
 ) -> void:
 	assert(not new_config_id.is_empty(), "Match config requires an ID")
 	assert(new_shot_base_speed_mps > 0.0, "Shot base speed must be positive")
@@ -140,6 +189,14 @@ func _init(
 	assert(new_goal_net_tangent_retention >= 0.0 and new_goal_net_tangent_retention <= 1.0)
 	assert(new_goal_net_stop_speed_mps > 0.0)
 	assert(new_goal_net_max_motion_seconds > 0.0)
+	assert(new_tackle_range_m > 0.0)
+	assert(new_tackle_min_facing_dot >= -1.0 and new_tackle_min_facing_dot <= 1.0)
+	assert(new_tackle_windup_seconds > 0.0)
+	assert(new_tackle_recovery_seconds > new_tackle_windup_seconds)
+	assert(new_tackle_action_duration_seconds > new_tackle_recovery_seconds)
+	assert(new_tackle_cooldown_seconds >= 0.0)
+	assert(new_tackle_hit_stun_seconds > 0.0)
+	assert(new_tackle_lunge_distance_m > 0.0)
 	_config_id = new_config_id
 	_shot_base_speed_mps = new_shot_base_speed_mps
 	_shot_min_attribute_multiplier = new_shot_min_attribute_multiplier
@@ -158,3 +215,11 @@ func _init(
 	_goal_net_tangent_retention = new_goal_net_tangent_retention
 	_goal_net_stop_speed_mps = new_goal_net_stop_speed_mps
 	_goal_net_max_motion_seconds = new_goal_net_max_motion_seconds
+	_tackle_range_m = new_tackle_range_m
+	_tackle_min_facing_dot = new_tackle_min_facing_dot
+	_tackle_windup_seconds = new_tackle_windup_seconds
+	_tackle_recovery_seconds = new_tackle_recovery_seconds
+	_tackle_action_duration_seconds = new_tackle_action_duration_seconds
+	_tackle_cooldown_seconds = new_tackle_cooldown_seconds
+	_tackle_hit_stun_seconds = new_tackle_hit_stun_seconds
+	_tackle_lunge_distance_m = new_tackle_lunge_distance_m

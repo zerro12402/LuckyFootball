@@ -22,6 +22,9 @@ func present(snapshot: MatchStateSnapshot, events: Array[MatchEvent]) -> void:
 		elif event.event_type == MatchEvent.Type.GOAL_SCORED:
 			_last_result_text = "进球：%s" % _side_name(event.side, true)
 			result_text = _last_result_text
+		elif event.event_type == MatchEvent.Type.TACKLE_SUCCEEDED:
+			_last_result_text = "抢断成功"
+			result_text = _last_result_text
 		elif event.event_type == MatchEvent.Type.BALL_OUT_OF_BOUNDS:
 			_last_result_text = "出界：%s" % _side_name(event.side, false)
 			result_text = _last_result_text

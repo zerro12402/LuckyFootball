@@ -17,6 +17,7 @@ enum Type {
 	BALL_SHOT,
 	GOAL_SCORED,
 	GOAL_NET_CONTACT,
+	TACKLE_SUCCEEDED,
 	BALL_OUT_OF_BOUNDS,
 	RESET_COMPLETED,
 }
@@ -85,6 +86,21 @@ var velocity_after_mps: Vector2:
 	get:
 		return _velocity_after_mps
 
+var target_player_id: String:
+	get:
+		return _target_player_id
+
+var previous_owner_id: String:
+	get:
+		return _previous_owner_id
+
+var new_owner_id: String:
+	get:
+		return _new_owner_id
+
+var _target_player_id: String = ""
+var _previous_owner_id: String = ""
+var _new_owner_id: String = ""
 var _net_surface: int
 var _contact_position_m: Vector2
 var _velocity_before_mps: Vector2
@@ -113,6 +129,9 @@ func _init(
 	new_goal_count: int = 0,
 	new_is_corner: bool = false,
 	new_net_contact: GoalNetContact = null,
+	new_target_player_id: String = "",
+	new_previous_owner_id: String = "",
+	new_new_owner_id: String = "",
 ) -> void:
 	_event_type = new_event_type
 	_match_time_seconds = new_match_time_seconds
@@ -124,6 +143,9 @@ func _init(
 	_last_kicker_id = new_last_kicker_id
 	_goal_count = new_goal_count
 	_is_corner = new_is_corner
+	_target_player_id = new_target_player_id
+	_previous_owner_id = new_previous_owner_id
+	_new_owner_id = new_new_owner_id
 	if new_net_contact != null:
 		_net_surface = new_net_contact.surface
 		_contact_position_m = new_net_contact.contact_position_m

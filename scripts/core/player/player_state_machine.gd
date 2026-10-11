@@ -20,6 +20,10 @@ var movement_speed_mps: float:
 var _state: PlayerMatchState
 var _movement_speed_mps: float
 var _shot_config: MatchConfigDefinition
+var _tackle_config: MatchConfigDefinition
+var _tackle_direction: Vector2 = Vector2.ZERO
+var _tackle_cooldown_remaining_seconds: float = 0.0
+var _hit_stun_duration_seconds: float = 0.0
 
 
 ## Checks the runtime invariants shared by movement and timed actions.
@@ -36,19 +40,29 @@ func _init(
 ## Advances movement and action phases from the fixed simulation clock.
 func advance(fixed_delta_seconds: float) -> void:
 	assert(fixed_delta_seconds > 0.0, "Fixed delta must be positive")
-	if (
+	if _state.action_state == PlayerMatchState.ActionState.TACKLING:
+		_advance_tackle_motion(fixed_delta_seconds)
+	elif (
 		_state.movement_state == PlayerMatchState.MovementState.MOVING
 		and _state.action_state != PlayerMatchState.ActionState.SHOOTING
+		and _state.action_state != PlayerMatchState.ActionState.STAGGERED
 	):
 		_state._set_position(
 			_state.position_m
 			+ _state.movement_input * _get_current_movement_speed_mps() * fixed_delta_seconds
 		)
+	_tackle_cooldown_remaining_seconds = maxf(
+		_tackle_cooldown_remaining_seconds - fixed_delta_seconds, 0.0
+	)
 	_state._advance_state_time(fixed_delta_seconds)
 	if _state.action_state == PlayerMatchState.ActionState.PASSING:
 		_advance_pass_action()
 	elif _state.action_state == PlayerMatchState.ActionState.SHOOTING:
 		_advance_shot_action()
+	elif _state.action_state == PlayerMatchState.ActionState.TACKLING:
+		_advance_tackle_action()
+	elif _state.action_state == PlayerMatchState.ActionState.STAGGERED:
+		_advance_hit_stun()
 
 
 ## Normalizes movement intent while preserving the previous left-right facing on vertical input.
@@ -57,7 +71,13 @@ func set_movement_input(new_input: Vector2) -> bool:
 		return false
 	if _state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
 		return false
+	if _state.action_state == PlayerMatchState.ActionState.TACKLING:
+		return false
 	var clamped_input := new_input.limit_length(1.0)
+	if _state.action_state == PlayerMatchState.ActionState.STAGGERED:
+		# Remember the latest intent without allowing motion until recovery.
+		_state._set_movement_input(clamped_input)
+		return true
 	if clamped_input.length() <= INPUT_EPSILON:
 		_state._set_movement_input(Vector2.ZERO)
 		_set_movement_state_if_changed(PlayerMatchState.MovementState.IDLE)
@@ -75,7 +95,11 @@ func set_movement_state(new_state: int) -> bool:
 		return false
 	if _state.movement_state == new_state:
 		return false
-	if _state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
+	if _state.action_state in [
+		PlayerMatchState.ActionState.KNOCKED_DOWN,
+		PlayerMatchState.ActionState.STAGGERED,
+		PlayerMatchState.ActionState.TACKLING,
+	]:
 		return false
 	_state._set_movement_state(new_state)
 	return true
@@ -117,6 +141,43 @@ func try_start_shot(config: MatchConfigDefinition, direction: Vector2) -> bool:
 	return true
 
 
+## Starts a timed tackle only for an idle defender whose cooldown has ended.
+func try_start_tackle(config: MatchConfigDefinition) -> bool:
+	if config == null or _tackle_cooldown_remaining_seconds > 0.0:
+		return false
+	if _state.possession_state != PlayerMatchState.PossessionState.NO_BALL:
+		return false
+	if not try_start_action(PlayerMatchState.ActionState.TACKLING):
+		return false
+	_tackle_config = config
+	_tackle_direction = _state.movement_input.normalized()
+	if _tackle_direction.is_zero_approx():
+		_tackle_direction = _state.facing_direction
+	_tackle_cooldown_remaining_seconds = (
+		config.tackle_action_duration_seconds + config.tackle_cooldown_seconds
+	)
+	_state._set_movement_input(Vector2.ZERO)
+	_set_movement_state_if_changed(PlayerMatchState.MovementState.IDLE)
+	return true
+
+
+## Locks a tackled carrier in place while preserving their latest movement intent.
+func start_hit_stun(duration_seconds: float) -> bool:
+	if duration_seconds <= 0.0 or not is_finite(duration_seconds):
+		return false
+	if _state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
+		return false
+	if _state.action_state != PlayerMatchState.ActionState.IDLE:
+		finish_action()
+	_hit_stun_duration_seconds = duration_seconds
+	_state._set_action_state(
+		PlayerMatchState.ActionState.STAGGERED,
+		PlayerMatchState.ActionPhase.ACTIVE,
+	)
+	_set_movement_state_if_changed(PlayerMatchState.MovementState.IDLE)
+	return true
+
+
 ## Prevents action phases from moving backward.
 func set_action_phase(new_phase: int) -> bool:
 	if _state.action_state == PlayerMatchState.ActionState.IDLE:
@@ -136,6 +197,7 @@ func finish_action() -> bool:
 	if _state.action_state == PlayerMatchState.ActionState.IDLE:
 		return false
 	var was_shooting := _state.action_state == PlayerMatchState.ActionState.SHOOTING
+	var was_staggered := _state.action_state == PlayerMatchState.ActionState.STAGGERED
 	_state._set_action_state(
 		PlayerMatchState.ActionState.IDLE,
 		PlayerMatchState.ActionPhase.NONE,
@@ -143,6 +205,12 @@ func finish_action() -> bool:
 	if was_shooting:
 		_shot_config = null
 		_update_horizontal_facing(_state.movement_input)
+	_tackle_config = null
+	_tackle_direction = Vector2.ZERO
+	_hit_stun_duration_seconds = 0.0
+	if was_staggered and _state.movement_input.length() > INPUT_EPSILON:
+		_update_horizontal_facing(_state.movement_input)
+		_set_movement_state_if_changed(PlayerMatchState.MovementState.MOVING)
 	return true
 
 
@@ -167,6 +235,10 @@ func reset_to_spawn(spawn_position_m: Vector2) -> void:
 		PlayerMatchState.ActionPhase.NONE,
 	)
 	_shot_config = null
+	_tackle_config = null
+	_tackle_direction = Vector2.ZERO
+	_tackle_cooldown_remaining_seconds = 0.0
+	_hit_stun_duration_seconds = 0.0
 
 
 ## Applies the existing dribble speed reduction without changing the base speed.
@@ -210,4 +282,39 @@ func _advance_shot_action() -> void:
 	elif elapsed_seconds >= _shot_config.shot_recovery_seconds:
 		set_action_phase(PlayerMatchState.ActionPhase.RECOVERY)
 	elif elapsed_seconds >= _shot_config.shot_windup_seconds:
+		set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)
+
+
+
+## Releases the temporary hit lock exactly when configured simulation time expires.
+func _advance_hit_stun() -> void:
+	if _state.action_state_elapsed_seconds >= _hit_stun_duration_seconds:
+		finish_action()
+
+
+## Advances a fixed-distance tackle along the direction captured at action start.
+func _advance_tackle_motion(fixed_delta_seconds: float) -> void:
+	assert(_tackle_config != null, "Tackling requires match configuration")
+	var remaining_seconds := maxf(
+		_tackle_config.tackle_action_duration_seconds - _state.action_state_elapsed_seconds,
+		0.0,
+	)
+	var motion_seconds := minf(fixed_delta_seconds, remaining_seconds)
+	if motion_seconds <= 0.0:
+		return
+	var lunge_speed_mps := (
+		_tackle_config.tackle_lunge_distance_m / _tackle_config.tackle_action_duration_seconds
+	)
+	_state._set_position(_state.position_m + _tackle_direction * lunge_speed_mps * motion_seconds)
+
+
+## Advances the tackle windup and recovery from configuration without random checks.
+func _advance_tackle_action() -> void:
+	assert(_tackle_config != null, "Tackling requires match configuration")
+	var elapsed_seconds := _state.action_state_elapsed_seconds
+	if elapsed_seconds >= _tackle_config.tackle_action_duration_seconds:
+		finish_action()
+	elif elapsed_seconds >= _tackle_config.tackle_recovery_seconds:
+		set_action_phase(PlayerMatchState.ActionPhase.RECOVERY)
+	elif elapsed_seconds >= _tackle_config.tackle_windup_seconds:
 		set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)

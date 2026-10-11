@@ -73,12 +73,29 @@ func toggle_meter_ticks() -> void:
 	_debug_overlay.are_meter_ticks_enabled = not _debug_overlay.are_meter_ticks_enabled
 
 
+## Synchronizes both actor hit animations with the match configuration.
+func configure_hit_stun(duration_seconds: float) -> void:
+	_demo_player.configure_hit_stun(duration_seconds)
+	_demo_teammate.configure_hit_stun(duration_seconds)
+
+
+## Synchronizes tackle playback with its configured fixed-step duration.
+func configure_tackle_duration(duration_seconds: float) -> void:
+	_demo_player.configure_tackle_duration(duration_seconds)
+	_demo_teammate.configure_tackle_duration(duration_seconds)
+
+
 ## Assigns the actors displayed by the current test scene.
-func set_presented_players(player_id: String, teammate_id: String = "") -> void:
+func set_presented_players(
+	player_id: String, teammate_id: String = "", is_opponent: bool = false
+) -> void:
 	assert(not player_id.is_empty(), "The controlled player requires an ID")
 	assert(player_id != teammate_id, "Demo players require distinct IDs")
 	_presented_player_ids = [player_id]
 	_demo_teammate.visible = not teammate_id.is_empty()
+	_demo_teammate.modulate = (
+		Color(1.0, 0.55, 0.55) if is_opponent else Color(0.55, 0.9, 1.0)
+	)
 	if not teammate_id.is_empty():
 		_presented_player_ids.append(teammate_id)
 
@@ -96,7 +113,7 @@ func present(snapshot: MatchStateSnapshot) -> void:
 		_ball.present(snapshot.ball, _projection)
 
 
-## Shakes only the contacted goal art in response to an immutable simulation event.
+## Shakes only the contacted goal art in response to immutable simulation events.
 func present_events(events: Array[MatchEvent]) -> void:
 	for event in events:
 		if event.event_type != MatchEvent.Type.GOAL_NET_CONTACT:

@@ -22,6 +22,7 @@ var _pending_reset_side: int = MatchBoundaryResult.Side.NONE
 var _is_carried_settlement: bool = false
 var _out_of_play_velocity_mps: Vector2 = Vector2.ZERO
 var _attacking_goals_by_team: Dictionary[String, Vector2] = {}
+var _pending_tackle_targets: Dictionary[String, String] = {}
 
 
 ## Injects deterministic randomness and optional validated field and shooting rules.
@@ -152,6 +153,8 @@ func advance_fixed_step(
 			was_accepted = _try_start_pass(action)
 		elif action.action_type == MatchAction.Type.SHOOT:
 			was_accepted = _try_start_shot(action)
+		elif action.action_type == MatchAction.Type.TACKLE:
+			was_accepted = _try_start_tackle(action)
 		else:
 			was_accepted = _player_runtime_system.apply_action(action)
 		if was_accepted:
@@ -199,6 +202,7 @@ func advance_fixed_step(
 			ball_result.motion_end_position_m,
 			fixed_delta_seconds,
 		)
+	_resolve_pending_tackles(step_events)
 	_append_post_motion_events(ball_result, step_events)
 	if can_acquire_after_motion:
 		var loose_position_m := _ball_runtime_system.state.position_m
@@ -384,6 +388,7 @@ func _settle_boundary(
 		_player_runtime_system, is_carried_boundary, settled_ball_position_m
 	)
 	_player_runtime_system.stop_all_players_for_settlement(is_carried_boundary)
+	_pending_tackle_targets.clear()
 	if boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
 		_pending_reset_reason = MatchEvent.ResetReason.GOAL
 		_settlement_remaining_seconds = _match_config.goal_net_max_motion_seconds
@@ -437,6 +442,7 @@ func _reset_round(
 	_state._set_round_phase(MatchState.RoundPhase.RESETTING)
 	_ball_runtime_system.reset_ball(ball_reset_position_m)
 	_player_runtime_system.reset_all_players()
+	_pending_tackle_targets.clear()
 	_pending_reset_reason = MatchEvent.ResetReason.NONE
 	_pending_reset_side = MatchBoundaryResult.Side.NONE
 	_settlement_remaining_seconds = 0.0
@@ -455,6 +461,79 @@ func _reset_round(
 		side,
 		ball_reset_position_m,
 	))
+
+
+## Accepts a tackle command only for a nearby opponent carrying the ball.
+func _try_start_tackle(action: MatchAction) -> bool:
+	if _match_config == null or action.target_player_id.is_empty():
+		return false
+	var tackler := _player_runtime_system.get_player(action.player_id)
+	var carrier := _player_runtime_system.get_player(action.target_player_id)
+	if not _is_legal_tackle_contact(tackler, carrier):
+		return false
+	if not tackler.state_machine.try_start_tackle(_match_config):
+		return false
+	_pending_tackle_targets[tackler.player_id] = carrier.player_id
+	return true
+
+
+## Resolves one legal active tackle at a time in stable player-ID order.
+func _resolve_pending_tackles(events: Array[MatchEvent]) -> void:
+	for tackler in _player_runtime_system.get_players():
+		if not _pending_tackle_targets.has(tackler.player_id):
+			continue
+		if tackler.state.action_state != PlayerMatchState.ActionState.TACKLING:
+			_pending_tackle_targets.erase(tackler.player_id)
+			continue
+		if tackler.state.action_phase == PlayerMatchState.ActionPhase.WINDUP:
+			continue
+		var carrier_id := _pending_tackle_targets[tackler.player_id]
+		_pending_tackle_targets.erase(tackler.player_id)
+		var carrier := _player_runtime_system.get_player(carrier_id)
+		if not _is_legal_tackle_contact(tackler, carrier):
+			continue
+		if not _ball_runtime_system.transfer_tackled_ball(carrier, tackler):
+			continue
+		# Ball ownership changes at contact; the tackle keeps lunging until its configured end.
+		carrier.state_machine.start_hit_stun(_match_config.tackle_hit_stun_seconds)
+		events.append(MatchEvent.new(
+			MatchEvent.Type.TACKLE_SUCCEEDED,
+			_state.elapsed_seconds,
+			_state.simulation_step,
+			tackler.player_id,
+			MatchEvent.ResetReason.NONE,
+			MatchBoundaryResult.Side.NONE,
+			_ball_runtime_system.state.position_m,
+			"", 0, false, null,
+			carrier.player_id,
+			carrier.player_id,
+			tackler.player_id,
+		))
+		events.append(_create_event(
+			MatchEvent.Type.BALL_POSSESSION_GAINED, tackler.player_id
+		))
+
+
+## Applies geometry and ownership rules without sampling player attributes.
+func _is_legal_tackle_contact(tackler: PlayerRuntime, carrier: PlayerRuntime) -> bool:
+	if tackler == null or carrier == null or tackler.player_id == carrier.player_id:
+		return false
+	if tackler.team_id == carrier.team_id:
+		return false
+	if _ball_runtime_system.state == null:
+		return false
+	if _ball_runtime_system.state.owner_player_id != carrier.player_id:
+		return false
+	if tackler.state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
+		return false
+	var toward_carrier := carrier.state.position_m - tackler.state.position_m
+	if toward_carrier.length() > _match_config.tackle_range_m:
+		return false
+	if toward_carrier.is_zero_approx():
+		return true
+	return tackler.state.facing_direction.dot(toward_carrier.normalized()) >= (
+		_match_config.tackle_min_facing_dot
+	)
 
 
 ## Resolves pass participants before asking the ball system to start windup.
