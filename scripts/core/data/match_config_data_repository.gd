@@ -2,8 +2,8 @@
 class_name MatchConfigDataRepository
 extends RefCounted
 
-const REQUIRED_HEADERS: Array[String] = [
-	"config_id",
+const CSV_HEADERS: Array[String] = ["key", "value", "comment"]
+const REQUIRED_KEYS: Array[String] = [
 	"shot_base_speed_mps",
 	"shot_min_attribute_multiplier",
 	"shot_max_attribute_multiplier",
@@ -32,7 +32,7 @@ const REQUIRED_HEADERS: Array[String] = [
 ]
 
 
-## Validates the full table before exposing any configuration definitions.
+## Validates every key/value block before exposing any configuration definitions.
 func load_from_csv(csv_path: String) -> MatchConfigDataLoadResult:
 	var result := MatchConfigDataLoadResult.new()
 	if not FileAccess.file_exists(csv_path):
@@ -47,56 +47,85 @@ func load_from_csv(csv_path: String) -> MatchConfigDataLoadResult:
 		return result
 	var parsed_configs: Array[MatchConfigDefinition] = []
 	var known_ids: Dictionary[String, bool] = {}
+	var config_values: Dictionary[String, String] = {}
+	var config_id := ""
+	var config_row := 0
+	var has_config := false
 	var row_number := 1
 	while not csv_file.eof_reached():
 		var columns := csv_file.get_csv_line()
 		row_number += 1
 		if columns.size() == 1 and columns[0].strip_edges().is_empty():
 			continue
-		var config := _parse_config(columns, row_number, known_ids, result)
-		if config != null:
-			parsed_configs.append(config)
+		if columns.size() != CSV_HEADERS.size():
+			result._add_error("Match config row %d has an invalid column count" % row_number)
+			continue
+		var key := columns[0].strip_edges()
+		var raw_value := columns[1].strip_edges()
+		if key == "config_id":
+			if has_config:
+				var previous_config := _parse_config(
+					config_id, config_values, config_row, known_ids, result)
+				if previous_config != null:
+					parsed_configs.append(previous_config)
+			config_id = raw_value
+			config_values = {}
+			config_row = row_number
+			has_config = true
+		elif not has_config:
+			result._add_error("Match config row %d appears before config_id" % row_number)
+		elif not REQUIRED_KEYS.has(key):
+			result._add_error("Match config row %d has unknown key %s" % [row_number, key])
+		elif config_values.has(key):
+			result._add_error("Match config row %d has duplicate key %s" % [row_number, key])
+		else:
+			config_values[key] = raw_value
+	if has_config:
+		var last_config := _parse_config(
+			config_id, config_values, config_row, known_ids, result)
+		if last_config != null:
+			parsed_configs.append(last_config)
 	if parsed_configs.is_empty():
-		result._add_error("Match config CSV requires at least one row")
+		result._add_error("Match config CSV requires at least one valid config_id block")
 	if result.is_success:
 		result._replace_configs(parsed_configs)
 	return result
 
 
-## Requires a fixed header order so malformed rows cannot change rule meanings.
+## Checks only the three structural columns; parameter rows may be reordered freely.
 func _has_required_headers(headers: PackedStringArray) -> bool:
-	if headers.size() != REQUIRED_HEADERS.size():
+	if headers.size() != CSV_HEADERS.size():
 		return false
-	for index in range(REQUIRED_HEADERS.size()):
-		if headers[index].strip_edges() != REQUIRED_HEADERS[index]:
+	for index in range(CSV_HEADERS.size()):
+		if headers[index].strip_edges() != CSV_HEADERS[index]:
 			return false
 	return true
 
 
-## Rejects duplicate IDs, invalid numbers, and inconsistent action timings.
+## Builds one preset by key, rejecting missing values before numeric validation.
 func _parse_config(
-	columns: PackedStringArray,
+	config_id: String,
+	config_values: Dictionary[String, String],
 	row_number: int,
 	known_ids: Dictionary[String, bool],
 	result: MatchConfigDataLoadResult,
 ) -> MatchConfigDefinition:
-	if columns.size() != REQUIRED_HEADERS.size():
-		result._add_error("Match config row %d has an invalid column count" % row_number)
-		return null
-	var config_id := columns[0].strip_edges()
 	if not _is_valid_ascii_id(config_id) or known_ids.has(config_id):
 		result._add_error("Match config row %d has an invalid or duplicate config_id" % row_number)
 		return null
 	known_ids[config_id] = true
 	var values: Array[float] = []
-	for index in range(1, REQUIRED_HEADERS.size()):
-		var raw_value := columns[index].strip_edges()
+	for key in REQUIRED_KEYS:
+		if not config_values.has(key):
+			result._add_error("Match config row %d is missing %s" % [row_number, key])
+			return null
+		var raw_value := config_values[key]
 		if not raw_value.is_valid_float():
-			result._add_error("Match config row %d has invalid %s" % [row_number, REQUIRED_HEADERS[index]])
+			result._add_error("Match config row %d has invalid %s" % [row_number, key])
 			return null
 		var parsed_value := raw_value.to_float()
 		if not is_finite(parsed_value):
-			result._add_error("Match config row %d has non-finite %s" % [row_number, REQUIRED_HEADERS[index]])
+			result._add_error("Match config row %d has non-finite %s" % [row_number, key])
 			return null
 		values.append(parsed_value)
 	if (

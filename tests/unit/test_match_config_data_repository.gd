@@ -9,6 +9,10 @@ func _init() -> void:
 	test_valid_config_is_indexed_by_stable_id()
 	test_missing_config_reports_error_without_data()
 	test_invalid_header_reports_error_without_data()
+	test_reordered_keys_load_by_name()
+	test_missing_key_reports_error_without_data()
+	test_duplicate_key_reports_error_without_data()
+	test_unknown_key_reports_error_without_data()
 	test_invalid_speed_reports_error_without_data()
 	test_invalid_shot_height_reports_error_without_data()
 	test_invalid_ball_radius_reports_error_without_data()
@@ -61,6 +65,34 @@ func test_missing_config_reports_error_without_data() -> void:
 ## Rejects an incompatible CSV schema before reading rows.
 func test_invalid_header_reports_error_without_data() -> void:
 	_expect_failure("match_configs_invalid_header.csv")
+
+
+## Confirms parameter rows can be moved without changing their meanings.
+func test_reordered_keys_load_by_name() -> void:
+	var result := MatchConfigDataRepository.new().load_from_csv(
+		"res://tests/fixtures/match_configs_reordered_keys.csv")
+	_expect(result.is_success, "Reordered match config keys did not load")
+	_expect(result.configs.size() == 1, "Reordered keys lost the preset")
+	if not result.configs.is_empty():
+		_expect(is_equal_approx(result.configs[0].shot_base_speed_mps, 20.0),
+			"Reordered shot speed was parsed incorrectly")
+		_expect(is_equal_approx(result.configs[0].tackle_lunge_distance_m, 1.0),
+			"Reordered tackle distance was parsed incorrectly")
+
+
+## Requires every rule key in each preset.
+func test_missing_key_reports_error_without_data() -> void:
+	_expect_failure("match_configs_missing_key.csv")
+
+
+## Rejects a repeated parameter instead of silently overriding it.
+func test_duplicate_key_reports_error_without_data() -> void:
+	_expect_failure("match_configs_duplicate_key.csv")
+
+
+## Rejects misspelled or unsupported parameter names.
+func test_unknown_key_reports_error_without_data() -> void:
+	_expect_failure("match_configs_unknown_key.csv")
 
 
 ## Rejects negative shot speed as an invalid rule value.

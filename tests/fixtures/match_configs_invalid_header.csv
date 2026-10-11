@@ -1,2 +1,2 @@
-config_id,wrong_column
-demo_match,20
+wrong_key,value,comment
+config_id,demo_match,配置预设标识
