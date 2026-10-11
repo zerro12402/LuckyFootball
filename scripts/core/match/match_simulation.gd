@@ -3,6 +3,7 @@ class_name MatchSimulation
 extends RefCounted
 
 const SETTLEMENT_TIME_EPSILON := 0.000001
+const KNOCKDOWN_WINDOW_EPSILON := 0.000001
 
 var _state: MatchState
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -23,6 +24,7 @@ var _is_carried_settlement: bool = false
 var _out_of_play_velocity_mps: Vector2 = Vector2.ZERO
 var _attacking_goals_by_team: Dictionary[String, Vector2] = {}
 var _pending_tackle_targets: Dictionary[String, String] = {}
+var _pending_knockdown_targets: Dictionary[String, String] = {}
 
 
 ## Injects deterministic randomness and optional validated field and shooting rules.
@@ -155,11 +157,24 @@ func advance_fixed_step(
 			was_accepted = _try_start_shot(action)
 		elif action.action_type == MatchAction.Type.TACKLE:
 			was_accepted = _try_start_tackle(action)
+		elif action.action_type == MatchAction.Type.ATTACK:
+			was_accepted = _try_start_knockdown(action)
 		else:
 			was_accepted = _player_runtime_system.apply_action(action)
 		if was_accepted:
 			step_events.append(_create_event(MatchEvent.Type.ACTION_ACCEPTED, action.player_id))
+	# Check frame-start contact before movement can carry the attacker past a nearby target.
+	var was_ball_released_by_knockdown := _resolve_pending_knockdowns(step_events)
+	var recovering_player_ids: Array[String] = []
+	for player in _player_runtime_system.get_players():
+		if player.state.action_state == PlayerMatchState.ActionState.GETTING_UP:
+			recovering_player_ids.append(player.player_id)
 	_player_runtime_system.advance(fixed_delta_seconds)
+	for player_id in recovering_player_ids:
+		if _player_runtime_system.get_player(player_id).state.action_state == (
+			PlayerMatchState.ActionState.IDLE
+		):
+			step_events.append(_create_event(MatchEvent.Type.PLAYER_RECOVERED, player_id))
 	var can_acquire_after_motion := (
 		_ball_runtime_system.state != null
 		and _ball_runtime_system.state.motion_state != BallMatchState.MotionState.IN_FLIGHT
@@ -203,8 +218,12 @@ func advance_fixed_step(
 			fixed_delta_seconds,
 		)
 	_resolve_pending_tackles(step_events)
+	var released_after_motion := _resolve_pending_knockdowns(step_events)
+	was_ball_released_by_knockdown = (
+		was_ball_released_by_knockdown or released_after_motion
+	)
 	_append_post_motion_events(ball_result, step_events)
-	if can_acquire_after_motion:
+	if can_acquire_after_motion and not was_ball_released_by_knockdown:
 		var loose_position_m := _ball_runtime_system.state.position_m
 		var possession_result := _ball_runtime_system.acquire_loose_ball(_player_runtime_system)
 		if not possession_result.new_owner_player_id.is_empty():
@@ -389,6 +408,7 @@ func _settle_boundary(
 	)
 	_player_runtime_system.stop_all_players_for_settlement(is_carried_boundary)
 	_pending_tackle_targets.clear()
+	_pending_knockdown_targets.clear()
 	if boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
 		_pending_reset_reason = MatchEvent.ResetReason.GOAL
 		_settlement_remaining_seconds = _match_config.goal_net_max_motion_seconds
@@ -443,6 +463,7 @@ func _reset_round(
 	_ball_runtime_system.reset_ball(ball_reset_position_m)
 	_player_runtime_system.reset_all_players()
 	_pending_tackle_targets.clear()
+	_pending_knockdown_targets.clear()
 	_pending_reset_reason = MatchEvent.ResetReason.NONE
 	_pending_reset_side = MatchBoundaryResult.Side.NONE
 	_settlement_remaining_seconds = 0.0
@@ -533,6 +554,126 @@ func _is_legal_tackle_contact(tackler: PlayerRuntime, carrier: PlayerRuntime) ->
 		return true
 	return tackler.state.facing_direction.dot(toward_carrier.normalized()) >= (
 		_match_config.tackle_min_facing_dot
+	)
+
+
+## Starts a melee lunge toward a valid opponent; contact geometry is checked later.
+func _try_start_knockdown(action: MatchAction) -> bool:
+	if _match_config == null or action.target_player_id.is_empty():
+		return false
+	var attacker := _player_runtime_system.get_player(action.player_id)
+	var target := _player_runtime_system.get_player(action.target_player_id)
+	if not _is_valid_knockdown_target(attacker, target):
+		return false
+	if not attacker.state_machine.try_start_knockdown(_match_config):
+		return false
+	_pending_knockdown_targets[attacker.player_id] = target.player_id
+	return true
+
+
+## Checks contact throughout the configured window, emitting only one hit or miss per lunge.
+func _resolve_pending_knockdowns(events: Array[MatchEvent]) -> bool:
+	var was_ball_released := false
+	for attacker in _player_runtime_system.get_players():
+		if not _pending_knockdown_targets.has(attacker.player_id):
+			continue
+		var is_attacking := attacker.state.action_state == PlayerMatchState.ActionState.ATTACKING
+		var is_just_landed := (
+			attacker.state.action_state == PlayerMatchState.ActionState.LANDING
+			and attacker.state.action_state_elapsed_seconds <= KNOCKDOWN_WINDOW_EPSILON
+		)
+		if not is_attacking and not is_just_landed:
+			_pending_knockdown_targets.erase(attacker.player_id)
+			continue
+		var elapsed_seconds := attacker.state.action_state_elapsed_seconds
+		if is_just_landed:
+			elapsed_seconds = _match_config.knockdown_action_duration_seconds
+		if elapsed_seconds + KNOCKDOWN_WINDOW_EPSILON < (
+			_match_config.knockdown_hit_window_start_seconds
+		):
+			continue
+		var target_id := _pending_knockdown_targets[attacker.player_id]
+		if elapsed_seconds <= _match_config.knockdown_hit_window_end_seconds + (
+			KNOCKDOWN_WINDOW_EPSILON
+		):
+			var target := _player_runtime_system.get_player(target_id)
+			if _is_legal_knockdown_contact(attacker, target):
+				var impact_direction := target.state.position_m - attacker.state.position_m
+				if impact_direction.is_zero_approx():
+					impact_direction = attacker.state_machine.knockdown_direction
+				if target.state_machine.start_knockdown(_match_config):
+					_pending_knockdown_targets.erase(attacker.player_id)
+					var previous_owner_id := _ball_runtime_system.state.owner_player_id
+					# Drop at the contact point before moving the target away from it.
+					if _ball_runtime_system.release_knocked_down_ball(target):
+						was_ball_released = true
+					assert(target.state_machine.start_knockback(impact_direction))
+					events.append(MatchEvent.new(
+						MatchEvent.Type.PLAYER_KNOCKED_DOWN,
+						_state.elapsed_seconds,
+						_state.simulation_step,
+						attacker.player_id,
+						MatchEvent.ResetReason.NONE,
+						MatchBoundaryResult.Side.NONE,
+						_ball_runtime_system.state.position_m,
+						"", 0, false, null,
+						target.player_id,
+						previous_owner_id,
+						_ball_runtime_system.state.owner_player_id,
+					))
+					continue
+		if elapsed_seconds + KNOCKDOWN_WINDOW_EPSILON >= (
+			_match_config.knockdown_hit_window_end_seconds
+		):
+			_pending_knockdown_targets.erase(attacker.player_id)
+			_append_knockdown_miss(events, attacker.player_id, target_id)
+	return was_ball_released
+
+
+## Emits one missed-contact fact after a lunge's hit window expires.
+func _append_knockdown_miss(
+	events: Array[MatchEvent], attacker_id: String, target_id: String,
+) -> void:
+	events.append(MatchEvent.new(
+		MatchEvent.Type.KNOCKDOWN_MISSED,
+		_state.elapsed_seconds,
+		_state.simulation_step,
+		attacker_id,
+		MatchEvent.ResetReason.NONE,
+		MatchBoundaryResult.Side.NONE,
+		_ball_runtime_system.state.position_m,
+		"", 0, false, null, target_id,
+	))
+
+
+## Rejects only invalid actors at command time so a lunge can start outside contact range.
+func _is_valid_knockdown_target(attacker: PlayerRuntime, target: PlayerRuntime) -> bool:
+	if attacker == null or target == null or attacker.player_id == target.player_id:
+		return false
+	if attacker.team_id == target.team_id or _ball_runtime_system.state == null:
+		return false
+	if attacker.state.action_state in [
+		PlayerMatchState.ActionState.KNOCKED_DOWN,
+		PlayerMatchState.ActionState.GETTING_UP,
+	]:
+		return false
+	return target.state.action_state not in [
+		PlayerMatchState.ActionState.KNOCKED_DOWN,
+		PlayerMatchState.ActionState.GETTING_UP,
+	]
+
+
+## Checks metre-space distance and facing at each eligible fixed step.
+func _is_legal_knockdown_contact(attacker: PlayerRuntime, target: PlayerRuntime) -> bool:
+	if not _is_valid_knockdown_target(attacker, target):
+		return false
+	var toward_target := target.state.position_m - attacker.state.position_m
+	if toward_target.length() > _match_config.knockdown_range_m:
+		return false
+	if toward_target.is_zero_approx():
+		return true
+	return attacker.state.facing_direction.dot(toward_target.normalized()) >= (
+		_match_config.knockdown_min_facing_dot
 	)
 
 

@@ -92,6 +92,7 @@ func try_start_pass(passer: PlayerRuntime, receiver: PlayerRuntime) -> bool:
 		return false
 	if receiver.state.action_state in [
 		PlayerMatchState.ActionState.KNOCKED_DOWN,
+		PlayerMatchState.ActionState.GETTING_UP,
 		PlayerMatchState.ActionState.STAGGERED,
 	]:
 		return false
@@ -180,6 +181,18 @@ func transfer_tackled_ball(carrier: PlayerRuntime, tackler: PlayerRuntime) -> bo
 	_state._set_owner(tackler.player_id)
 	tackler.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
 	_set_ball_at_control_point(tackler)
+	return true
+
+
+## Releases a knocked-down carrier's ball at contact without awarding it to the attacker.
+func release_knocked_down_ball(carrier: PlayerRuntime) -> bool:
+	if _state == null or carrier == null or _state.owner_player_id != carrier.player_id:
+		return false
+	carrier.state_machine.set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
+	_pending_pass_target_id = ""
+	_pending_pass_elapsed_seconds = 0.0
+	_clear_pending_shot()
+	_state._release(carrier.state.position_m)
 	return true
 
 
@@ -524,7 +537,9 @@ func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 			continue
 		if player_runtime.state.action_state in [
 			PlayerMatchState.ActionState.KNOCKED_DOWN,
+			PlayerMatchState.ActionState.GETTING_UP,
 			PlayerMatchState.ActionState.STAGGERED,
+			PlayerMatchState.ActionState.ATTACKING,
 		]:
 			continue
 		if (

@@ -24,6 +24,7 @@ enum ActionState {
 	DODGING,
 	KNOCKED_DOWN,
 	GETTING_UP,
+	LANDING,
 }
 
 enum ActionPhase {

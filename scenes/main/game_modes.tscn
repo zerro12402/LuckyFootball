@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/app/game_mode_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://scenes/match/formal_match.tscn" id="2_formal"]
 [ext_resource type="PackedScene" path="res://scenes/test/touch_dribble_demo.tscn" id="3_touch"]
 [ext_resource type="PackedScene" path="res://scenes/test/pass_shoot_demo.tscn" id="4_pass"]
 [ext_resource type="PackedScene" path="res://scenes/test/tackle_test_demo.tscn" id="5_tackle"]
+[ext_resource type="PackedScene" path="res://scenes/test/knockdown_test_demo.tscn" id="6_knockdown"]
 
 [node name="GameModes" type="Node"]
 script = ExtResource("1_controller")
@@ -12,6 +13,7 @@ formal_match_scene = ExtResource("2_formal")
 touch_dribble_scene = ExtResource("3_touch")
 pass_shoot_scene = ExtResource("4_pass")
 tackle_test_scene = ExtResource("5_tackle")
+knockdown_test_scene = ExtResource("6_knockdown")
 
 [node name="ModeHost" type="Node" parent="."]
 unique_name_in_owner = true
@@ -23,7 +25,7 @@ layer = 10
 offset_left = 12.0
 offset_top = 12.0
 offset_right = 190.0
-offset_bottom = 164.0
+offset_bottom = 204.0
 
 [node name="ModeButtons" type="VBoxContainer" parent="ModeUi/ModePanel"]
 layout_mode = 2
@@ -56,3 +58,11 @@ layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "抢断测试"
+
+
+[node name="KnockdownTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+text = "击倒测试（L）"

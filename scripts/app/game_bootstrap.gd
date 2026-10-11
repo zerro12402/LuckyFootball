@@ -15,11 +15,13 @@ enum DemoMode {
 	TOUCH_AND_DRIBBLE,
 	PASS_AND_SHOOT,
 	TACKLE_TEST,
+	KNOCKDOWN_TEST,
 }
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
 const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
 const TEST_OPPONENT_POSITION_M := Vector2(6.0, 0.0)
+const TEST_KNOCKDOWN_OPPONENT_POSITION_M := Vector2(1.05, 0.0)
 const TEST_OPPONENT_TEAM_ID := "opponent_team"
 const TEST_BALL_INITIAL_POSITION_M := Vector2(3.0, 0.0)
 const TEST_TEAM_ID := "demo_team"
@@ -73,6 +75,11 @@ func _ready() -> void:
 		_field_environment.configure(_field_definition)
 		_field_environment.configure_hit_stun(_match_config.tackle_hit_stun_seconds)
 		_field_environment.configure_tackle_duration(_match_config.tackle_action_duration_seconds)
+		_field_environment.configure_knockdown(
+			_match_config.knockdown_action_duration_seconds,
+			_match_config.knockdown_jump_height_m,
+			_match_config.knockdown_landing_animation_seconds,
+		)
 
 	var player_definitions := _data_repository.player_definitions
 	var required_player_count := 1
@@ -86,7 +93,7 @@ func _ready() -> void:
 	_demo_opponent_id = ""
 	if demo_mode == DemoMode.PASS_AND_SHOOT:
 		_demo_teammate_id = player_definitions[1].player_id
-	elif demo_mode == DemoMode.TACKLE_TEST:
+	elif demo_mode in [DemoMode.TACKLE_TEST, DemoMode.KNOCKDOWN_TEST]:
 		_demo_opponent_id = player_definitions[1].player_id
 	if _field_environment != null:
 		var second_player_id := _demo_teammate_id
@@ -95,7 +102,7 @@ func _ready() -> void:
 		_field_environment.set_presented_players(
 			_demo_player_id,
 			second_player_id,
-			demo_mode == DemoMode.TACKLE_TEST,
+			demo_mode in [DemoMode.TACKLE_TEST, DemoMode.KNOCKDOWN_TEST],
 		)
 	if _keyboard_input != null:
 		_keyboard_input.action_requested.connect(queue_action)
@@ -141,13 +148,18 @@ func reset_demo() -> void:
 		assert(did_register_teammate, "Demo teammate must register before the match starts")
 	if not _demo_opponent_id.is_empty():
 		var opponent := _data_repository.get_player_by_id(_demo_opponent_id)
+		var opponent_position_m := TEST_OPPONENT_POSITION_M
+		if demo_mode == DemoMode.KNOCKDOWN_TEST:
+			opponent_position_m = TEST_KNOCKDOWN_OPPONENT_POSITION_M
 		assert(_match_simulation.register_player(
-			_demo_opponent_id, TEST_OPPONENT_POSITION_M,
+			_demo_opponent_id, opponent_position_m,
 			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID, opponent.shooting
 		))
 	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
 	if demo_mode == DemoMode.TACKLE_TEST:
 		initial_ball_position_m = Vector2(0.5, 0.0)
+	elif demo_mode == DemoMode.KNOCKDOWN_TEST:
+		initial_ball_position_m = Vector2(1.6, 0.0)
 	var did_register_ball := _match_simulation.register_ball(
 		initial_ball_position_m,
 	)
@@ -158,16 +170,17 @@ func reset_demo() -> void:
 		assert(_match_simulation.register_team_attacking_goal(
 			TEST_OPPONENT_TEAM_ID, defender_goal_center_m
 		))
-		tackle_ai = TackleChaseAI.new(
-			_demo_opponent_id, _demo_player_id, _match_config, defender_goal_center_m
-		)
+		if demo_mode == DemoMode.TACKLE_TEST:
+			tackle_ai = TackleChaseAI.new(
+				_demo_opponent_id, _demo_player_id, _match_config, defender_goal_center_m
+			)
 	_game_loop = GameLoop.new(
 		_match_simulation, fixed_delta_seconds,
 		GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS,
 		GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, tackle_ai
 	)
 	if _keyboard_input != null:
-		_keyboard_input.configure(_demo_player_id, _demo_teammate_id)
+		_keyboard_input.configure(_demo_player_id, _demo_teammate_id, _demo_opponent_id)
 
 	var did_start := _match_simulation.start_match()
 	assert(did_start, "A new match must start from the ready phase")
@@ -228,7 +241,7 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_result := _game_loop.advance_frame(frame_delta_seconds, frame_actions)
 	for event in frame_result.events:
 		if event.event_type == MatchEvent.Type.RESET_COMPLETED and _keyboard_input != null:
-			_keyboard_input.configure(_demo_player_id, _demo_teammate_id)
+			_keyboard_input.configure(_demo_player_id, _demo_teammate_id, _demo_opponent_id)
 			break
 	if _field_environment != null:
 		_field_environment.present(frame_result.snapshot)

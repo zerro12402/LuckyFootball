@@ -1,4 +1,4 @@
-## Holds validated, read-only match rules loaded from a versioned CSV row.
+## Holds validated, read-only match rules loaded from a versioned CSV preset.
 class_name MatchConfigDefinition
 extends RefCounted
 
@@ -106,6 +106,87 @@ var tackle_lunge_distance_m: float:
 	get:
 		return _tackle_lunge_distance_m
 
+var knockdown_range_m: float:
+	get:
+		return _knockdown_range_m
+
+var knockdown_min_facing_dot: float:
+	get:
+		return _knockdown_min_facing_dot
+
+var knockdown_windup_seconds: float:
+	get:
+		return _knockdown_windup_seconds
+
+var knockdown_recovery_seconds: float:
+	get:
+		return _knockdown_recovery_seconds
+
+var knockdown_action_duration_seconds: float:
+	get:
+		return _knockdown_action_duration_seconds
+
+var knockdown_cooldown_seconds: float:
+	get:
+		return _knockdown_cooldown_seconds
+
+var knockdown_lunge_distance_m: float:
+	get:
+		return _knockdown_lunge_distance_m
+
+var knockdown_jump_height_m: float:
+	get:
+		return _knockdown_jump_height_m
+
+var knockdown_hit_window_start_seconds: float:
+	get:
+		return _knockdown_hit_window_start_seconds
+
+var knockdown_hit_window_end_seconds: float:
+	get:
+		return _knockdown_hit_window_end_seconds
+
+var knockdown_knockback_duration_seconds: float:
+	get:
+		return _knockdown_knockback_duration_seconds
+
+var knockdown_knockback_distance_m: float:
+	get:
+		return _knockdown_knockback_distance_m
+
+var knockdown_landing_animation_seconds: float:
+	get:
+		return _knockdown_landing_animation_seconds
+
+var knockdown_crouch_hold_seconds: float:
+	get:
+		return _knockdown_crouch_hold_seconds
+
+var knockdown_down_seconds: float:
+	get:
+		return _knockdown_down_seconds
+
+var knockdown_get_up_seconds: float:
+	get:
+		return _knockdown_get_up_seconds
+
+var _knockdown_range_m: float
+var _knockdown_min_facing_dot: float
+var _knockdown_windup_seconds: float
+var _knockdown_recovery_seconds: float
+var _knockdown_action_duration_seconds: float
+var _knockdown_cooldown_seconds: float
+var _knockdown_lunge_distance_m: float
+var _knockdown_jump_height_m: float
+var _knockdown_hit_window_start_seconds: float
+var _knockdown_hit_window_end_seconds: float
+var _knockdown_knockback_duration_seconds: float
+var _knockdown_knockback_distance_m: float
+var _knockdown_landing_animation_seconds: float
+var _knockdown_crouch_hold_seconds: float
+var _knockdown_down_seconds: float
+var _knockdown_get_up_seconds: float
+
 var _config_id: String
 var _shot_base_speed_mps: float
 var _shot_min_attribute_multiplier: float
@@ -135,7 +216,7 @@ var _tackle_lunge_distance_m: float
 
 
 
-## Rejects impossible timings and velocities before any match uses the definition.
+## Rejects impossible rule values before any match uses the definition.
 func _init(
 	new_config_id: String,
 	new_shot_base_speed_mps: float,
@@ -163,6 +244,22 @@ func _init(
 	new_tackle_cooldown_seconds: float,
 	new_tackle_hit_stun_seconds: float,
 	new_tackle_lunge_distance_m: float,
+	new_knockdown_range_m: float,
+	new_knockdown_min_facing_dot: float,
+	new_knockdown_windup_seconds: float,
+	new_knockdown_recovery_seconds: float,
+	new_knockdown_action_duration_seconds: float,
+	new_knockdown_cooldown_seconds: float,
+	new_knockdown_lunge_distance_m: float,
+	new_knockdown_jump_height_m: float,
+	new_knockdown_down_seconds: float,
+	new_knockdown_get_up_seconds: float,
+	new_knockdown_landing_animation_seconds: float,
+	new_knockdown_crouch_hold_seconds: float,
+	new_knockdown_hit_window_start_seconds: float,
+	new_knockdown_hit_window_end_seconds: float,
+	new_knockdown_knockback_distance_m: float,
+	new_knockdown_knockback_duration_seconds: float,
 ) -> void:
 	assert(not new_config_id.is_empty(), "Match config requires an ID")
 	assert(new_shot_base_speed_mps > 0.0, "Shot base speed must be positive")
@@ -222,4 +319,38 @@ func _init(
 	_tackle_action_duration_seconds = new_tackle_action_duration_seconds
 	_tackle_cooldown_seconds = new_tackle_cooldown_seconds
 	_tackle_hit_stun_seconds = new_tackle_hit_stun_seconds
+	assert(new_knockdown_range_m > 0.0)
+	assert(new_knockdown_min_facing_dot >= -1.0 and new_knockdown_min_facing_dot <= 1.0)
+	assert(new_knockdown_windup_seconds > 0.0)
+	assert(new_knockdown_recovery_seconds > new_knockdown_windup_seconds)
+	assert(new_knockdown_action_duration_seconds > new_knockdown_recovery_seconds)
+	assert(new_knockdown_cooldown_seconds >= 0.0)
+	assert(new_knockdown_lunge_distance_m > 0.0)
+	assert(new_knockdown_jump_height_m >= 0.0)
+	assert(new_knockdown_down_seconds > 0.0)
+	assert(new_knockdown_get_up_seconds > 0.0)
+	assert(new_knockdown_landing_animation_seconds > 0.0)
+	assert(new_knockdown_crouch_hold_seconds >= 0.0)
+	assert(new_knockdown_hit_window_start_seconds >= 0.0)
+	assert(new_knockdown_hit_window_end_seconds > new_knockdown_hit_window_start_seconds)
+	assert(new_knockdown_hit_window_end_seconds <= new_knockdown_action_duration_seconds)
+	assert(new_knockdown_knockback_distance_m >= 0.0)
+	assert(new_knockdown_knockback_duration_seconds > 0.0)
+	assert(new_knockdown_knockback_duration_seconds <= new_knockdown_down_seconds)
 	_tackle_lunge_distance_m = new_tackle_lunge_distance_m
+	_knockdown_range_m = new_knockdown_range_m
+	_knockdown_min_facing_dot = new_knockdown_min_facing_dot
+	_knockdown_windup_seconds = new_knockdown_windup_seconds
+	_knockdown_recovery_seconds = new_knockdown_recovery_seconds
+	_knockdown_action_duration_seconds = new_knockdown_action_duration_seconds
+	_knockdown_cooldown_seconds = new_knockdown_cooldown_seconds
+	_knockdown_lunge_distance_m = new_knockdown_lunge_distance_m
+	_knockdown_jump_height_m = new_knockdown_jump_height_m
+	_knockdown_down_seconds = new_knockdown_down_seconds
+	_knockdown_get_up_seconds = new_knockdown_get_up_seconds
+	_knockdown_landing_animation_seconds = new_knockdown_landing_animation_seconds
+	_knockdown_crouch_hold_seconds = new_knockdown_crouch_hold_seconds
+	_knockdown_hit_window_start_seconds = new_knockdown_hit_window_start_seconds
+	_knockdown_hit_window_end_seconds = new_knockdown_hit_window_end_seconds
+	_knockdown_knockback_distance_m = new_knockdown_knockback_distance_m
+	_knockdown_knockback_duration_seconds = new_knockdown_knockback_duration_seconds

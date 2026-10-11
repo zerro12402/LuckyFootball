@@ -85,6 +85,16 @@ func configure_tackle_duration(duration_seconds: float) -> void:
 	_demo_teammate.configure_tackle_duration(duration_seconds)
 
 
+## Applies the same configured hop height and timing to both visible players.
+func configure_knockdown(
+	duration_seconds: float,
+	jump_height_m: float,
+	landing_animation_seconds: float,
+) -> void:
+	_demo_player.configure_knockdown(duration_seconds, jump_height_m, landing_animation_seconds)
+	_demo_teammate.configure_knockdown(duration_seconds, jump_height_m, landing_animation_seconds)
+
+
 ## Assigns the actors displayed by the current test scene.
 func set_presented_players(
 	player_id: String, teammate_id: String = "", is_opponent: bool = false

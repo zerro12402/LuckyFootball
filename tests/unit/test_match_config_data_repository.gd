@@ -19,6 +19,13 @@ func _init() -> void:
 	test_invalid_reset_delay_reports_error_without_data()
 	test_invalid_hit_stun_reports_error_without_data()
 	test_invalid_lunge_distance_reports_error_without_data()
+	_test_invalid_hit_window_start()
+	_test_invalid_hit_window_end()
+	_test_invalid_hit_window_order()
+	_test_invalid_knockback_distance()
+	_test_invalid_knockback_duration()
+	_test_invalid_crouch_hold()
+	_test_invalid_knockdown_jump_height()
 	test_non_ascii_id_reports_error_without_data()
 	test_duplicate_id_reports_error_without_data()
 	for failure in _failures:
@@ -53,6 +60,16 @@ func test_valid_config_is_indexed_by_stable_id() -> void:
 			"Tackle action duration was parsed incorrectly")
 		_expect(is_equal_approx(config.tackle_lunge_distance_m, 1.0),
 			"Tackle lunge distance was parsed incorrectly")
+		_expect(is_equal_approx(config.knockdown_crouch_hold_seconds, 0.5),
+			"Knockdown crouch hold was parsed incorrectly")
+		_expect(is_equal_approx(config.knockdown_hit_window_start_seconds, 0.0),
+			"Hit window start was parsed incorrectly")
+		_expect(is_equal_approx(config.knockdown_hit_window_end_seconds, 0.8),
+			"Hit window end was parsed incorrectly")
+		_expect(is_equal_approx(config.knockdown_knockback_distance_m, 2.0),
+			"Knockback distance was parsed incorrectly")
+		_expect(is_equal_approx(config.knockdown_knockback_duration_seconds, 0.2),
+			"Knockback duration was parsed incorrectly")
 	_expect(repository.get_match_config_by_id("unknown") == null,
 		"Unknown match config ID resolved")
 
@@ -123,6 +140,41 @@ func test_invalid_hit_stun_reports_error_without_data() -> void:
 ## Rejects a nonpositive lunge distance before constructing match rules.
 func test_invalid_lunge_distance_reports_error_without_data() -> void:
 	_expect_failure("match_configs_invalid_lunge_distance.csv")
+
+
+## Rejects a hit window that begins before its attack starts.
+func _test_invalid_hit_window_start() -> void:
+	_expect_failure("match_configs_invalid_hit_window_start.csv")
+
+
+## Rejects a hit window that ends after the lunge finishes.
+func _test_invalid_hit_window_end() -> void:
+	_expect_failure("match_configs_invalid_hit_window_end.csv")
+
+
+## Rejects an empty hit window whose start equals its end.
+func _test_invalid_hit_window_order() -> void:
+	_expect_failure("match_configs_invalid_hit_window_order.csv")
+
+
+## Rejects negative knockback distance before constructing match rules.
+func _test_invalid_knockback_distance() -> void:
+	_expect_failure("match_configs_invalid_knockback_distance.csv")
+
+
+## Rejects a nonpositive knockback duration before constructing match rules.
+func _test_invalid_knockback_duration() -> void:
+	_expect_failure("match_configs_invalid_knockback_duration.csv")
+
+
+## Rejects a negative crouch interval before the configuration is exposed.
+func _test_invalid_crouch_hold() -> void:
+	_expect_failure("match_configs_invalid_crouch_hold.csv")
+
+
+## Rejects a negative visual hop height before the configuration is exposed.
+func _test_invalid_knockdown_jump_height() -> void:
+	_expect_failure("match_configs_invalid_jump_height.csv")
 
 
 ## Rejects IDs that cannot be used as stable lowercase ASCII keys.

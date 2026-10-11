@@ -29,6 +29,22 @@ const REQUIRED_KEYS: Array[String] = [
 	"tackle_cooldown_seconds",
 	"tackle_hit_stun_seconds",
 	"tackle_lunge_distance_m",
+	"knockdown_range_m",
+	"knockdown_min_facing_dot",
+	"knockdown_windup_seconds",
+	"knockdown_recovery_seconds",
+	"knockdown_action_duration_seconds",
+	"knockdown_cooldown_seconds",
+	"knockdown_lunge_distance_m",
+	"knockdown_jump_height_m",
+	"knockdown_down_seconds",
+	"knockdown_get_up_seconds",
+	"knockdown_landing_animation_seconds",
+	"knockdown_crouch_hold_seconds",
+	"knockdown_hit_window_start_seconds",
+	"knockdown_hit_window_end_seconds",
+	"knockdown_knockback_distance_m",
+	"knockdown_knockback_duration_seconds",
 ]
 
 
@@ -152,12 +168,26 @@ func _parse_config(
 		or values[23] <= 0.0 or values[24] <= 0.0):
 		result._add_error("Match config row %d has invalid tackle parameters" % row_number)
 		return null
+	if (values[25] <= 0.0 or values[26] < -1.0 or values[26] > 1.0
+		or values[27] <= 0.0 or values[28] <= values[27]
+		or values[29] <= values[28] or values[30] < 0.0
+		or values[31] <= 0.0 or values[32] < 0.0
+		or values[33] <= 0.0 or values[34] <= 0.0
+		or values[35] <= 0.0 or values[36] < 0.0
+		or values[37] < 0.0 or values[38] <= values[37]
+		or values[38] > values[29] or values[39] < 0.0
+		or values[40] <= 0.0 or values[40] > values[33]):
+		result._add_error("Match config row %d has invalid knockdown parameters" % row_number)
+		return null
 	return MatchConfigDefinition.new(
 		config_id, values[0], values[1], values[2], values[3],
 		values[4], values[5], values[6], values[7], values[8], values[9], values[10],
 		values[11], values[12], values[13], values[14], values[15], values[16],
 		values[17], values[18], values[19], values[20], values[21], values[22],
 		values[23], values[24],
+		values[25], values[26], values[27], values[28], values[29],
+		values[30], values[31], values[32], values[33], values[34],
+		values[35], values[36], values[37], values[38], values[39], values[40],
 	)
 
 
