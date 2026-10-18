@@ -16,6 +16,7 @@ enum DemoMode {
 	PASS_AND_SHOOT,
 	TACKLE_TEST,
 	KNOCKDOWN_TEST,
+	ATTACK_RECOIL_TEST,
 }
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
@@ -93,7 +94,11 @@ func _ready() -> void:
 	_demo_opponent_id = ""
 	if demo_mode == DemoMode.PASS_AND_SHOOT:
 		_demo_teammate_id = player_definitions[1].player_id
-	elif demo_mode in [DemoMode.TACKLE_TEST, DemoMode.KNOCKDOWN_TEST]:
+	elif demo_mode in [
+		DemoMode.TACKLE_TEST,
+		DemoMode.KNOCKDOWN_TEST,
+		DemoMode.ATTACK_RECOIL_TEST,
+	]:
 		_demo_opponent_id = player_definitions[1].player_id
 	if _field_environment != null:
 		var second_player_id := _demo_teammate_id
@@ -102,7 +107,11 @@ func _ready() -> void:
 		_field_environment.set_presented_players(
 			_demo_player_id,
 			second_player_id,
-			demo_mode in [DemoMode.TACKLE_TEST, DemoMode.KNOCKDOWN_TEST],
+			demo_mode in [
+				DemoMode.TACKLE_TEST,
+				DemoMode.KNOCKDOWN_TEST,
+				DemoMode.ATTACK_RECOIL_TEST,
+			],
 		)
 	if _keyboard_input != null:
 		_keyboard_input.action_requested.connect(queue_action)
@@ -120,7 +129,12 @@ func reset_demo() -> void:
 		return
 	set_process(false)
 	_queued_actions.clear()
-	_match_simulation = MatchSimulation.new(random_seed, _match_config, _field_definition)
+	var melee_outcome := MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN
+	if demo_mode == DemoMode.ATTACK_RECOIL_TEST:
+		melee_outcome = MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
+	_match_simulation = MatchSimulation.new(
+		random_seed, _match_config, _field_definition, melee_outcome
+	)
 	var opponent_goal_center_m := Vector2(_field_definition.length_m * 0.5, 0.0)
 	var did_register_goal := _match_simulation.register_team_attacking_goal(
 		TEST_TEAM_ID,
@@ -149,7 +163,7 @@ func reset_demo() -> void:
 	if not _demo_opponent_id.is_empty():
 		var opponent := _data_repository.get_player_by_id(_demo_opponent_id)
 		var opponent_position_m := TEST_OPPONENT_POSITION_M
-		if demo_mode == DemoMode.KNOCKDOWN_TEST:
+		if demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 			opponent_position_m = TEST_KNOCKDOWN_OPPONENT_POSITION_M
 		assert(_match_simulation.register_player(
 			_demo_opponent_id, opponent_position_m,
@@ -158,7 +172,7 @@ func reset_demo() -> void:
 	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
 	if demo_mode == DemoMode.TACKLE_TEST:
 		initial_ball_position_m = Vector2(0.5, 0.0)
-	elif demo_mode == DemoMode.KNOCKDOWN_TEST:
+	elif demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 		initial_ball_position_m = Vector2(1.6, 0.0)
 	var did_register_ball := _match_simulation.register_ball(
 		initial_ball_position_m,

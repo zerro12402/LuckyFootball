@@ -21,6 +21,10 @@ func _init() -> void:
 	_field = repository.get_field_by_id("demo_field")
 	test_attack_rejects_invalid_geometry_and_team()
 	test_knockdown_waits_for_contact_and_releases_ball()
+	test_carrier_can_start_physical_attack()
+	test_carrier_attack_without_contact_drops_ball()
+	test_rejected_carrier_attack_retains_ball()
+	test_fixed_recoil_pushes_attacker_back_and_preserves_carrier_ball()
 	test_configured_knockback_distance()
 	test_overlap_uses_attack_direction_for_knockback()
 	test_lunge_reaches_target_started_outside_contact_range()
@@ -62,6 +66,102 @@ func test_attack_rejects_invalid_geometry_and_team() -> void:
 	var teammate_events := teammate_simulation.advance_fixed_step(STEP, [_attack_command()])
 	_expect(_find_event(teammate_events, MatchEvent.Type.ACTION_ACCEPTED) == null,
 		"Teammate attack was accepted")
+
+
+## Starting a melee lunge drops the carrier's ball at its last control point.
+func test_carrier_can_start_physical_attack() -> void:
+	var simulation := _create_carrier_match(Vector2(2.0, 0.0), "away")
+	simulation.advance_fixed_step(STEP, [
+		MatchAction.new(ATTACKER_ID, MatchAction.Type.MOVE, Vector2.RIGHT)
+	])
+	_expect(simulation.create_snapshot().get_player(ATTACKER_ID).movement_state
+		== PlayerMatchState.MovementState.MOVING,
+		"Carrier was not dribbling before attacking")
+	var ball_position_before_attack := simulation.create_snapshot().ball.position_m
+	var action_events := simulation.advance_fixed_step(STEP, [_attack_command()])
+	_expect(_find_event(action_events, MatchEvent.Type.ACTION_ACCEPTED) != null,
+		"Carrier could not start a physical attack")
+	var attack_snapshot := simulation.create_snapshot()
+	_expect(attack_snapshot.ball.owner_player_id.is_empty(),
+		"Carrier retained the ball after starting a physical attack")
+	_expect(attack_snapshot.get_player(ATTACKER_ID).possession_state
+		== PlayerMatchState.PossessionState.NO_BALL,
+		"Attacker's possession state did not clear")
+	_expect(attack_snapshot.ball.position_m.distance_to(ball_position_before_attack) < 0.0001,
+		"Dropped ball moved with the attacking player")
+	var did_hit := _find_event(action_events, MatchEvent.Type.PLAYER_KNOCKED_DOWN) != null
+	for step_index in range(5):
+		var events := simulation.advance_fixed_step(STEP, [])
+		if _find_event(events, MatchEvent.Type.PLAYER_KNOCKED_DOWN) != null:
+			did_hit = true
+	_expect(did_hit, "Carrier's physical attack did not hit")
+	_expect(simulation.create_snapshot().ball.owner_player_id != ATTACKER_ID,
+		"Attacker reacquired the ball during the physical attack")
+
+
+## An accepted attack drops the ball even if its lunge never reaches a target.
+func test_carrier_attack_without_contact_drops_ball() -> void:
+	var simulation := _create_carrier_match(Vector2(7.0, 0.0), "away")
+	var drop_position := simulation.create_snapshot().ball.position_m
+	var action_events := simulation.advance_fixed_step(STEP, [_attack_command()])
+	_expect(_find_event(action_events, MatchEvent.Type.ACTION_ACCEPTED) != null,
+		"Distant physical attack was rejected")
+	_expect(_find_event(action_events, MatchEvent.Type.PLAYER_KNOCKED_DOWN) == null,
+		"Distant target was hit on attack start")
+	var snapshot := simulation.create_snapshot()
+	_expect(snapshot.ball.owner_player_id.is_empty(),
+		"Missed attack retained ball ownership")
+	_expect(snapshot.ball.position_m.distance_to(drop_position) < 0.0001,
+		"Missed attack moved the dropped ball")
+
+
+## An invalid attack must not take the ball away from its carrier.
+func test_rejected_carrier_attack_retains_ball() -> void:
+	var simulation := _create_carrier_match(Vector2(2.0, 0.0), "home")
+	var action_events := simulation.advance_fixed_step(STEP, [_attack_command()])
+	_expect(_find_event(action_events, MatchEvent.Type.ACTION_ACCEPTED) == null,
+		"Attack against a teammate was accepted")
+	_expect(simulation.create_snapshot().ball.owner_player_id == ATTACKER_ID,
+		"Rejected attack dropped the ball")
+
+
+## The injected recoil outcome pushes the attacker back while the target keeps the ball.
+func test_fixed_recoil_pushes_attacker_back_and_preserves_carrier_ball() -> void:
+	var simulation := MatchSimulation.new(
+		91, _config, _field, MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
+	)
+	_expect(simulation.register_player(ATTACKER_ID, Vector2.ZERO, 5.0, "home"),
+		"Attacker registration failed")
+	_expect(simulation.register_player(TARGET_ID, Vector2(1.05, 0.0), 5.0, "away"),
+		"Carrier registration failed")
+	_expect(simulation.register_ball(Vector2(1.6, 0.0)), "Ball registration failed")
+	_expect(simulation.start_match(), "Match failed to start")
+	simulation.advance_fixed_step(STEP, [])
+	_expect(simulation.create_snapshot().ball.owner_player_id == TARGET_ID,
+		"Target did not possess the ball before recoil")
+	var contact_events := simulation.advance_fixed_step(STEP, [_attack_command()])
+	var recoil := _find_event(contact_events, MatchEvent.Type.ATTACK_RECOILED)
+	_expect(recoil != null, "Carrier contact did not recoil the attacker")
+	_expect(_find_event(contact_events, MatchEvent.Type.PLAYER_KNOCKED_DOWN) == null,
+		"Recoil also knocked down the carrier")
+	var snapshot := simulation.create_snapshot()
+	_expect(snapshot.get_player(ATTACKER_ID).action_state
+		== PlayerMatchState.ActionState.KNOCKED_DOWN,
+		"Recoil did not put the attacker in the hit state")
+	_expect(snapshot.get_player(ATTACKER_ID).position_m.distance_to(Vector2.LEFT) < 0.0001,
+		"Attacker did not move backward during the first fixed step")
+	_expect(snapshot.get_player(TARGET_ID).action_state == PlayerMatchState.ActionState.IDLE,
+		"Recoil changed the carrier's action state")
+	_expect(snapshot.ball.owner_player_id == TARGET_ID,
+		"Carrier lost the ball during recoil")
+	var next_events := simulation.advance_fixed_step(STEP, [])
+	_expect(_find_event(next_events, MatchEvent.Type.ATTACK_RECOILED) == null,
+		"One attack produced multiple recoil events")
+	_expect(simulation.create_snapshot().get_player(ATTACKER_ID).position_m.distance_to(
+		Vector2.LEFT * _config.knockdown_knockback_distance_m
+	) < 0.0001, "Recoil did not reach its configured reverse distance")
+	_expect(simulation.create_snapshot().ball.owner_player_id == TARGET_ID,
+		"Carrier lost possession after the recoil motion")
 
 
 ## A target reached on a later active step drops the ball and produces one hit.
@@ -397,6 +497,21 @@ func test_reset_clears_knockdown() -> void:
 		"Reset retained knockdown state")
 	_expect(simulation.create_snapshot().get_player(ATTACKER_ID).position_m == Vector2.ZERO,
 		"Reset retained lunge displacement")
+
+
+## Starts a match with the attacker already carrying the ball.
+func _create_carrier_match(target_position_m: Vector2, target_team_id: String) -> MatchSimulation:
+	var simulation := MatchSimulation.new(91, _config, _field)
+	_expect(simulation.register_player(ATTACKER_ID, Vector2.ZERO, 5.0, "home"),
+		"Attacker registration failed")
+	_expect(simulation.register_player(TARGET_ID, target_position_m, 5.0, target_team_id),
+		"Target registration failed")
+	_expect(simulation.register_ball(Vector2(0.55, 0.0)), "Ball registration failed")
+	_expect(simulation.start_match(), "Match failed to start")
+	simulation.advance_fixed_step(STEP, [])
+	_expect(simulation.create_snapshot().ball.owner_player_id == ATTACKER_ID,
+		"Attacker did not acquire the ball")
+	return simulation
 
 
 ## Places a stationary target in front and optionally gives them the loose ball.

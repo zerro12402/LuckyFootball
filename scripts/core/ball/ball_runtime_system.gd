@@ -196,6 +196,18 @@ func release_knocked_down_ball(carrier: PlayerRuntime) -> bool:
 	return true
 
 
+## Drops a carrier's ball at its control point when a melee attack begins.
+func release_attacking_ball(attacker: PlayerRuntime) -> bool:
+	if _state == null or attacker == null or _state.owner_player_id != attacker.player_id:
+		return false
+	attacker.state_machine.set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
+	_pending_pass_target_id = ""
+	_pending_pass_elapsed_seconds = 0.0
+	_clear_pending_shot()
+	_state._release(_state.position_m)
+	return true
+
+
 ## Clears possession, trajectories, windups, and reacquisition protection atomically.
 func reset_ball(reset_position_m: Vector2) -> void:
 	assert(_state != null, "Cannot reset an unregistered ball")

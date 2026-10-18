@@ -9,6 +9,7 @@ enum Mode {
 	PASS_AND_SHOOT,
 	TACKLE_TEST,
 	KNOCKDOWN_TEST,
+	ATTACK_RECOIL_TEST,
 }
 
 @export var formal_match_scene: PackedScene
@@ -16,6 +17,7 @@ enum Mode {
 @export var pass_shoot_scene: PackedScene
 @export var tackle_test_scene: PackedScene
 @export var knockdown_test_scene: PackedScene
+@export var attack_recoil_test_scene: PackedScene
 
 @onready var _mode_host: Node = %ModeHost
 @onready var _formal_match_button: Button = %FormalMatchButton
@@ -23,6 +25,7 @@ enum Mode {
 @onready var _pass_shoot_button: Button = %PassShootButton
 @onready var _tackle_test_button: Button = %TackleTestButton
 @onready var _knockdown_test_button: Button = %KnockdownTestButton
+@onready var _attack_recoil_test_button: Button = %AttackRecoilTestButton
 
 var current_mode: Mode:
 	get:
@@ -39,6 +42,7 @@ func _ready() -> void:
 	_pass_shoot_button.pressed.connect(_show_pass_shoot)
 	_tackle_test_button.pressed.connect(_show_tackle_test)
 	_knockdown_test_button.pressed.connect(_show_knockdown_test)
+	_attack_recoil_test_button.pressed.connect(_show_attack_recoil_test)
 	show_mode(Mode.PASS_AND_SHOOT)
 
 
@@ -58,6 +62,7 @@ func show_mode(mode: Mode) -> void:
 	_pass_shoot_button.set_pressed_no_signal(mode == Mode.PASS_AND_SHOOT)
 	_tackle_test_button.set_pressed_no_signal(mode == Mode.TACKLE_TEST)
 	_knockdown_test_button.set_pressed_no_signal(mode == Mode.KNOCKDOWN_TEST)
+	_attack_recoil_test_button.set_pressed_no_signal(mode == Mode.ATTACK_RECOIL_TEST)
 
 
 ## Finds the configured scene for a requested mode.
@@ -73,6 +78,8 @@ func _scene_for_mode(mode: Mode) -> PackedScene:
 			return tackle_test_scene
 		Mode.KNOCKDOWN_TEST:
 			return knockdown_test_scene
+		Mode.ATTACK_RECOIL_TEST:
+			return attack_recoil_test_scene
 		_:
 			return null
 
@@ -97,3 +104,8 @@ func _show_tackle_test() -> void:
 ## Opens the stationary-opponent knockdown test scene.
 func _show_knockdown_test() -> void:
 	show_mode(Mode.KNOCKDOWN_TEST)
+
+
+## Opens the fixed-result test where a melee attack rebounds from the ball carrier.
+func _show_attack_recoil_test() -> void:
+	show_mode(Mode.ATTACK_RECOIL_TEST)

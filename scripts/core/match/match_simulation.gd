@@ -5,6 +5,11 @@ extends RefCounted
 const SETTLEMENT_TIME_EPSILON := 0.000001
 const KNOCKDOWN_WINDOW_EPSILON := 0.000001
 
+enum MeleeOutcome {
+	TARGET_KNOCKED_DOWN,
+	ATTACKER_RECOILS,
+}
+
 var _state: MatchState
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _lifecycle_events: Array[MatchEvent] = []
@@ -25,6 +30,7 @@ var _out_of_play_velocity_mps: Vector2 = Vector2.ZERO
 var _attacking_goals_by_team: Dictionary[String, Vector2] = {}
 var _pending_tackle_targets: Dictionary[String, String] = {}
 var _pending_knockdown_targets: Dictionary[String, String] = {}
+var _melee_outcome: MeleeOutcome
 
 
 ## Injects deterministic randomness and optional validated field and shooting rules.
@@ -32,11 +38,13 @@ func _init(
 	random_seed: int,
 	match_config: MatchConfigDefinition = null,
 	field_definition: FieldDefinition = null,
+	melee_outcome: MeleeOutcome = MeleeOutcome.TARGET_KNOCKED_DOWN,
 ) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
 	_match_config = match_config
 	_field_definition = field_definition
+	_melee_outcome = melee_outcome
 	if match_config != null:
 		_ball_runtime_system.configure_shots(match_config)
 		_boundary_reset_delay_seconds = match_config.boundary_reset_delay_seconds
@@ -567,6 +575,7 @@ func _try_start_knockdown(action: MatchAction) -> bool:
 		return false
 	if not attacker.state_machine.try_start_knockdown(_match_config):
 		return false
+	_ball_runtime_system.release_attacking_ball(attacker)
 	_pending_knockdown_targets[attacker.player_id] = target.player_id
 	return true
 
@@ -601,6 +610,10 @@ func _resolve_pending_knockdowns(events: Array[MatchEvent]) -> bool:
 				var impact_direction := target.state.position_m - attacker.state.position_m
 				if impact_direction.is_zero_approx():
 					impact_direction = attacker.state_machine.knockdown_direction
+				if _melee_outcome == MeleeOutcome.ATTACKER_RECOILS:
+					if _apply_attack_recoil(attacker, target, impact_direction, events):
+						_pending_knockdown_targets.erase(attacker.player_id)
+						continue
 				if target.state_machine.start_knockdown(_match_config):
 					_pending_knockdown_targets.erase(attacker.player_id)
 					var previous_owner_id := _ball_runtime_system.state.owner_player_id
@@ -628,6 +641,34 @@ func _resolve_pending_knockdowns(events: Array[MatchEvent]) -> bool:
 			_pending_knockdown_targets.erase(attacker.player_id)
 			_append_knockdown_miss(events, attacker.player_id, target_id)
 	return was_ball_released
+
+
+## Applies the injected test outcome without comparing player attributes.
+func _apply_attack_recoil(
+	attacker: PlayerRuntime,
+	target: PlayerRuntime,
+	impact_direction: Vector2,
+	events: Array[MatchEvent],
+) -> bool:
+	if not attacker.state_machine.start_knockdown(_match_config):
+		return false
+	var did_start_knockback := attacker.state_machine.start_knockback(-impact_direction)
+	assert(did_start_knockback, "Recoil requires a valid opposite direction")
+	var owner_id := _ball_runtime_system.state.owner_player_id
+	events.append(MatchEvent.new(
+		MatchEvent.Type.ATTACK_RECOILED,
+		_state.elapsed_seconds,
+		_state.simulation_step,
+		attacker.player_id,
+		MatchEvent.ResetReason.NONE,
+		MatchBoundaryResult.Side.NONE,
+		_ball_runtime_system.state.position_m,
+		"", 0, false, null,
+		target.player_id,
+		owner_id,
+		owner_id,
+	))
+	return true
 
 
 ## Emits one missed-contact fact after a lunge's hit window expires.

@@ -1,4 +1,4 @@
-## Displays score and settled ball results from snapshots and events only.
+## Displays score and match outcomes from snapshots and events only.
 class_name MatchResultHud
 extends CanvasLayer
 
@@ -27,6 +27,9 @@ func present(snapshot: MatchStateSnapshot, events: Array[MatchEvent]) -> void:
 			result_text = _last_result_text
 		elif event.event_type == MatchEvent.Type.PLAYER_KNOCKED_DOWN:
 			_last_result_text = "击倒成功"
+			result_text = _last_result_text
+		elif event.event_type == MatchEvent.Type.ATTACK_RECOILED:
+			_last_result_text = "攻击被反弹"
 			result_text = _last_result_text
 		elif event.event_type == MatchEvent.Type.KNOCKDOWN_MISSED:
 			_last_result_text = "击倒未命中"
