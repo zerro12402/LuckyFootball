@@ -5,6 +5,7 @@ shot_min_attribute_multiplier,0.75,射门属性对应的最小球速倍率
 shot_max_attribute_multiplier,1.35,射门属性对应的最大球速倍率
 shot_ground_deceleration_mps2,12,地面足球减速度，单位米每二次方秒
 shot_stop_speed_mps,0.5,球速低于此值时停止，单位米每秒
+ball_control_max_speed_mps,15,test fixture
 shot_windup_seconds,0.20,射门起脚前摇时长，单位秒
 shot_recovery_seconds,0.30,射门进入收招阶段的时间点，单位秒
 shot_action_duration_seconds,0.45,射门动作总时长，单位秒

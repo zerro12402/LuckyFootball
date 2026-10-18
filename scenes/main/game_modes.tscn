@@ -1,21 +1,13 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/app/game_mode_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://scenes/match/formal_match.tscn" id="2_formal"]
-[ext_resource type="PackedScene" path="res://scenes/test/touch_dribble_demo.tscn" id="3_touch"]
-[ext_resource type="PackedScene" path="res://scenes/test/pass_shoot_demo.tscn" id="4_pass"]
-[ext_resource type="PackedScene" path="res://scenes/test/tackle_test_demo.tscn" id="5_tackle"]
-[ext_resource type="PackedScene" path="res://scenes/test/knockdown_test_demo.tscn" id="6_knockdown"]
-[ext_resource type="PackedScene" path="res://scenes/test/attack_recoil_test_demo.tscn" id="7_recoil"]
+[ext_resource type="PackedScene" path="res://scenes/main/game_bootstrap.tscn" id="3_demo"]
 
 [node name="GameModes" type="Node"]
 script = ExtResource("1_controller")
 formal_match_scene = ExtResource("2_formal")
-touch_dribble_scene = ExtResource("3_touch")
-pass_shoot_scene = ExtResource("4_pass")
-tackle_test_scene = ExtResource("5_tackle")
-knockdown_test_scene = ExtResource("6_knockdown")
-attack_recoil_test_scene = ExtResource("7_recoil")
+demo_scene = ExtResource("3_demo")
 
 [node name="ModeHost" type="Node" parent="."]
 unique_name_in_owner = true

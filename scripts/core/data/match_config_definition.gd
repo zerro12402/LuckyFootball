@@ -26,6 +26,10 @@ var shot_stop_speed_mps: float:
 	get:
 		return _shot_stop_speed_mps
 
+var ball_control_max_speed_mps: float:
+	get:
+		return _ball_control_max_speed_mps
+
 var shot_windup_seconds: float:
 	get:
 		return _shot_windup_seconds
@@ -193,6 +197,7 @@ var _shot_min_attribute_multiplier: float
 var _shot_max_attribute_multiplier: float
 var _shot_ground_deceleration_mps2: float
 var _shot_stop_speed_mps: float
+var _ball_control_max_speed_mps: float
 var _shot_windup_seconds: float
 var _shot_recovery_seconds: float
 var _shot_action_duration_seconds: float
@@ -260,6 +265,7 @@ func _init(
 	new_knockdown_hit_window_end_seconds: float,
 	new_knockdown_knockback_distance_m: float,
 	new_knockdown_knockback_duration_seconds: float,
+	new_ball_control_max_speed_mps: float,
 ) -> void:
 	assert(not new_config_id.is_empty(), "Match config requires an ID")
 	assert(new_shot_base_speed_mps > 0.0, "Shot base speed must be positive")
@@ -270,6 +276,7 @@ func _init(
 	)
 	assert(new_shot_ground_deceleration_mps2 > 0.0, "Shot deceleration must be positive")
 	assert(new_shot_stop_speed_mps >= 0.0, "Shot stop speed cannot be negative")
+	assert(new_ball_control_max_speed_mps > 0.0, "Ball control speed must be positive")
 	assert(new_shot_windup_seconds > 0.0, "Shot windup must be positive")
 	assert(new_shot_recovery_seconds > new_shot_windup_seconds, "Shot recovery must follow windup")
 	assert(
@@ -300,6 +307,7 @@ func _init(
 	_shot_max_attribute_multiplier = new_shot_max_attribute_multiplier
 	_shot_ground_deceleration_mps2 = new_shot_ground_deceleration_mps2
 	_shot_stop_speed_mps = new_shot_stop_speed_mps
+	_ball_control_max_speed_mps = new_ball_control_max_speed_mps
 	_shot_windup_seconds = new_shot_windup_seconds
 	_shot_recovery_seconds = new_shot_recovery_seconds
 	_shot_action_duration_seconds = new_shot_action_duration_seconds

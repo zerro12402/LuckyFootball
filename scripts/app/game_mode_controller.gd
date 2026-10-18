@@ -1,4 +1,4 @@
-## Switches between isolated demo modes without sharing mutable match state.
+## Switches isolated modes through the shared demo scene without referencing test scenes.
 class_name GameModeController
 extends Node
 
@@ -13,11 +13,7 @@ enum Mode {
 }
 
 @export var formal_match_scene: PackedScene
-@export var touch_dribble_scene: PackedScene
-@export var pass_shoot_scene: PackedScene
-@export var tackle_test_scene: PackedScene
-@export var knockdown_test_scene: PackedScene
-@export var attack_recoil_test_scene: PackedScene
+@export var demo_scene: PackedScene
 
 @onready var _mode_host: Node = %ModeHost
 @onready var _formal_match_button: Button = %FormalMatchButton
@@ -46,11 +42,15 @@ func _ready() -> void:
 	show_mode(Mode.PASS_AND_SHOOT)
 
 
-## Replaces the previous mode scene and updates the selected button.
+## Configures a fresh scene before it enters the tree, then updates the active mode.
 func show_mode(mode: Mode) -> void:
 	var selected_scene := _scene_for_mode(mode)
 	assert(selected_scene != null, "Each game mode requires a scene")
 	var next_mode_scene := selected_scene.instantiate()
+	if mode != Mode.FORMAL_MATCH:
+		var demo_bootstrap := next_mode_scene as GameBootstrap
+		assert(demo_bootstrap != null, "Demo modes require a GameBootstrap scene")
+		_configure_demo_mode(mode, demo_bootstrap)
 	if _active_mode_scene != null:
 		_mode_host.remove_child(_active_mode_scene)
 		_active_mode_scene.queue_free()
@@ -65,23 +65,28 @@ func show_mode(mode: Mode) -> void:
 	_attack_recoil_test_button.set_pressed_no_signal(mode == Mode.ATTACK_RECOIL_TEST)
 
 
-## Finds the configured scene for a requested mode.
+## Keeps formal play separate while all interactive demos share one scene resource.
 func _scene_for_mode(mode: Mode) -> PackedScene:
+	if mode == Mode.FORMAL_MATCH:
+		return formal_match_scene
+	return demo_scene
+
+
+## Sets the requested demo preset before GameBootstrap starts its match.
+func _configure_demo_mode(mode: Mode, demo_bootstrap: GameBootstrap) -> void:
 	match mode:
-		Mode.FORMAL_MATCH:
-			return formal_match_scene
 		Mode.TOUCH_AND_DRIBBLE:
-			return touch_dribble_scene
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.TOUCH_AND_DRIBBLE
 		Mode.PASS_AND_SHOOT:
-			return pass_shoot_scene
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.PASS_AND_SHOOT
 		Mode.TACKLE_TEST:
-			return tackle_test_scene
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.TACKLE_TEST
 		Mode.KNOCKDOWN_TEST:
-			return knockdown_test_scene
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.KNOCKDOWN_TEST
 		Mode.ATTACK_RECOIL_TEST:
-			return attack_recoil_test_scene
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.ATTACK_RECOIL_TEST
 		_:
-			return null
+			assert(false, "Unsupported demo mode")
 
 
 func _show_formal_match() -> void:
@@ -96,16 +101,16 @@ func _show_pass_shoot() -> void:
 	show_mode(Mode.PASS_AND_SHOOT)
 
 
-## Opens the opponent chase-and-tackle test scene.
+## Opens the opponent chase-and-tackle demo preset.
 func _show_tackle_test() -> void:
 	show_mode(Mode.TACKLE_TEST)
 
 
-## Opens the stationary-opponent knockdown test scene.
+## Opens the stationary-opponent knockdown demo preset.
 func _show_knockdown_test() -> void:
 	show_mode(Mode.KNOCKDOWN_TEST)
 
 
-## Opens the fixed-result test where a melee attack rebounds from the ball carrier.
+## Opens the fixed-result demo where a melee attack rebounds from the ball carrier.
 func _show_attack_recoil_test() -> void:
 	show_mode(Mode.ATTACK_RECOIL_TEST)

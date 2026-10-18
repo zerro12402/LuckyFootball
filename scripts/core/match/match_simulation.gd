@@ -33,7 +33,7 @@ var _pending_knockdown_targets: Dictionary[String, String] = {}
 var _melee_outcome: MeleeOutcome
 
 
-## Injects deterministic randomness and optional validated field and shooting rules.
+## Injects deterministic randomness and optional validated field and ball rules.
 func _init(
 	random_seed: int,
 	match_config: MatchConfigDefinition = null,
@@ -46,7 +46,7 @@ func _init(
 	_field_definition = field_definition
 	_melee_outcome = melee_outcome
 	if match_config != null:
-		_ball_runtime_system.configure_shots(match_config)
+		_ball_runtime_system.configure_match_rules(match_config)
 		_boundary_reset_delay_seconds = match_config.boundary_reset_delay_seconds
 	if field_definition != null:
 		assert(match_config != null, "Field boundaries require a ball radius configuration")

@@ -30,6 +30,7 @@ var _max_pass_distance_m: float
 var _lofted_pass_min_distance_m: float
 var _lofted_pass_apex_height_m: float
 var _shot_config: MatchConfigDefinition
+var _ball_control_max_speed_mps: float = INF
 var _pending_pass_target_id: String = ""
 var _pending_pass_elapsed_seconds: float = 0.0
 var _pending_shot_player_id: String = ""
@@ -64,10 +65,11 @@ func _init(
 	_lofted_pass_apex_height_m = lofted_pass_apex_height_m
 
 
-## Enables shooting only when validated CSV rules were injected at match creation.
-func configure_shots(config: MatchConfigDefinition) -> void:
-	assert(config != null, "Shooting requires a match configuration")
+## Applies validated shot and possession rules from the selected match preset.
+func configure_match_rules(config: MatchConfigDefinition) -> void:
+	assert(config != null, "Ball rules require a match configuration")
 	_shot_config = config
+	_ball_control_max_speed_mps = config.ball_control_max_speed_mps
 
 
 ## Installs the one ball permitted by the current demo match.
@@ -90,11 +92,7 @@ func try_start_pass(passer: PlayerRuntime, receiver: PlayerRuntime) -> bool:
 		return false
 	if passer.player_id == receiver.player_id or passer.team_id != receiver.team_id:
 		return false
-	if receiver.state.action_state in [
-		PlayerMatchState.ActionState.KNOCKED_DOWN,
-		PlayerMatchState.ActionState.GETTING_UP,
-		PlayerMatchState.ActionState.STAGGERED,
-	]:
+	if not _can_gain_ball(receiver):
 		return false
 	var pass_distance_m := _state.position_m.distance_to(receiver.state.position_m)
 	if pass_distance_m < MIN_PASS_DISTANCE_M or pass_distance_m > _max_pass_distance_m:
@@ -165,6 +163,10 @@ func acquire_loose_ball(players: PlayerRuntimeSystem) -> BallAdvanceResult:
 ## Transfers an owned ball after the simulation has accepted a legal tackle.
 func transfer_tackled_ball(carrier: PlayerRuntime, tackler: PlayerRuntime) -> bool:
 	if _state == null or carrier == null or tackler == null:
+		return false
+	if tackler.state.action_state != PlayerMatchState.ActionState.TACKLING:
+		return false
+	if tackler.state.action_phase != PlayerMatchState.ActionPhase.ACTIVE:
 		return false
 	if _state.motion_state != BallMatchState.MotionState.OWNED:
 		return false
@@ -490,14 +492,11 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 		_state._advance_shot(next_position_m, direction * next_speed_mps, travel_distance_m)
 
 
-## Allows a teammate to receive only a pass close enough to the ground.
+## Rechecks action state, ball speed, and height where the directed pass crosses its target.
 func _can_receive_flight(receiver: PlayerRuntime, next_position_m: Vector2) -> bool:
-	if receiver == null:
+	if not _can_gain_ball(receiver):
 		return false
-	if receiver.state.action_state in [
-		PlayerMatchState.ActionState.KNOCKED_DOWN,
-		PlayerMatchState.ActionState.STAGGERED,
-	]:
+	if not _is_controllable_ball_speed(_state.velocity_mps.length()):
 		return false
 	var segment := next_position_m - _state.position_m
 	var segment_length_squared := segment.length_squared()
@@ -538,21 +537,14 @@ func _try_acquire_loose_ball(players: PlayerRuntimeSystem, result: BallAdvanceRe
 	result.new_owner_player_id = new_owner.player_id
 
 
-## Skips recovering shooters and recently released balls during reacquisition.
+## Finds the nearest available player after excluding recently released shooters.
 func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 	var nearest_player: PlayerRuntime
 	var nearest_distance_squared := _possession_radius_m * _possession_radius_m + DISTANCE_EPSILON
+	if not _is_controllable_ball_speed(_state.velocity_mps.length()):
+		return null
 	for player_runtime in players.get_players():
-		if player_runtime.state.possession_state != PlayerMatchState.PossessionState.NO_BALL:
-			continue
-		if player_runtime.state.action_state == PlayerMatchState.ActionState.SHOOTING:
-			continue
-		if player_runtime.state.action_state in [
-			PlayerMatchState.ActionState.KNOCKED_DOWN,
-			PlayerMatchState.ActionState.GETTING_UP,
-			PlayerMatchState.ActionState.STAGGERED,
-			PlayerMatchState.ActionState.ATTACKING,
-		]:
+		if not _can_gain_ball(player_runtime):
 			continue
 		if (
 			player_runtime.player_id == _last_shooter_id
@@ -566,6 +558,20 @@ func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 			nearest_player = player_runtime
 			nearest_distance_squared = distance_squared
 	return nearest_player
+
+
+## Requires the same available action state for free-ball pickup and directed reception.
+func _can_gain_ball(player: PlayerRuntime) -> bool:
+	return (
+		player != null
+		and player.state.action_state == PlayerMatchState.ActionState.IDLE
+		and player.state.possession_state == PlayerMatchState.PossessionState.NO_BALL
+	)
+
+
+## Includes the configured boundary speed in ordinary ball acquisition.
+func _is_controllable_ball_speed(speed_mps: float) -> bool:
+	return is_finite(speed_mps) and speed_mps <= _ball_control_max_speed_mps
 
 
 ## Follows the current owner or releases a ball whose owner disappeared.

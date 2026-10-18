@@ -14,6 +14,7 @@ func _init() -> void:
 	test_duplicate_key_reports_error_without_data()
 	test_unknown_key_reports_error_without_data()
 	test_invalid_speed_reports_error_without_data()
+	test_invalid_control_speed_reports_error_without_data()
 	test_invalid_shot_height_reports_error_without_data()
 	test_invalid_ball_radius_reports_error_without_data()
 	test_invalid_reset_delay_reports_error_without_data()
@@ -46,6 +47,8 @@ func test_valid_config_is_indexed_by_stable_id() -> void:
 	if config != null:
 		_expect(is_equal_approx(config.shot_base_speed_mps, 20.0),
 			"Shot speed was parsed incorrectly")
+		_expect(is_equal_approx(config.ball_control_max_speed_mps, 15.0),
+			"Ball control speed was parsed incorrectly")
 		_expect(is_equal_approx(config.shot_windup_seconds, 0.2),
 			"Shot windup was parsed incorrectly")
 		_expect(is_equal_approx(config.shot_apex_height_m, 0.75),
@@ -115,6 +118,11 @@ func test_unknown_key_reports_error_without_data() -> void:
 ## Rejects negative shot speed as an invalid rule value.
 func test_invalid_speed_reports_error_without_data() -> void:
 	_expect_failure("match_configs_invalid_speed.csv")
+
+
+## Rejects zero control speed before matches can award ordinary ball possession.
+func test_invalid_control_speed_reports_error_without_data() -> void:
+	_expect_failure("match_configs_invalid_control_speed.csv")
 
 
 ## Rejects a nonpositive fixed shot apex.
