@@ -13,6 +13,7 @@ enum Type {
 	DODGE,
 	RESET_ROUND,
 	RESTART_TEST,
+	JUMP,
 }
 
 var player_id: String:

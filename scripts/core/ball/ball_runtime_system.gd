@@ -37,6 +37,7 @@ var _pending_shot_player_id: String = ""
 var _pending_shot_direction: Vector2 = Vector2.ZERO
 var _pending_shot_power: float = 0.0
 var _pending_shot_elapsed_seconds: float = 0.0
+var _pending_shot_started_airborne: bool = false
 var _last_shooter_id: String = ""
 var _reacquire_delay_remaining_seconds: float = 0.0
 
@@ -92,6 +93,8 @@ func try_start_pass(passer: PlayerRuntime, receiver: PlayerRuntime) -> bool:
 		return false
 	if passer.player_id == receiver.player_id or passer.team_id != receiver.team_id:
 		return false
+	if passer.state.jump_phase != PlayerMatchState.JumpPhase.NONE:
+		return false
 	if not _can_gain_ball(receiver):
 		return false
 	var pass_distance_m := _state.position_m.distance_to(receiver.state.position_m)
@@ -125,6 +128,9 @@ func try_start_shot(shooter: PlayerRuntime, direction: Vector2, power: float) ->
 	_pending_shot_direction = direction.normalized()
 	_pending_shot_power = clamped_power
 	_pending_shot_elapsed_seconds = 0.0
+	_pending_shot_started_airborne = (
+		shooter.state.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE
+	)
 	return true
 
 
@@ -405,14 +411,21 @@ func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResul
 	result.passed_by_player_id = passer.player_id
 
 
-## Computes shot speed from attributes, then applies the CSV apex independently.
+## Releases the owned ball once at its current height using configured shot speed and arc.
 func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResult) -> void:
 	var shooter := players.get_player(_pending_shot_player_id)
 	var direction := _pending_shot_direction
 	var power := _pending_shot_power
+	var started_airborne := _pending_shot_started_airborne
 	_clear_pending_shot()
 	if shooter == null or _state.owner_player_id != shooter.player_id:
 		return
+	if shooter.state.action_state != PlayerMatchState.ActionState.SHOOTING:
+		return
+	if started_airborne and shooter.state.jump_phase != PlayerMatchState.JumpPhase.AIRBORNE:
+		shooter.state_machine.finish_action()
+		return
+	var release_height_m := _state.height_m
 	var attribute_fraction := float(shooter.shooting_attribute - 1) / 99.0
 	var attribute_multiplier := lerpf(
 		_shot_config.shot_min_attribute_multiplier,
@@ -432,6 +445,7 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 			direction * initial_speed_mps,
 			flight_range_m,
 			_shot_config.shot_apex_height_m,
+			release_height_m,
 		)
 	else:
 		_state._release(release_position_m)
@@ -565,6 +579,7 @@ func _can_gain_ball(player: PlayerRuntime) -> bool:
 	return (
 		player != null
 		and player.state.action_state == PlayerMatchState.ActionState.IDLE
+		and player.state.jump_phase == PlayerMatchState.JumpPhase.NONE
 		and player.state.possession_state == PlayerMatchState.PossessionState.NO_BALL
 	)
 
@@ -588,6 +603,7 @@ func _set_ball_at_control_point(owner: PlayerRuntime) -> void:
 	_state._set_position(
 		owner.state.position_m + owner.state.facing_direction * _dribble_offset_m
 	)
+	_state._set_control_height(owner.state.height_m)
 
 
 ## Clears a queued shot after it is launched or ownership is cancelled.
@@ -596,3 +612,4 @@ func _clear_pending_shot() -> void:
 	_pending_shot_direction = Vector2.ZERO
 	_pending_shot_power = 0.0
 	_pending_shot_elapsed_seconds = 0.0
+	_pending_shot_started_airborne = false

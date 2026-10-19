@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://bo36jq2r1mhs7" path="res://scenes/match/field_environment.tscn" id="2_field"]
 [ext_resource type="Script" uid="uid://dofps0ivhwmpw" path="res://scripts/input/keyboard_player_input_adapter.gd" id="3_input"]
 [ext_resource type="PackedScene" path="res://scenes/ui/match_result_hud.tscn" id="4_result_hud"]
+[ext_resource type="Script" path="res://scripts/input/aerial_play_test_controls.gd" id="5_aerial_controls"]
 
 [node name="GameBootstrap" type="Node" unique_id=1859715035]
 script = ExtResource("1_bootstrap")
@@ -14,3 +15,55 @@ script = ExtResource("1_bootstrap")
 script = ExtResource("3_input")
 
 [node name="MatchResultHud" parent="." instance=ExtResource("4_result_hud")]
+
+[node name="AerialPresetControls" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("5_aerial_controls")
+
+[node name="PresetPanel" type="PanelContainer" parent="AerialPresetControls"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -252.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 204.0
+
+[node name="PresetButtons" type="VBoxContainer" parent="AerialPresetControls/PresetPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="GroundTackleButton" type="Button" parent="AerialPresetControls/PresetPanel/PresetButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "地面抢断"
+
+[node name="AirborneClearanceButton" type="Button" parent="AerialPresetControls/PresetPanel/PresetButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "有效腾空（抢断无效）"
+
+[node name="AfterLandingButton" type="Button" parent="AerialPresetControls/PresetPanel/PresetButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "落地后抢断"
+
+[node name="AerialShotButton" type="Button" parent="AerialPresetControls/PresetPanel/PresetButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "空中射门"
+
+[node name="ResetPresetButton" type="Button" parent="AerialPresetControls/PresetPanel/PresetButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "重置"
+
+[node name="PresetStatusLabel" type="Label" parent="AerialPresetControls/PresetPanel/PresetButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "准备就绪"

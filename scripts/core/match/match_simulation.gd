@@ -167,6 +167,8 @@ func advance_fixed_step(
 			was_accepted = _try_start_tackle(action)
 		elif action.action_type == MatchAction.Type.ATTACK:
 			was_accepted = _try_start_knockdown(action)
+		elif action.action_type == MatchAction.Type.JUMP:
+			was_accepted = _try_start_jump(action)
 		else:
 			was_accepted = _player_runtime_system.apply_action(action)
 		if was_accepted:
@@ -553,6 +555,11 @@ func _is_legal_tackle_contact(tackler: PlayerRuntime, carrier: PlayerRuntime) ->
 		return false
 	if _ball_runtime_system.state.owner_player_id != carrier.player_id:
 		return false
+	if (
+		carrier.state.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE
+		and carrier.state.height_m >= _match_config.ground_tackle_clearance_height_m
+	):
+		return false
 	if tackler.state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
 		return false
 	var toward_carrier := carrier.state.position_m - tackler.state.position_m
@@ -733,6 +740,18 @@ func _try_start_shot(action: MatchAction) -> bool:
 	var goal_center_m: Vector2 = _attacking_goals_by_team[shooter.team_id]
 	var shot_direction := goal_center_m - shooter.state.position_m
 	return _ball_runtime_system.try_start_shot(shooter, shot_direction, action.power)
+
+
+## Accepts a jump only for the current carrier; height and ownership remain separate.
+func _try_start_jump(action: MatchAction) -> bool:
+	if _match_config == null or _ball_runtime_system.state == null:
+		return false
+	if _ball_runtime_system.state.owner_player_id != action.player_id:
+		return false
+	var player := _player_runtime_system.get_player(action.player_id)
+	if player == null:
+		return false
+	return player.state_machine.try_start_jump(_match_config)
 
 
 func _create_event(

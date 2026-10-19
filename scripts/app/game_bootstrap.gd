@@ -17,12 +17,14 @@ enum DemoMode {
 	TACKLE_TEST,
 	KNOCKDOWN_TEST,
 	ATTACK_RECOIL_TEST,
+	AERIAL_JUMP_SHOT_TEST,
 }
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
 const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
 const TEST_OPPONENT_POSITION_M := Vector2(6.0, 0.0)
 const TEST_KNOCKDOWN_OPPONENT_POSITION_M := Vector2(1.05, 0.0)
+const TEST_AERIAL_OPPONENT_POSITION_M := Vector2(-1.0, 0.0)
 const TEST_OPPONENT_TEAM_ID := "opponent_team"
 const TEST_BALL_INITIAL_POSITION_M := Vector2(3.0, 0.0)
 const TEST_TEAM_ID := "demo_team"
@@ -45,12 +47,21 @@ var data_repository: DataRepository:
 	get:
 		return _data_repository
 
+var demo_player_id: String:
+	get:
+		return _demo_player_id
+
+var demo_opponent_id: String:
+	get:
+		return _demo_opponent_id
+
 var _data_repository: DataRepository
 var _field_definition: FieldDefinition
 var _match_config: MatchConfigDefinition
 var _match_simulation: MatchSimulation
 var _game_loop: GameLoop
 var _queued_actions: Array[MatchAction] = []
+var _pending_aerial_shot: MatchAction
 var _demo_player_id: String = ""
 var _demo_teammate_id: String = ""
 var _demo_opponent_id: String = ""
@@ -98,6 +109,7 @@ func _ready() -> void:
 		DemoMode.TACKLE_TEST,
 		DemoMode.KNOCKDOWN_TEST,
 		DemoMode.ATTACK_RECOIL_TEST,
+		DemoMode.AERIAL_JUMP_SHOT_TEST,
 	]:
 		_demo_opponent_id = player_definitions[1].player_id
 	if _field_environment != null:
@@ -111,6 +123,7 @@ func _ready() -> void:
 				DemoMode.TACKLE_TEST,
 				DemoMode.KNOCKDOWN_TEST,
 				DemoMode.ATTACK_RECOIL_TEST,
+				DemoMode.AERIAL_JUMP_SHOT_TEST,
 			],
 		)
 	if _keyboard_input != null:
@@ -129,6 +142,7 @@ func reset_demo() -> void:
 		return
 	set_process(false)
 	_queued_actions.clear()
+	_pending_aerial_shot = null
 	var melee_outcome := MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN
 	if demo_mode == DemoMode.ATTACK_RECOIL_TEST:
 		melee_outcome = MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
@@ -165,12 +179,14 @@ func reset_demo() -> void:
 		var opponent_position_m := TEST_OPPONENT_POSITION_M
 		if demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 			opponent_position_m = TEST_KNOCKDOWN_OPPONENT_POSITION_M
+		elif demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST:
+			opponent_position_m = TEST_AERIAL_OPPONENT_POSITION_M
 		assert(_match_simulation.register_player(
 			_demo_opponent_id, opponent_position_m,
 			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID, opponent.shooting
 		))
 	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
-	if demo_mode == DemoMode.TACKLE_TEST:
+	if demo_mode in [DemoMode.TACKLE_TEST, DemoMode.AERIAL_JUMP_SHOT_TEST]:
 		initial_ball_position_m = Vector2(0.5, 0.0)
 	elif demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 		initial_ball_position_m = Vector2(1.6, 0.0)
@@ -194,10 +210,18 @@ func reset_demo() -> void:
 		GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, tackle_ai
 	)
 	if _keyboard_input != null:
-		_keyboard_input.configure(_demo_player_id, _demo_teammate_id, _demo_opponent_id)
+		_keyboard_input.configure(
+			_demo_player_id,
+			_demo_teammate_id,
+			_demo_opponent_id,
+			demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
+		)
 
 	var did_start := _match_simulation.start_match()
 	assert(did_start, "A new match must start from the ready phase")
+	# Begin the aerial test with legal possession so Space works immediately.
+	if demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST:
+		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_publish_frame(0.0)
@@ -208,7 +232,7 @@ func _process(delta: float) -> void:
 	_publish_frame(delta)
 
 
-## Buffers commands for the next fixed step, including in-match reset requests.
+## Buffers commands for the next fixed step and holds early aerial shots until airborne.
 func queue_action(action: MatchAction) -> void:
 	assert(action != null, "Cannot queue a null MatchAction")
 	if (
@@ -218,6 +242,26 @@ func queue_action(action: MatchAction) -> void:
 	):
 		reset_demo()
 		return
+	if (
+		demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST
+		and action.action_type == MatchAction.Type.SHOOT
+		and _match_simulation != null
+	):
+		var player := _match_simulation.create_snapshot().get_player(action.player_id)
+		var is_takeoff := (
+			player != null and player.jump_phase == PlayerMatchState.JumpPhase.TAKEOFF
+		)
+		var has_queued_jump := false
+		for queued_action in _queued_actions:
+			if (
+				queued_action.action_type == MatchAction.Type.JUMP
+				and queued_action.player_id == action.player_id
+			):
+				has_queued_jump = true
+				break
+		if is_takeoff or has_queued_jump:
+			_pending_aerial_shot = action
+			return
 	_queued_actions.append(action)
 
 
@@ -248,14 +292,37 @@ func finish_match() -> bool:
 	return true
 
 
-## Feeds queued actions to the fixed loop and broadcasts the resulting snapshot.
+## Releases an airborne shot when legal, then broadcasts the fixed-loop snapshot.
 func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_actions: Array[MatchAction] = _queued_actions.duplicate()
 	_queued_actions.clear()
+	if _pending_aerial_shot != null:
+		var snapshot := _match_simulation.create_snapshot()
+		var player := snapshot.get_player(_pending_aerial_shot.player_id)
+		var has_jump_command := false
+		for frame_action in frame_actions:
+			if (
+				frame_action.action_type == MatchAction.Type.JUMP
+				and frame_action.player_id == _pending_aerial_shot.player_id
+			):
+				has_jump_command = true
+				break
+		if player == null or snapshot.ball.owner_player_id != _pending_aerial_shot.player_id:
+			_pending_aerial_shot = null
+		elif player.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE:
+			frame_actions.append(_pending_aerial_shot)
+			_pending_aerial_shot = null
+		elif player.jump_phase != PlayerMatchState.JumpPhase.TAKEOFF and not has_jump_command:
+			_pending_aerial_shot = null
 	var frame_result := _game_loop.advance_frame(frame_delta_seconds, frame_actions)
 	for event in frame_result.events:
 		if event.event_type == MatchEvent.Type.RESET_COMPLETED and _keyboard_input != null:
-			_keyboard_input.configure(_demo_player_id, _demo_teammate_id, _demo_opponent_id)
+			_keyboard_input.configure(
+				_demo_player_id,
+				_demo_teammate_id,
+				_demo_opponent_id,
+				demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
+			)
 			break
 	if _field_environment != null:
 		_field_environment.present(frame_result.snapshot)

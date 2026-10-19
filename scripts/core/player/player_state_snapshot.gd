@@ -1,3 +1,4 @@
+## Copies one player's fixed-step state for read-only presentation and AI decisions.
 class_name PlayerStateSnapshot
 extends RefCounted
 
@@ -41,6 +42,14 @@ var action_state_elapsed_seconds: float:
 	get:
 		return _action_state_elapsed_seconds
 
+var jump_phase: int:
+	get:
+		return _jump_phase
+
+var height_m: float:
+	get:
+		return _height_m
+
 var _player_id: String
 var _position_m: Vector2
 var _facing_direction: Vector2
@@ -51,6 +60,8 @@ var _action_state: int
 var _action_phase: int
 var _movement_state_elapsed_seconds: float
 var _action_state_elapsed_seconds: float
+var _jump_phase: int
+var _height_m: float
 
 
 func _init(player_state: PlayerMatchState) -> void:
@@ -64,3 +75,5 @@ func _init(player_state: PlayerMatchState) -> void:
 	_action_phase = player_state.action_phase
 	_movement_state_elapsed_seconds = player_state.movement_state_elapsed_seconds
 	_action_state_elapsed_seconds = player_state.action_state_elapsed_seconds
+	_jump_phase = player_state.jump_phase
+	_height_m = player_state.height_m

@@ -27,6 +27,7 @@ func _init() -> void:
 	_test_invalid_knockback_duration()
 	_test_invalid_crouch_hold()
 	_test_invalid_knockdown_jump_height()
+	_test_invalid_jump_clearance()
 	test_non_ascii_id_reports_error_without_data()
 	test_duplicate_id_reports_error_without_data()
 	for failure in _failures:
@@ -73,6 +74,12 @@ func test_valid_config_is_indexed_by_stable_id() -> void:
 			"Knockback distance was parsed incorrectly")
 		_expect(is_equal_approx(config.knockdown_knockback_duration_seconds, 0.2),
 			"Knockback duration was parsed incorrectly")
+		_expect(is_equal_approx(config.jump_duration_seconds, 0.8),
+			"Jump duration was parsed incorrectly")
+		_expect(is_equal_approx(config.jump_apex_height_m, 0.9),
+			"Jump apex was parsed incorrectly")
+		_expect(is_equal_approx(config.ground_tackle_clearance_height_m, 0.25),
+			"Tackle clearance was parsed incorrectly")
 	_expect(repository.get_match_config_by_id("unknown") == null,
 		"Unknown match config ID resolved")
 
@@ -183,6 +190,11 @@ func _test_invalid_crouch_hold() -> void:
 ## Rejects a negative visual hop height before the configuration is exposed.
 func _test_invalid_knockdown_jump_height() -> void:
 	_expect_failure("match_configs_invalid_jump_height.csv")
+
+
+## Rejects a jump whose apex never exceeds the ground-tackle clearance.
+func _test_invalid_jump_clearance() -> void:
+	_expect_failure("match_configs_invalid_jump_clearance.csv")
 
 
 ## Rejects IDs that cannot be used as stable lowercase ASCII keys.

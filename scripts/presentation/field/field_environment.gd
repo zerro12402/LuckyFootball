@@ -115,12 +115,23 @@ func present(snapshot: MatchStateSnapshot) -> void:
 	if _projection == null:
 		return
 	var player_actors: Array[PlayerActor] = [_demo_player, _demo_teammate]
+	var aerial_carrier_actor: PlayerActor
 	for player_index in range(_presented_player_ids.size()):
 		var player_snapshot := snapshot.get_player(_presented_player_ids[player_index])
 		if player_snapshot != null:
 			player_actors[player_index].present(player_snapshot, _projection)
+			if (
+				snapshot.ball != null
+				and snapshot.ball.owner_player_id == _presented_player_ids[player_index]
+				and player_snapshot.jump_phase != PlayerMatchState.JumpPhase.NONE
+			):
+				aerial_carrier_actor = player_actors[player_index]
 	if snapshot.ball != null:
 		_ball.present(snapshot.ball, _projection)
+		if aerial_carrier_actor != null:
+			_ball.place_owned_sprite_at_foot(
+				aerial_carrier_actor.get_aerial_ball_foot_world_position()
+			)
 
 
 ## Shakes only the contacted goal art in response to immutable simulation events.

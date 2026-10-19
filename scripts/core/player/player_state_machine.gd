@@ -24,6 +24,7 @@ var knockdown_direction: Vector2:
 var _state: PlayerMatchState
 var _movement_speed_mps: float
 var _shot_config: MatchConfigDefinition
+var _jump_config: MatchConfigDefinition
 var _tackle_config: MatchConfigDefinition
 var _tackle_direction: Vector2 = Vector2.ZERO
 var _tackle_cooldown_remaining_seconds: float = 0.0
@@ -74,6 +75,7 @@ func advance(fixed_delta_seconds: float) -> void:
 		_tackle_cooldown_remaining_seconds - fixed_delta_seconds, 0.0
 	)
 	_state._advance_state_time(fixed_delta_seconds)
+	_advance_jump(fixed_delta_seconds)
 	if _state.action_state == PlayerMatchState.ActionState.PASSING:
 		_advance_pass_action()
 	elif _state.action_state == PlayerMatchState.ActionState.SHOOTING:
@@ -171,6 +173,11 @@ func try_start_action(new_action_state: int) -> bool:
 func try_start_shot(config: MatchConfigDefinition, direction: Vector2) -> bool:
 	if config == null or not direction.is_finite() or direction.is_zero_approx():
 		return false
+	if _state.jump_phase in [
+		PlayerMatchState.JumpPhase.TAKEOFF,
+		PlayerMatchState.JumpPhase.LANDING,
+	]:
+		return false
 	if not try_start_action(PlayerMatchState.ActionState.SHOOTING):
 		return false
 	_shot_config = config
@@ -178,9 +185,24 @@ func try_start_shot(config: MatchConfigDefinition, direction: Vector2) -> bool:
 	return true
 
 
+## Starts a possession-preserving jump without occupying the shooting action slot.
+func try_start_jump(config: MatchConfigDefinition) -> bool:
+	if config == null or _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
+		return false
+	if _state.action_state != PlayerMatchState.ActionState.IDLE:
+		return false
+	if _state.possession_state != PlayerMatchState.PossessionState.POSSESSING:
+		return false
+	_jump_config = config
+	_state._set_jump_state(PlayerMatchState.JumpPhase.TAKEOFF, 0.0, 0.0)
+	return true
+
+
 ## Starts a timed tackle only for an idle defender whose cooldown has ended.
 func try_start_tackle(config: MatchConfigDefinition) -> bool:
 	if config == null or _tackle_cooldown_remaining_seconds > 0.0:
+		return false
+	if _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
 		return false
 	if _state.possession_state != PlayerMatchState.PossessionState.NO_BALL:
 		return false
@@ -201,6 +223,8 @@ func try_start_tackle(config: MatchConfigDefinition) -> bool:
 ## Starts a timed melee lunge and locks its initial direction for deterministic motion.
 func try_start_knockdown(config: MatchConfigDefinition) -> bool:
 	if config == null or _knockdown_cooldown_remaining_seconds > 0.0:
+		return false
+	if _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
 		return false
 	if not try_start_action(PlayerMatchState.ActionState.ATTACKING):
 		return false
@@ -228,6 +252,7 @@ func start_knockdown(config: MatchConfigDefinition) -> bool:
 		return false
 	if _state.action_state != PlayerMatchState.ActionState.IDLE:
 		finish_action()
+	_cancel_jump()
 	_knockdown_config = config
 	_knockback_direction = Vector2.ZERO
 	_knockback_elapsed_seconds = 0.0
@@ -261,6 +286,7 @@ func start_hit_stun(duration_seconds: float) -> bool:
 		return false
 	if _state.action_state != PlayerMatchState.ActionState.IDLE:
 		finish_action()
+	_cancel_jump()
 	_hit_stun_duration_seconds = duration_seconds
 	_state._set_action_state(
 		PlayerMatchState.ActionState.STAGGERED,
@@ -317,6 +343,8 @@ func stop_for_settlement(should_cancel_action: bool) -> void:
 	_set_movement_state_if_changed(PlayerMatchState.MovementState.IDLE)
 	if should_cancel_action and _state.action_state != PlayerMatchState.ActionState.IDLE:
 		finish_action()
+	if should_cancel_action:
+		_cancel_jump()
 
 
 ## Restores an actionable player without carrying an old windup or movement intent.
@@ -330,6 +358,7 @@ func reset_to_spawn(spawn_position_m: Vector2) -> void:
 		PlayerMatchState.ActionState.IDLE,
 		PlayerMatchState.ActionPhase.NONE,
 	)
+	_cancel_jump()
 	_shot_config = null
 	_tackle_config = null
 	_tackle_direction = Vector2.ZERO
@@ -347,6 +376,33 @@ func _get_current_movement_speed_mps() -> float:
 	if _state.possession_state == PlayerMatchState.PossessionState.POSSESSING:
 		return _movement_speed_mps * POSSESSION_MOVEMENT_SPEED_MULTIPLIER
 	return _movement_speed_mps
+
+
+## Advances a deterministic height arc independently of the player's other action.
+func _advance_jump(fixed_delta_seconds: float) -> void:
+	if _state.jump_phase == PlayerMatchState.JumpPhase.NONE:
+		return
+	assert(_jump_config != null, "Active jump requires match configuration")
+	var elapsed_seconds := _state.jump_elapsed_seconds + fixed_delta_seconds
+	if elapsed_seconds >= _jump_config.jump_duration_seconds:
+		_cancel_jump()
+		return
+	var progress := elapsed_seconds / _jump_config.jump_duration_seconds
+	var height_m := 4.0 * _jump_config.jump_apex_height_m * progress * (1.0 - progress)
+	var phase := PlayerMatchState.JumpPhase.AIRBORNE
+	if elapsed_seconds < _jump_config.jump_takeoff_seconds:
+		phase = PlayerMatchState.JumpPhase.TAKEOFF
+	elif elapsed_seconds >= (
+		_jump_config.jump_duration_seconds - _jump_config.jump_landing_seconds
+	):
+		phase = PlayerMatchState.JumpPhase.LANDING
+	_state._set_jump_state(phase, elapsed_seconds, height_m)
+
+
+## Clears the physical jump when knocked down, settled, or reset.
+func _cancel_jump() -> void:
+	_jump_config = null
+	_state._set_jump_state(PlayerMatchState.JumpPhase.NONE, 0.0, 0.0)
 
 
 ## Avoids resetting elapsed movement time when a state is unchanged.

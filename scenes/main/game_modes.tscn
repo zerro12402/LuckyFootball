@@ -1,69 +1,75 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://bm162gnkwi63n"]
 
-[ext_resource type="Script" path="res://scripts/app/game_mode_controller.gd" id="1_controller"]
+[ext_resource type="Script" uid="uid://cr83uy050h7d" path="res://scripts/app/game_mode_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://scenes/match/formal_match.tscn" id="2_formal"]
-[ext_resource type="PackedScene" path="res://scenes/main/game_bootstrap.tscn" id="3_demo"]
+[ext_resource type="PackedScene" uid="uid://dhld5od4vh8as" path="res://scenes/main/game_bootstrap.tscn" id="3_demo"]
 
-[node name="GameModes" type="Node"]
+[node name="GameModes" type="Node" unique_id=2019848308]
 script = ExtResource("1_controller")
 formal_match_scene = ExtResource("2_formal")
 demo_scene = ExtResource("3_demo")
 
-[node name="ModeHost" type="Node" parent="."]
+[node name="ModeHost" type="Node" parent="." unique_id=1083311614]
 unique_name_in_owner = true
 
-[node name="ModeUi" type="CanvasLayer" parent="."]
+[node name="ModeUi" type="CanvasLayer" parent="." unique_id=1571612425]
 layer = 10
 
-[node name="ModePanel" type="PanelContainer" parent="ModeUi"]
+[node name="ModePanel" type="PanelContainer" parent="ModeUi" unique_id=480378047]
 offset_left = 12.0
 offset_top = 12.0
 offset_right = 190.0
 offset_bottom = 240.0
 
-[node name="ModeButtons" type="VBoxContainer" parent="ModeUi/ModePanel"]
+[node name="ModeButtons" type="VBoxContainer" parent="ModeUi/ModePanel" unique_id=709390063]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="FormalMatchButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="FormalMatchButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=1977050687]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "正式比赛"
 
-[node name="TouchDribbleButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="TouchDribbleButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=35237398]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "触球和带球"
 
-[node name="PassShootButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="PassShootButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=1303772963]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "传球和射门"
 
-[node name="TackleTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="TackleTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=411561283]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "抢断测试"
 
-
-[node name="KnockdownTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="KnockdownTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=916324698]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "击倒测试（L）"
 
-[node name="AttackRecoilTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="AttackRecoilTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=56146904]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "攻击反弹测试（L）"
+
+[node name="AerialJumpShotTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=554873923]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+text = "起跳与空中射门"

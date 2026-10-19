@@ -1,3 +1,4 @@
+## Presents the single ball snapshot while keeping owned-ball art separate from rules.
 class_name BallActor
 extends Node2D
 
@@ -11,11 +12,13 @@ const IN_FLIGHT_ANIMATION := &"in_flight"
 var _ground_sprite_position: Vector2
 
 
+## Remembers the sprite's authored ground offset before animation begins.
 func _ready() -> void:
 	_ground_sprite_position = _ball_sprite.position
 	_play_animation(LOOSE_ANIMATION)
 
 
+## Projects ball motion and height from the immutable match snapshot.
 func present(
 	ball_snapshot: BallStateSnapshot,
 	projection: FieldArtProjection,
@@ -34,6 +37,12 @@ func present(
 	_play_animation(_resolve_animation(ball_snapshot))
 
 
+## Places only the owned ball sprite by the carrier's animated foot.
+func place_owned_sprite_at_foot(foot_world_position: Vector2) -> void:
+	_ball_sprite.position = to_local(foot_world_position)
+
+
+## Chooses the ball animation from its simulated motion state.
 func _resolve_animation(ball_snapshot: BallStateSnapshot) -> StringName:
 	match ball_snapshot.motion_state:
 		BallMatchState.MotionState.LOOSE:
@@ -47,6 +56,7 @@ func _resolve_animation(ball_snapshot: BallStateSnapshot) -> StringName:
 			return LOOSE_ANIMATION
 
 
+## Leaves a looping ball animation running until its motion state changes.
 func _play_animation(animation_name: StringName) -> void:
 	if (
 		_animation_player.current_animation == animation_name

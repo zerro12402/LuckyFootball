@@ -60,6 +60,7 @@ var _velocity_mps: Vector2 = Vector2.ZERO
 var _flight_distance_m: float = 0.0
 var _flight_range_m: float = 0.0
 var _flight_apex_height_m: float = 0.0
+var _flight_start_height_m: float = 0.0
 var _height_m: float = 0.0
 
 
@@ -79,6 +80,13 @@ func _set_owner(player_id: String) -> void:
 	_clear_flight()
 
 
+## Keeps the one owned ball at its carrier's simulated height.
+func _set_control_height(new_height_m: float) -> void:
+	assert(_motion_state == MotionState.OWNED)
+	assert(new_height_m >= 0.0 and is_finite(new_height_m))
+	_height_m = new_height_m
+
+
 ## Releases a pass with its fixed target and possible parabolic height.
 func _launch_pass(
 	target_id: String,
@@ -96,21 +104,24 @@ func _launch_pass(
 	_flight_distance_m = 0.0
 	_flight_range_m = flight_range_m
 	_flight_apex_height_m = apex_height_m
+	_flight_start_height_m = 0.0
 	_height_m = 0.0
 	_flight_kind = FlightKind.PASS
 	_motion_state = MotionState.IN_FLIGHT
 
 
-## Starts a shot from the control point with a fixed apex over its stopping distance.
+## Starts a shot at the owned ball's current height with an additional flight arc.
 func _launch_shot(
 	release_position_m: Vector2,
 	shot_velocity_mps: Vector2,
 	flight_range_m: float,
 	apex_height_m: float,
+	start_height_m: float = 0.0,
 ) -> void:
 	assert(shot_velocity_mps.is_finite() and not shot_velocity_mps.is_zero_approx())
 	assert(flight_range_m > 0.0, "A shot requires positive flight range")
 	assert(apex_height_m > 0.0, "Shot apex height must be positive")
+	assert(start_height_m >= 0.0 and is_finite(start_height_m))
 	_position_m = release_position_m
 	_owner_player_id = ""
 	_target_player_id = ""
@@ -118,7 +129,8 @@ func _launch_shot(
 	_flight_distance_m = 0.0
 	_flight_range_m = flight_range_m
 	_flight_apex_height_m = apex_height_m
-	_height_m = 0.0
+	_flight_start_height_m = start_height_m
+	_height_m = start_height_m
 	_flight_kind = FlightKind.SHOT
 	_motion_state = MotionState.IN_FLIGHT
 
@@ -146,12 +158,15 @@ func _advance_shot(
 	_height_m = calculate_height_at_distance(_flight_distance_m)
 
 
-## Computes pass or shot height from a reproducible parabola.
+## Combines the release height with a reproducible pass or shot parabola.
 func calculate_height_at_distance(distance_m: float) -> float:
 	if _flight_apex_height_m <= 0.0:
 		return 0.0
 	var progress := clampf(distance_m / _flight_range_m, 0.0, 1.0)
-	return 4.0 * _flight_apex_height_m * progress * (1.0 - progress)
+	return (
+		_flight_start_height_m * (1.0 - progress)
+		+ 4.0 * _flight_apex_height_m * progress * (1.0 - progress)
+	)
 
 
 ## Keeps a scored ball visually in flight while its net response uses ground-plane velocity.
@@ -165,6 +180,7 @@ func _set_post_goal_motion(new_position_m: Vector2, new_velocity_mps: Vector2) -
 	_flight_distance_m = 0.0
 	_flight_range_m = 0.0
 	_flight_apex_height_m = 0.0
+	_flight_start_height_m = 0.0
 	_height_m = 0.0
 
 
@@ -184,4 +200,5 @@ func _clear_flight() -> void:
 	_flight_distance_m = 0.0
 	_flight_range_m = 0.0
 	_flight_apex_height_m = 0.0
+	_flight_start_height_m = 0.0
 	_height_m = 0.0

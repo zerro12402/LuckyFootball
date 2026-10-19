@@ -34,6 +34,13 @@ enum ActionPhase {
 	RECOVERY,
 }
 
+enum JumpPhase {
+	NONE,
+	TAKEOFF,
+	AIRBORNE,
+	LANDING,
+}
+
 var player_id: String:
 	get:
 		return _player_id
@@ -74,6 +81,18 @@ var action_state_elapsed_seconds: float:
 	get:
 		return _action_state_elapsed_seconds
 
+var jump_phase: int:
+	get:
+		return _jump_phase
+
+var jump_elapsed_seconds: float:
+	get:
+		return _jump_elapsed_seconds
+
+var height_m: float:
+	get:
+		return _height_m
+
 var _player_id: String
 var _position_m: Vector2
 var _facing_direction: Vector2 = Vector2.RIGHT
@@ -84,6 +103,9 @@ var _action_state: int = ActionState.IDLE
 var _action_phase: int = ActionPhase.NONE
 var _movement_state_elapsed_seconds: float = 0.0
 var _action_state_elapsed_seconds: float = 0.0
+var _jump_phase: int = JumpPhase.NONE
+var _jump_elapsed_seconds: float = 0.0
+var _height_m: float = 0.0
 
 
 ## Initializes a player at their registered field position.
@@ -119,6 +141,14 @@ func _set_action_state(new_state: int, new_phase: int) -> void:
 ## Advances a timed action phase without resetting elapsed time.
 func _set_action_phase(new_phase: int) -> void:
 	_action_phase = new_phase
+
+
+## Keeps jump phase and height separate from shooting and other timed actions.
+func _set_jump_state(new_phase: int, elapsed_seconds: float, new_height_m: float) -> void:
+	assert(new_height_m >= 0.0 and is_finite(new_height_m))
+	_jump_phase = new_phase
+	_jump_elapsed_seconds = elapsed_seconds
+	_height_m = new_height_m
 
 
 ## Applies a validated simulation position to this player.

@@ -54,6 +54,26 @@ var ball_radius_m: float:
 	get:
 		return _ball_radius_m
 
+var jump_duration_seconds: float:
+	get:
+		return _jump_duration_seconds
+
+var jump_takeoff_seconds: float:
+	get:
+		return _jump_takeoff_seconds
+
+var jump_landing_seconds: float:
+	get:
+		return _jump_landing_seconds
+
+var jump_apex_height_m: float:
+	get:
+		return _jump_apex_height_m
+
+var ground_tackle_clearance_height_m: float:
+	get:
+		return _ground_tackle_clearance_height_m
+
 var boundary_reset_delay_seconds: float:
 	get:
 		return _boundary_reset_delay_seconds
@@ -204,6 +224,11 @@ var _shot_action_duration_seconds: float
 var _shot_reacquire_delay_seconds: float
 var _shot_apex_height_m: float
 var _ball_radius_m: float
+var _jump_duration_seconds: float
+var _jump_takeoff_seconds: float
+var _jump_landing_seconds: float
+var _jump_apex_height_m: float
+var _ground_tackle_clearance_height_m: float
 var _boundary_reset_delay_seconds: float
 var _goal_net_back_restitution: float
 var _goal_net_side_restitution: float
@@ -266,6 +291,11 @@ func _init(
 	new_knockdown_knockback_distance_m: float,
 	new_knockdown_knockback_duration_seconds: float,
 	new_ball_control_max_speed_mps: float,
+	new_jump_duration_seconds: float,
+	new_jump_takeoff_seconds: float,
+	new_jump_landing_seconds: float,
+	new_jump_apex_height_m: float,
+	new_ground_tackle_clearance_height_m: float,
 ) -> void:
 	assert(not new_config_id.is_empty(), "Match config requires an ID")
 	assert(new_shot_base_speed_mps > 0.0, "Shot base speed must be positive")
@@ -286,6 +316,15 @@ func _init(
 	assert(new_shot_reacquire_delay_seconds >= 0.0, "Shot reacquire delay cannot be negative")
 	assert(new_shot_apex_height_m > 0.0, "Shot apex height must be positive")
 	assert(new_ball_radius_m > 0.0, "Ball radius must be positive")
+	assert(new_jump_duration_seconds > 0.0, "Jump duration must be positive")
+	assert(new_jump_takeoff_seconds > 0.0, "Jump takeoff must be positive")
+	assert(new_jump_landing_seconds > 0.0, "Jump landing must be positive")
+	assert(
+		new_jump_takeoff_seconds + new_jump_landing_seconds < new_jump_duration_seconds,
+		"Jump phases must fit inside the duration"
+	)
+	assert(new_ground_tackle_clearance_height_m > 0.0)
+	assert(new_jump_apex_height_m > new_ground_tackle_clearance_height_m)
 	assert(new_boundary_reset_delay_seconds > 0.0, "Boundary reset delay must be positive")
 	assert(new_ball_radius_m < 0.75, "Ball must fit inside goal depth")
 	assert(new_goal_net_back_restitution >= 0.0 and new_goal_net_back_restitution <= 1.0)
@@ -314,6 +353,11 @@ func _init(
 	_shot_reacquire_delay_seconds = new_shot_reacquire_delay_seconds
 	_shot_apex_height_m = new_shot_apex_height_m
 	_ball_radius_m = new_ball_radius_m
+	_jump_duration_seconds = new_jump_duration_seconds
+	_jump_takeoff_seconds = new_jump_takeoff_seconds
+	_jump_landing_seconds = new_jump_landing_seconds
+	_jump_apex_height_m = new_jump_apex_height_m
+	_ground_tackle_clearance_height_m = new_ground_tackle_clearance_height_m
 	_boundary_reset_delay_seconds = new_boundary_reset_delay_seconds
 	_goal_net_back_restitution = new_goal_net_back_restitution
 	_goal_net_side_restitution = new_goal_net_side_restitution

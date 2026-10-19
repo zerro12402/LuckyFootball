@@ -46,6 +46,11 @@ const REQUIRED_KEYS: Array[String] = [
 	"knockdown_knockback_distance_m",
 	"knockdown_knockback_duration_seconds",
 	"ball_control_max_speed_mps",
+	"jump_duration_seconds",
+	"jump_takeoff_seconds",
+	"jump_landing_seconds",
+	"jump_apex_height_m",
+	"ground_tackle_clearance_height_m",
 ]
 
 
@@ -183,6 +188,13 @@ func _parse_config(
 	if values[41] <= 0.0:
 		result._add_error("Match config row %d has invalid ball_control_max_speed_mps" % row_number)
 		return null
+	if (
+		values[42] <= 0.0 or values[43] <= 0.0 or values[44] <= 0.0
+		or values[43] + values[44] >= values[42]
+		or values[46] <= 0.0 or values[45] <= values[46]
+	):
+		result._add_error("Match config row %d has invalid jump parameters" % row_number)
+		return null
 	return MatchConfigDefinition.new(
 		config_id, values[0], values[1], values[2], values[3],
 		values[4], values[5], values[6], values[7], values[8], values[9], values[10],
@@ -192,7 +204,7 @@ func _parse_config(
 		values[25], values[26], values[27], values[28], values[29],
 		values[30], values[31], values[32], values[33], values[34],
 		values[35], values[36], values[37], values[38], values[39], values[40],
-		values[41],
+		values[41], values[42], values[43], values[44], values[45], values[46],
 	)
 
 
