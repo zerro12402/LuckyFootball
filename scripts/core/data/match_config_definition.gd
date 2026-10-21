@@ -2,6 +2,35 @@
 class_name MatchConfigDefinition
 extends RefCounted
 
+var ball_impact_min_speed_mps: float:
+	get: return _ball_impact_min_speed_mps
+var ball_impact_body_radius_m: float:
+	get: return _ball_impact_body_radius_m
+var ball_impact_body_height_m: float:
+	get: return _ball_impact_body_height_m
+var ball_impact_normal_retention: float:
+	get: return _ball_impact_normal_retention
+var ball_impact_tangent_retention: float:
+	get: return _ball_impact_tangent_retention
+var ball_impact_rebound_apex_height_m: float:
+	get: return _ball_impact_rebound_apex_height_m
+var ball_impact_knockback_distance_m: float:
+	get: return _ball_impact_knockback_distance_m
+var ball_impact_knockback_duration_seconds: float:
+	get: return _ball_impact_knockback_duration_seconds
+var ball_impact_knockback_apex_height_m: float:
+	get: return _ball_impact_knockback_apex_height_m
+
+var _ball_impact_min_speed_mps: float
+var _ball_impact_body_radius_m: float
+var _ball_impact_body_height_m: float
+var _ball_impact_normal_retention: float
+var _ball_impact_tangent_retention: float
+var _ball_impact_rebound_apex_height_m: float
+var _ball_impact_knockback_distance_m: float
+var _ball_impact_knockback_duration_seconds: float
+var _ball_impact_knockback_apex_height_m: float
+
 var header_contact_radius_m: float:
 	get: return _header_contact_radius_m
 var header_min_contact_height_m: float:
@@ -346,7 +375,33 @@ func _init(
 	new_header_clear_apex_height_m: float = 1.2,
 	new_header_first_frame_seconds: float = 0.3,
 	new_header_second_frame_seconds: float = 1.0,
+	new_ball_impact_min_speed_mps: float = 8.0,
+	new_ball_impact_body_radius_m: float = 0.35,
+	new_ball_impact_body_height_m: float = 1.6,
+	new_ball_impact_normal_retention: float = 0.6,
+	new_ball_impact_tangent_retention: float = 0.8,
+	new_ball_impact_rebound_apex_height_m: float = 0.25,
+	new_ball_impact_knockback_distance_m: float = 1.0,
+	new_ball_impact_knockback_duration_seconds: float = 0.6,
+	new_ball_impact_knockback_apex_height_m: float = 0.6,
 ) -> void:
+	assert(new_ball_impact_knockback_distance_m >= 0.0)
+	assert(new_ball_impact_knockback_apex_height_m >= 0.0)
+	assert(new_ball_impact_knockback_duration_seconds > 0.0
+		and new_ball_impact_knockback_duration_seconds <= new_knockdown_down_seconds)
+	_ball_impact_knockback_distance_m = new_ball_impact_knockback_distance_m
+	_ball_impact_knockback_duration_seconds = new_ball_impact_knockback_duration_seconds
+	_ball_impact_knockback_apex_height_m = new_ball_impact_knockback_apex_height_m
+	assert(new_ball_impact_min_speed_mps > 0.0 and new_ball_impact_body_radius_m > 0.0)
+	assert(new_ball_impact_body_height_m > 0.0 and new_ball_impact_rebound_apex_height_m > 0.0)
+	assert(new_ball_impact_normal_retention > 0.0 and new_ball_impact_normal_retention <= 1.0)
+	assert(new_ball_impact_tangent_retention >= 0.0 and new_ball_impact_tangent_retention <= 1.0)
+	_ball_impact_min_speed_mps = new_ball_impact_min_speed_mps
+	_ball_impact_body_radius_m = new_ball_impact_body_radius_m
+	_ball_impact_body_height_m = new_ball_impact_body_height_m
+	_ball_impact_normal_retention = new_ball_impact_normal_retention
+	_ball_impact_tangent_retention = new_ball_impact_tangent_retention
+	_ball_impact_rebound_apex_height_m = new_ball_impact_rebound_apex_height_m
 	assert(new_header_contact_radius_m > 0.0)
 	assert(new_header_min_contact_height_m > 0.2)
 	assert(new_header_reach_height_m > new_header_min_contact_height_m)

@@ -1,5 +1,14 @@
 key,value,comment
 config_id,demo_match,配置预设的稳定标识
+ball_impact_min_speed_mps,8.0,足球击倒需要达到的接触速度下限，单位米每秒
+ball_impact_body_radius_m,0.35,球员逻辑身体水平半径，与球半径相加检测接触，单位米
+ball_impact_body_height_m,1.6,球员当前位置高度以上的可接触身体高度，单位米
+ball_impact_normal_retention,0.6,反弹后法向速度保留比例
+ball_impact_tangent_retention,0.8,反弹后切向速度保留比例
+ball_impact_rebound_apex_height_m,0.25,反弹球从接触高度出发的附加弧高，单位米
+ball_impact_knockback_distance_m,1.0,被足球击倒的球员沿来球方向后退的距离，单位米
+ball_impact_knockback_duration_seconds,0.6,被足球击倒后完成击退与浮空的时长，单位秒
+ball_impact_knockback_apex_height_m,0.6,被足球击倒后浮空的最高高度，单位米
 shot_base_speed_mps,20,射门基础球速，单位米每秒
 shot_min_attribute_multiplier,0.75,射门属性对应的最小球速倍率
 shot_max_attribute_multiplier,1.35,射门属性对应的最大球速倍率

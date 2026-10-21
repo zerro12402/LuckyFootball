@@ -152,6 +152,12 @@ func _set_jump_state(new_phase: int, elapsed_seconds: float, new_height_m: float
 	_height_m = new_height_m
 
 
+## Updates forced airborne displacement without granting deliberate jump eligibility.
+func _set_height(new_height_m: float) -> void:
+	assert(new_height_m >= 0.0 and is_finite(new_height_m))
+	_height_m = new_height_m
+
+
 ## Applies a validated simulation position to this player.
 func _set_position(new_position_m: Vector2) -> void:
 	_position_m = new_position_m

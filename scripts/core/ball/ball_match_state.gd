@@ -52,6 +52,12 @@ var height_m: float:
 	get:
 		return _height_m
 
+var flight_start_height_m: float:
+	get: return _flight_start_height_m
+
+var flight_apex_height_m: float:
+	get: return _flight_apex_height_m
+
 var _position_m: Vector2
 var _motion_state: int = MotionState.LOOSE
 var _flight_kind: int = FlightKind.NONE

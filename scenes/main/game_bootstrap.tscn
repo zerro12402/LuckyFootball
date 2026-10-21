@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://dofps0ivhwmpw" path="res://scripts/input/keyboard_player_input_adapter.gd" id="3_input"]
 [ext_resource type="PackedScene" path="res://scenes/ui/match_result_hud.tscn" id="4_result_hud"]
 [ext_resource type="Script" path="res://scripts/input/aerial_play_test_controls.gd" id="5_aerial_controls"]
+[ext_resource type="Script" path="res://scripts/input/ball_impact_test_controls.gd" id="6_impact_controls"]
 
 [node name="GameBootstrap" type="Node" unique_id=1859715035]
 script = ExtResource("1_bootstrap")
@@ -84,3 +85,64 @@ offset_bottom = 58.0
 [node name="HintLabel" type="Label" parent="LoftedPassHint/HintPanel"]
 layout_mode = 2
 text = "按 J 传高空球，队友预判起跳并在空中接球射门；按 ~ 重置"
+
+[node name="BallImpactControls" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("6_impact_controls")
+
+[node name="Panel" type="PanelContainer" parent="BallImpactControls"]
+offset_left = 260.0
+offset_top = 12.0
+offset_right = 640.0
+offset_bottom = 280.0
+
+[node name="Buttons" type="VBoxContainer" parent="BallImpactControls/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SweptDefendersButton" type="Button" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "射门穿过两名防守队员"
+
+[node name="BlockReboundButton" type="Button" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "射门 80 / 强壮度 80：人击飞，球反弹"
+
+[node name="ImpactContinueButton" type="Button" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "射门 80 / 强壮度 60：击倒后继续"
+
+[node name="ImpactReboundButton" type="Button" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "射门 80 / 强壮度 60：击倒后反弹"
+
+[node name="WeakShotReboundButton" type="Button" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "射门 80 / 强壮度 90：未倒反弹"
+
+[node name="ImpactReplayButton" type="Button" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "固定种子重放当前预设"
+
+[node name="ImpactResetButton" type="Button" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "重置（K 射门）"
+
+[node name="BallImpactStatusLabel" type="Label" parent="BallImpactControls/Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "按 K 射门；~ 重置"

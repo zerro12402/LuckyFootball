@@ -32,6 +32,10 @@ var _pending_tackle_targets: Dictionary[String, String] = {}
 var _pending_knockdown_targets: Dictionary[String, String] = {}
 var _pending_header_actions: Dictionary[String, MatchAction] = {}
 var _melee_outcome: MeleeOutcome
+var _ball_contact_latches: Dictionary[String, bool] = {}
+var _contact_shot_source: BallShotSource
+var _ball_route_sampler: Callable
+var _ball_dodge_result: Callable
 
 
 ## Injects deterministic randomness and optional validated field and ball rules.
@@ -40,12 +44,16 @@ func _init(
 	match_config: MatchConfigDefinition = null,
 	field_definition: FieldDefinition = null,
 	melee_outcome: MeleeOutcome = MeleeOutcome.TARGET_KNOCKED_DOWN,
+	ball_route_sampler: Callable = Callable(),
+	ball_dodge_result: Callable = Callable(),
 ) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
 	_match_config = match_config
 	_field_definition = field_definition
 	_melee_outcome = melee_outcome
+	_ball_route_sampler = ball_route_sampler if ball_route_sampler.is_valid() else _sample_ball_route
+	_ball_dodge_result = ball_dodge_result
 	if match_config != null:
 		_ball_runtime_system.configure_match_rules(match_config)
 		_boundary_reset_delay_seconds = match_config.boundary_reset_delay_seconds
@@ -65,6 +73,7 @@ func register_player(
 	shooting_attribute: int = 0,
 	strength_attribute: int = 50,
 	technique_attribute: int = 50,
+	is_goalkeeper: bool = false,
 ) -> bool:
 	if _state.phase != MatchState.Phase.READY or not initial_position_m.is_finite():
 		return false
@@ -76,6 +85,7 @@ func register_player(
 		shooting_attribute,
 		strength_attribute,
 		technique_attribute,
+		is_goalkeeper,
 	)
 
 
@@ -196,10 +206,6 @@ func advance_fixed_step(
 			PlayerMatchState.ActionState.IDLE
 		):
 			step_events.append(_create_event(MatchEvent.Type.PLAYER_RECOVERED, player_id))
-	var can_acquire_after_motion := (
-		_ball_runtime_system.state != null
-		and _ball_runtime_system.state.motion_state != BallMatchState.MotionState.IN_FLIGHT
-	)
 	var header_contact := _find_header_contact(
 		fixed_delta_seconds, player_start_positions, player_start_heights)
 	var header_action: MatchAction
@@ -222,6 +228,9 @@ func advance_fixed_step(
 		header_contact,
 		header_action,
 		header_direction,
+		true,
+		player_start_positions,
+		player_start_heights,
 	)
 	if _ball_runtime_system.state == null or (
 		_ball_runtime_system.state.motion_state != BallMatchState.MotionState.IN_FLIGHT
@@ -268,13 +277,20 @@ func advance_fixed_step(
 			ball_result.motion_end_position_m,
 			fixed_delta_seconds,
 		)
+	if ball_result.deferred_shot_seconds > 0.0 and _advance_shot_contacts(
+		ball_result.deferred_shot_seconds, fixed_delta_seconds,
+		player_start_positions, player_start_heights, step_events
+	):
+		step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
+		_record_step_events(step_events)
+		return step_events
 	_resolve_pending_tackles(step_events)
 	var released_after_motion := _resolve_pending_knockdowns(step_events)
 	was_ball_released_by_knockdown = (
 		was_ball_released_by_knockdown or released_after_motion
 	)
 	_append_post_motion_events(ball_result, step_events)
-	if can_acquire_after_motion and not was_ball_released_by_knockdown:
+	if _ball_runtime_system.state != null and not was_ball_released_by_knockdown:
 		var loose_position_m := _ball_runtime_system.state.position_m
 		var possession_result := _ball_runtime_system.acquire_loose_ball(_player_runtime_system)
 		if not possession_result.new_owner_player_id.is_empty():
@@ -296,6 +312,143 @@ func advance_fixed_step(
 	step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	_record_step_events(step_events)
 	return step_events
+
+
+## Advances only to the first contact, commits it, and rebuilds the unused interval.
+func _advance_shot_contacts(seconds: float, fixed_seconds: float,
+		start_positions: Dictionary[String, Vector2], start_heights: Dictionary[String, float],
+		events: Array[MatchEvent]) -> bool:
+	var source := _ball_runtime_system.shot_source
+	if source != _contact_shot_source:
+		_ball_contact_latches.clear()
+		_contact_shot_source = source
+	var remaining := seconds
+	var elapsed := fixed_seconds - seconds
+	while remaining > 0.00000001:
+		var ball := _ball_runtime_system.state
+		if ball.motion_state != BallMatchState.MotionState.IN_FLIGHT:
+			break
+		var trajectory := BallShotTrajectory.new(ball, remaining, _match_config)
+		var bodies := _shot_contact_bodies(source, elapsed, trajectory.duration_seconds,
+			fixed_seconds, start_positions, start_heights)
+		var candidates := BallContactResolver.find_candidates(
+			trajectory, bodies, _match_config, _match_rules, _ball_contact_latches)
+		var control := _ball_runtime_system.find_control_contact(trajectory,
+			_player_runtime_system, start_positions, start_heights, fixed_seconds, elapsed)
+		if control != null and (candidates.is_empty()
+			or control.time_seconds < candidates[0].time_seconds - BallContactResolver.EPSILON):
+			_ball_runtime_system.advance_shot_motion(control.time_seconds)
+			var reception := _ball_runtime_system.acquire_contact_ball(control, _player_runtime_system)
+			# Body/whole-ball boundary contacts win exact ties; control cancels the old shot.
+			if _match_rules != null:
+				var boundary := _match_rules.resolve_ball_boundary(
+					control.position_m, _ball_runtime_system.state.position_m, false)
+				if boundary != null:
+					_settle_boundary(boundary, events, true, Vector2.ZERO,
+						Vector2.ZERO, Vector2.ZERO, 0.0)
+					return true
+			_append_post_motion_events(reception, events)
+			break
+		if candidates.is_empty():
+			_ball_runtime_system.advance_shot_motion(remaining)
+			break
+		var contact := candidates[0]
+		_ball_runtime_system.advance_shot_motion(contact.time_seconds)
+		remaining = maxf(remaining - contact.time_seconds, 0.0)
+		elapsed += contact.time_seconds
+		if contact.kind == BallContactCandidate.Kind.BOUNDARY:
+			_settle_shot_contact_boundary(contact, remaining, events)
+			return true
+		# A latched body cannot consume zero time twice without full geometric separation.
+		_ball_contact_latches[contact.player_id] = true
+		if contact.kind == BallContactCandidate.Kind.GOALKEEPER:
+			events.append(MatchEvent.new(MatchEvent.Type.GOALKEEPER_CONTACT,
+				_state.elapsed_seconds - fixed_seconds + elapsed, _state.simulation_step,
+				source.player_id, MatchEvent.ResetReason.NONE, MatchBoundaryResult.Side.NONE,
+				contact.position_m, source.player_id, 0, false, null, contact.player_id))
+			continue # F04's independent save router is implemented by task group 4.
+		_commit_ball_impact(contact, source, events,
+			_state.elapsed_seconds - fixed_seconds + elapsed)
+	return false
+
+
+## Interpolates each remaining body path while excluding teammates and unavailable targets.
+func _shot_contact_bodies(source: BallShotSource, elapsed: float, duration: float,
+		fixed_seconds: float, starts: Dictionary[String, Vector2],
+		heights: Dictionary[String, float]) -> Array[BallContactPlayer]:
+	var bodies: Array[BallContactPlayer] = []
+	if source == null:
+		return bodies
+	for player in _player_runtime_system.get_players():
+		if player.team_id == source.team_id or player.state.action_state in [
+			PlayerMatchState.ActionState.KNOCKED_DOWN, PlayerMatchState.ActionState.GETTING_UP,
+		]:
+			continue
+		var start := starts[player.player_id]
+		var end := player.state.position_m
+		var start_height := heights[player.player_id]
+		bodies.append(BallContactPlayer.new(player.player_id,
+			start.lerp(end, elapsed / fixed_seconds),
+			start.lerp(end, (elapsed + duration) / fixed_seconds),
+			lerpf(start_height, player.state.height_m, elapsed / fixed_seconds),
+			lerpf(start_height, player.state.height_m, (elapsed + duration) / fixed_seconds),
+			player.is_goalkeeper))
+	return bodies
+
+
+## Commits separate contact, F07 outcome, F08 knockdown, and trajectory facts in order.
+func _commit_ball_impact(contact: BallContactCandidate, source: BallShotSource,
+		events: Array[MatchEvent], contact_time: float) -> void:
+	var target := _player_runtime_system.get_player(contact.player_id)
+	# F07 is injected independently here; full attribute/probability binding is a later feature.
+	var dodged := (_ball_dodge_result.is_valid()
+		and bool(_ball_dodge_result.call(contact.player_id)))
+	var result := BallImpactResolver.resolve(contact, source, target.strength_attribute,
+		_ball_runtime_system.state.velocity_mps, _match_config, _ball_route_sampler, dodged)
+	_append_impact_event(MatchEvent.Type.BALL_CONTACT, result, contact_time, events)
+	if result.did_dodge:
+		_append_impact_event(MatchEvent.Type.BALL_DODGED, result, contact_time, events)
+		return
+	_append_impact_event(MatchEvent.Type.BALL_HIT, result, contact_time, events)
+	if result.was_knocked_down and target.state_machine.start_knockdown(_match_config):
+		target.state._set_position(contact.player_position_m)
+		var did_start_knockback := target.state_machine.start_knockback(
+			result.velocity_before_mps, _match_config.ball_impact_knockback_distance_m,
+			_match_config.ball_impact_knockback_duration_seconds,
+			_match_config.ball_impact_knockback_apex_height_m)
+		assert(did_start_knockback, "A legal football knockdown requires a forced response")
+		_append_impact_event(MatchEvent.Type.PLAYER_KNOCKED_DOWN, result, contact_time, events)
+	_ball_runtime_system.apply_impact(result)
+	_append_impact_event(MatchEvent.Type.BALL_REBOUNDED
+		if result.route == BallImpactResult.Route.REBOUND else MatchEvent.Type.BALL_CONTINUED,
+		result, contact_time, events)
+
+
+## Publishes immutable impact data and preserves the exact contact timestamp.
+func _append_impact_event(type: int, result: BallImpactResult, time: float,
+		events: Array[MatchEvent]) -> void:
+	var subject := result.target_player_id if type == MatchEvent.Type.PLAYER_KNOCKED_DOWN \
+		else result.source.player_id
+	events.append(MatchEvent.new(type, time, _state.simulation_step, subject,
+		MatchEvent.ResetReason.NONE, MatchBoundaryResult.Side.NONE, result.position_m,
+		result.source.player_id, 0, false, null, result.target_player_id, "", "", result))
+
+
+## Settles the first whole-ball crossing and spends only the unused post-contact time.
+func _settle_shot_contact_boundary(contact: BallContactCandidate, remaining: float,
+		events: Array[MatchEvent]) -> void:
+	var velocity := _ball_runtime_system.state.velocity_mps
+	_settle_boundary(contact.boundary, events, false, velocity, Vector2.ZERO, Vector2.ZERO, 0.0)
+	if contact.boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
+		_ball_runtime_system.begin_post_goal_motion(contact.position_m, velocity)
+		_advance_goal_motion(remaining, events)
+	else:
+		_ball_runtime_system.advance_out_of_play(remaining, velocity)
+
+
+## Uses one explicit match-stream draw in [0, 1), consumed only after successful F08.
+func _sample_ball_route() -> float:
+	return float(_rng.randi()) / 4294967296.0
 
 
 ## Returns a read-only snapshot with goal counts and the current round phase.
@@ -524,6 +677,8 @@ func _reset_round(
 	_pending_tackle_targets.clear()
 	_pending_knockdown_targets.clear()
 	_pending_header_actions.clear()
+	_ball_contact_latches.clear()
+	_contact_shot_source = null
 	_pending_reset_reason = MatchEvent.ResetReason.NONE
 	_pending_reset_side = MatchBoundaryResult.Side.NONE
 	_settlement_remaining_seconds = 0.0
@@ -531,6 +686,7 @@ func _reset_round(
 	_out_of_play_velocity_mps = Vector2.ZERO
 	_goal_motion_elapsed_seconds = 0.0
 	if reason == MatchEvent.ResetReason.RESTART_TEST:
+		_rng.seed = _state.random_seed
 		_state._restart_test()
 		_lifecycle_events.clear()
 		_event_history.clear()

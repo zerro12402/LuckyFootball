@@ -26,6 +26,12 @@ enum Type {
 	ATTACK_RECOILED,
 	HEADER_CONTEST_WON,
 	BALL_HEADED,
+	BALL_CONTACT,
+	BALL_DODGED,
+	BALL_HIT,
+	BALL_CONTINUED,
+	BALL_REBOUNDED,
+	GOALKEEPER_CONTACT,
 }
 
 enum ResetReason {
@@ -104,6 +110,11 @@ var new_owner_id: String:
 	get:
 		return _new_owner_id
 
+var ball_impact: BallImpactResult:
+	get: return _ball_impact
+
+var _ball_impact: BallImpactResult
+
 var _target_player_id: String = ""
 var _previous_owner_id: String = ""
 var _new_owner_id: String = ""
@@ -123,6 +134,7 @@ var _simulation_step: int
 var _subject_id: String
 
 
+## Captures a fact and its immutable optional net or player-impact payload.
 func _init(
 	new_event_type: int,
 	new_match_time_seconds: float,
@@ -138,6 +150,7 @@ func _init(
 	new_target_player_id: String = "",
 	new_previous_owner_id: String = "",
 	new_new_owner_id: String = "",
+	new_ball_impact: BallImpactResult = null,
 ) -> void:
 	_event_type = new_event_type
 	_match_time_seconds = new_match_time_seconds
@@ -152,6 +165,11 @@ func _init(
 	_target_player_id = new_target_player_id
 	_previous_owner_id = new_previous_owner_id
 	_new_owner_id = new_new_owner_id
+	_ball_impact = new_ball_impact
+	if new_ball_impact != null:
+		_contact_position_m = new_ball_impact.position_m
+		_velocity_before_mps = new_ball_impact.velocity_before_mps
+		_velocity_after_mps = new_ball_impact.velocity_after_mps
 	if new_net_contact != null:
 		_net_surface = new_net_contact.surface
 		_contact_position_m = new_net_contact.contact_position_m

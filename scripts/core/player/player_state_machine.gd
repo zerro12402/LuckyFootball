@@ -37,6 +37,9 @@ var _knockdown_direction: Vector2 = Vector2.ZERO
 var _knockdown_cooldown_remaining_seconds: float = 0.0
 var _knockback_direction: Vector2 = Vector2.ZERO
 var _knockback_elapsed_seconds: float = 0.0
+var _knockback_distance_m: float = 0.0
+var _knockback_duration_seconds: float = 0.0
+var _knockback_apex_height_m: float = 0.0
 var _header_direction: Vector2 = Vector2.ZERO
 var _header_config: MatchConfigDefinition
 var _is_header_landing: bool = false
@@ -290,6 +293,9 @@ func start_knockdown(config: MatchConfigDefinition) -> bool:
 	_knockdown_config = config
 	_knockback_direction = Vector2.ZERO
 	_knockback_elapsed_seconds = 0.0
+	_knockback_distance_m = 0.0
+	_knockback_duration_seconds = 0.0
+	_knockback_apex_height_m = 0.0
 	_state._set_movement_input(Vector2.ZERO)
 	_set_movement_state_if_changed(PlayerMatchState.MovementState.IDLE)
 	_state._set_action_state(
@@ -299,16 +305,30 @@ func start_knockdown(config: MatchConfigDefinition) -> bool:
 	return true
 
 
-## Captures one impact direction for deterministic fixed-step knockback.
-func start_knockback(direction: Vector2) -> bool:
+## Captures a forced response; omitted parameters preserve the existing melee knockback.
+func start_knockback(direction: Vector2, distance_m: float = -1.0,
+		duration_seconds: float = -1.0, apex_height_m: float = 0.0) -> bool:
 	if _state.action_state != PlayerMatchState.ActionState.KNOCKED_DOWN:
 		return false
 	if _knockdown_config == null or not _knockback_direction.is_zero_approx():
 		return false
 	if not direction.is_finite() or direction.is_zero_approx():
 		return false
+	if (not is_finite(distance_m) or not is_finite(duration_seconds)
+		or not is_finite(apex_height_m) or apex_height_m < 0.0
+		or (distance_m != -1.0 and distance_m < 0.0)
+		or (duration_seconds != -1.0 and duration_seconds <= 0.0)):
+		return false
+	var seconds := (_knockdown_config.knockdown_knockback_duration_seconds
+		if duration_seconds == -1.0 else duration_seconds)
+	if seconds > _knockdown_config.knockdown_down_seconds:
+		return false
 	_knockback_direction = direction.normalized()
 	_knockback_elapsed_seconds = 0.0
+	_knockback_distance_m = (_knockdown_config.knockdown_knockback_distance_m
+		if distance_m == -1.0 else distance_m)
+	_knockback_duration_seconds = seconds
+	_knockback_apex_height_m = apex_height_m
 	return true
 
 
@@ -348,6 +368,8 @@ func set_action_phase(new_phase: int) -> bool:
 func finish_action() -> bool:
 	if _state.action_state == PlayerMatchState.ActionState.IDLE:
 		return false
+	if _state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
+		_state._set_height(0.0)
 	var was_shooting := _state.action_state == PlayerMatchState.ActionState.SHOOTING
 	var was_staggered := _state.action_state == PlayerMatchState.ActionState.STAGGERED
 	var was_heading := _state.action_state == PlayerMatchState.ActionState.HEADING
@@ -366,6 +388,9 @@ func finish_action() -> bool:
 	_knockback_direction = Vector2.ZERO
 	_knockback_elapsed_seconds = 0.0
 	_hit_stun_duration_seconds = 0.0
+	_knockback_distance_m = 0.0
+	_knockback_duration_seconds = 0.0
+	_knockback_apex_height_m = 0.0
 	_header_direction = Vector2.ZERO
 	_header_config = null
 	_is_header_landing = false
@@ -409,6 +434,9 @@ func reset_to_spawn(spawn_position_m: Vector2) -> void:
 	_knockdown_cooldown_remaining_seconds = 0.0
 	_knockback_direction = Vector2.ZERO
 	_knockback_elapsed_seconds = 0.0
+	_knockback_distance_m = 0.0
+	_knockback_duration_seconds = 0.0
+	_knockback_apex_height_m = 0.0
 	_hit_stun_duration_seconds = 0.0
 	_header_direction = Vector2.ZERO
 	_header_config = null
@@ -539,27 +567,27 @@ func _advance_tackle_action() -> void:
 		set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)
 
 
-## Spreads the configured push across fixed steps without exceeding its total distance.
+## Finishes a bounded push and hop using simulation time, returning exactly to ground height.
 func _advance_knockback_motion(fixed_delta_seconds: float) -> void:
 	if _knockback_direction.is_zero_approx():
 		return
 	assert(_knockdown_config != null, "Knockback requires match configuration")
 	var remaining_seconds := maxf(
-		_knockdown_config.knockdown_knockback_duration_seconds
+		_knockback_duration_seconds
 		- _knockback_elapsed_seconds,
 		0.0,
 	)
 	var motion_seconds := minf(fixed_delta_seconds, remaining_seconds)
 	if motion_seconds <= 0.0:
 		return
-	var knockback_speed_mps := (
-		_knockdown_config.knockdown_knockback_distance_m
-		/ _knockdown_config.knockdown_knockback_duration_seconds
-	)
+	var knockback_speed_mps := _knockback_distance_m / _knockback_duration_seconds
 	_state._set_position(
 		_state.position_m + _knockback_direction * knockback_speed_mps * motion_seconds
 	)
-	_knockback_elapsed_seconds += motion_seconds
+	_knockback_elapsed_seconds = minf(
+		_knockback_elapsed_seconds + motion_seconds, _knockback_duration_seconds)
+	var progress := _knockback_elapsed_seconds / _knockback_duration_seconds
+	_state._set_height(4.0 * _knockback_apex_height_m * progress * (1.0 - progress))
 
 
 ## Moves the attacker along its captured direction for exactly the configured lunge.

@@ -73,12 +73,14 @@ func resolve_ball_boundary(
 				MatchBoundaryResult.Outcome.GOAL,
 				best_side,
 				crossing_position_m,
+				false, best_fraction,
 			)
 	return MatchBoundaryResult.new(
 		MatchBoundaryResult.Outcome.OUT,
 		best_side,
 		crossing_position_m,
 		is_corner,
+		best_fraction,
 	)
 
 

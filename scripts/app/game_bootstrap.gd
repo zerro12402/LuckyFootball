@@ -19,7 +19,12 @@ enum DemoMode {
 	ATTACK_RECOIL_TEST,
 	AERIAL_JUMP_SHOT_TEST,
 	LOFTED_RECEIVE_AERIAL_SHOT_TEST,
+	BALL_IMPACT_TEST,
 }
+
+enum BallImpactPreset { SWEPT_DEFENDERS, BLOCK_REBOUND, KNOCKDOWN_CONTINUE, KNOCKDOWN_REBOUND, WEAK_SHOT_REBOUND }
+
+var ball_impact_preset: BallImpactPreset = BallImpactPreset.SWEPT_DEFENDERS
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
 const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
@@ -123,6 +128,7 @@ func _ready() -> void:
 		DemoMode.KNOCKDOWN_TEST,
 		DemoMode.ATTACK_RECOIL_TEST,
 		DemoMode.AERIAL_JUMP_SHOT_TEST,
+		DemoMode.BALL_IMPACT_TEST,
 	]:
 		_demo_opponent_id = player_definitions[1].player_id
 	if _field_environment != null:
@@ -137,6 +143,7 @@ func _ready() -> void:
 				DemoMode.KNOCKDOWN_TEST,
 				DemoMode.ATTACK_RECOIL_TEST,
 				DemoMode.AERIAL_JUMP_SHOT_TEST,
+				DemoMode.BALL_IMPACT_TEST,
 			],
 			"",
 			"",
@@ -167,6 +174,8 @@ func reset_demo() -> void:
 	var melee_outcome := MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN
 	if demo_mode == DemoMode.ATTACK_RECOIL_TEST:
 		melee_outcome = MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
+	if demo_mode == DemoMode.BALL_IMPACT_TEST:
+		random_seed = 2 if ball_impact_preset == BallImpactPreset.KNOCKDOWN_REBOUND else 1
 	_match_simulation = MatchSimulation.new(
 		random_seed, _match_config, _field_definition, melee_outcome
 	)
@@ -177,12 +186,17 @@ func reset_demo() -> void:
 	)
 	assert(did_register_goal, "Demo team requires an opponent goal before play")
 	var demo_player := _data_repository.get_player_by_id(_demo_player_id)
+	var player_position_m := Vector2.ZERO
+	var shooting := demo_player.shooting
+	if demo_mode == DemoMode.BALL_IMPACT_TEST:
+		player_position_m = opponent_goal_center_m - Vector2(10.0, 0.0)
+		shooting = 80 # Explicit test context; CSV attribute integration is a separate feature.
 	var did_register_player := _match_simulation.register_player(
 		_demo_player_id,
-		Vector2.ZERO,
+		player_position_m,
 		TEST_PLAYER_MOVEMENT_SPEED_MPS,
 		TEST_TEAM_ID,
-		demo_player.shooting,
+		shooting,
 		demo_player.strength,
 		demo_player.technique,
 	)
@@ -205,20 +219,32 @@ func reset_demo() -> void:
 	if not _demo_opponent_id.is_empty():
 		var opponent := _data_repository.get_player_by_id(_demo_opponent_id)
 		var opponent_position_m := TEST_OPPONENT_POSITION_M
+		var opponent_strength := opponent.strength
 		if demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 			opponent_position_m = TEST_KNOCKDOWN_OPPONENT_POSITION_M
 		elif demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST:
 			opponent_position_m = TEST_AERIAL_OPPONENT_POSITION_M
+		elif demo_mode == DemoMode.BALL_IMPACT_TEST:
+			opponent_position_m = opponent_goal_center_m - Vector2(6.0, 0.0)
+			opponent_strength = 60
+			if ball_impact_preset == BallImpactPreset.BLOCK_REBOUND:
+				opponent_strength = 80
+			elif ball_impact_preset == BallImpactPreset.WEAK_SHOT_REBOUND:
+				opponent_strength = 90
 		assert(_match_simulation.register_player(
 			_demo_opponent_id, opponent_position_m,
 			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID,
-			opponent.shooting, opponent.strength, opponent.technique,
+			opponent.shooting, opponent_strength, opponent.technique,
 		))
+		if demo_mode == DemoMode.BALL_IMPACT_TEST:
+			_register_ball_impact_extra_defender(opponent_goal_center_m)
 	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
 	if demo_mode in [DemoMode.TACKLE_TEST, DemoMode.AERIAL_JUMP_SHOT_TEST]:
 		initial_ball_position_m = Vector2(0.5, 0.0)
 	elif demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
 		initial_ball_position_m = Vector2(0.55, 0.0)
+	elif demo_mode == DemoMode.BALL_IMPACT_TEST:
+		initial_ball_position_m = player_position_m + Vector2(0.55, 0.0)
 	elif demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 		initial_ball_position_m = Vector2(1.6, 0.0)
 	var did_register_ball := _match_simulation.register_ball(
@@ -246,6 +272,7 @@ func reset_demo() -> void:
 			_demo_teammate_id,
 			_demo_opponent_id,
 			demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
+			demo_mode == DemoMode.BALL_IMPACT_TEST,
 		)
 
 	var did_start := _match_simulation.start_match()
@@ -255,10 +282,33 @@ func reset_demo() -> void:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
 	if demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
+	if demo_mode == DemoMode.BALL_IMPACT_TEST:
+		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_publish_frame(0.0)
 	set_process(true)
+
+
+## Builds the optional second target and reuses the existing four actor slots.
+func _register_ball_impact_extra_defender(goal: Vector2) -> void:
+	var extra_id := ""
+	if ball_impact_preset == BallImpactPreset.SWEPT_DEFENDERS:
+		extra_id = _demo_opponent_id + "_second"
+		assert(_match_simulation.register_player(extra_id, goal - Vector2(3.0, 0.0),
+			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID, 1, 60, 50))
+	if _field_environment != null:
+		_field_environment.set_presented_players(_demo_player_id, _demo_opponent_id,
+			true, extra_id)
+
+
+## Replays one selected impact setup with its real fixed-seed random stream.
+func select_ball_impact_preset(preset: BallImpactPreset, start_shot: bool = true) -> void:
+	assert(demo_mode == DemoMode.BALL_IMPACT_TEST)
+	ball_impact_preset = preset
+	reset_demo()
+	if start_shot:
+		queue_action(MatchAction.new(_demo_player_id, MatchAction.Type.SHOOT))
 
 
 ## Exposes a copy of meaningful simulation events to the shared preset panel.
@@ -438,6 +488,7 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 					_demo_teammate_id,
 					_demo_opponent_id,
 					demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
+					demo_mode == DemoMode.BALL_IMPACT_TEST,
 				)
 			break
 	if _field_environment != null:

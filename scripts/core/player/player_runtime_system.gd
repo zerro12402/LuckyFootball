@@ -14,6 +14,7 @@ func register_player(
 	shooting_attribute: int = 0,
 	strength_attribute: int = 50,
 	technique_attribute: int = 50,
+	is_goalkeeper: bool = false,
 ) -> bool:
 	if player_id.is_empty() or team_id.is_empty() or _players_by_id.has(player_id):
 		return false
@@ -27,6 +28,7 @@ func register_player(
 		shooting_attribute,
 		strength_attribute,
 		technique_attribute,
+		is_goalkeeper,
 	)
 	return true
 

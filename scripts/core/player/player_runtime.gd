@@ -30,12 +30,16 @@ var state_machine: PlayerStateMachine:
 	get:
 		return _state_machine
 
+var is_goalkeeper: bool:
+	get: return _is_goalkeeper
+
 var _state_machine: PlayerStateMachine
 var _spawn_position_m: Vector2
 var _team_id: String
 var _shooting_attribute: int
 var _strength_attribute: int
 var _technique_attribute: int
+var _is_goalkeeper: bool
 
 
 ## Reserves attribute zero for tests that do not register a player definition.
@@ -47,6 +51,7 @@ func _init(
 	new_shooting_attribute: int = 0,
 	new_strength_attribute: int = 50,
 	new_technique_attribute: int = 50,
+	new_is_goalkeeper: bool = false,
 ) -> void:
 	assert(not new_team_id.is_empty(), "Player runtime requires a team ID")
 	assert(new_shooting_attribute >= 0 and new_shooting_attribute <= 100)
@@ -59,6 +64,7 @@ func _init(
 	_shooting_attribute = new_shooting_attribute
 	_strength_attribute = new_strength_attribute
 	_technique_attribute = new_technique_attribute
+	_is_goalkeeper = new_is_goalkeeper
 
 
 ## Returns the runtime to its registered spawn without changing static attributes.

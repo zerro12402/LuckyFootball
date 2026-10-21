@@ -39,8 +39,13 @@ var _pending_shot_direction: Vector2 = Vector2.ZERO
 var _pending_shot_power: float = 0.0
 var _pending_shot_elapsed_seconds: float = 0.0
 var _pending_shot_started_airborne: bool = false
-var _last_shooter_id: String = ""
+var _last_releaser_id: String = ""
 var _reacquire_delay_remaining_seconds: float = 0.0
+var _reacquire_delay_at_step_start_seconds: float = 0.0
+var shot_source: BallShotSource:
+	get: return _shot_source
+var _shot_source: BallShotSource
+var _shot_sequence: int = 0
 
 
 ## Validates the existing pass parameters before the ball is registered.
@@ -135,7 +140,7 @@ func try_start_shot(shooter: PlayerRuntime, direction: Vector2, power: float) ->
 	return true
 
 
-## Advances exactly one ownership or trajectory state per fixed step.
+## Advances ball motion and allows control immediately after a trajectory stops.
 func advance(
 	fixed_delta_seconds: float,
 	player_runtime_system: PlayerRuntimeSystem,
@@ -143,12 +148,16 @@ func advance(
 	header_contact: HeaderContactCandidate = null,
 	header_action: MatchAction = null,
 	header_direction: Vector2 = Vector2.ZERO,
+	defer_shot_motion: bool = false,
+	player_start_positions: Dictionary[String, Vector2] = {},
+	player_start_heights: Dictionary[String, float] = {},
 ) -> BallAdvanceResult:
 	assert(fixed_delta_seconds > 0.0, "Fixed delta must be positive")
 	assert(player_runtime_system != null, "Ball system requires player runtimes")
 	var result := BallAdvanceResult.new()
 	if _state == null:
 		return result
+	_reacquire_delay_at_step_start_seconds = _reacquire_delay_remaining_seconds
 	_reacquire_delay_remaining_seconds = maxf(
 		_reacquire_delay_remaining_seconds - fixed_delta_seconds,
 		0.0,
@@ -156,11 +165,43 @@ func advance(
 	if _state.motion_state == BallMatchState.MotionState.OWNED:
 		_advance_owned(fixed_delta_seconds, player_runtime_system, result)
 	if _state.motion_state == BallMatchState.MotionState.IN_FLIGHT:
-		_advance_flight(fixed_delta_seconds, player_runtime_system, result,
-			header_contact, header_action, header_direction)
-	elif _state.motion_state == BallMatchState.MotionState.LOOSE and should_acquire_loose_ball:
+		if defer_shot_motion and _state.flight_kind == BallMatchState.FlightKind.SHOT:
+			result.deferred_shot_seconds = fixed_delta_seconds
+		else:
+			_advance_flight(fixed_delta_seconds, player_runtime_system, result,
+				header_contact, header_action, header_direction, defer_shot_motion,
+				player_start_positions, player_start_heights)
+	if _state.motion_state == BallMatchState.MotionState.LOOSE and should_acquire_loose_ball:
 		_try_acquire_loose_ball(player_runtime_system, result)
 	return result
+
+
+## Advances only the interval already accepted by the simulation contact scheduler.
+func advance_shot_motion(seconds: float) -> void:
+	if seconds > 0.0:
+		_advance_shot(seconds)
+
+
+## Applies a rebound at contact height without assigning ownership or a new shooter.
+func apply_impact(result: BallImpactResult) -> void:
+	if result.route != BallImpactResult.Route.REBOUND:
+		return
+	var speed := result.velocity_after_mps.length()
+	if speed <= _shot_config.shot_stop_speed_mps:
+		_state._release(_state.position_m)
+		return
+	var range_m := (speed * speed - pow(_shot_config.shot_stop_speed_mps, 2.0)) / (
+		2.0 * _shot_config.shot_ground_deceleration_mps2)
+	_state._launch_shot(result.position_m, result.velocity_after_mps, range_m,
+		_shot_config.ball_impact_rebound_apex_height_m, result.height_m)
+
+
+## Locks immutable source data only when a new legal kick actually releases the ball.
+func _record_shot_source(player: PlayerRuntime) -> void:
+	assert(player != null)
+	_shot_sequence += 1
+	_shot_source = BallShotSource.new(player.player_id, player.team_id,
+		player.shooting_attribute, _shot_sequence)
 
 
 ## Defers free-ball acquisition until boundary rules have had the first chance to settle.
@@ -169,6 +210,123 @@ func acquire_loose_ball(players: PlayerRuntimeSystem) -> BallAdvanceResult:
 	if _state != null and _state.motion_state == BallMatchState.MotionState.LOOSE:
 		_try_acquire_loose_ball(players, result)
 	return result
+
+
+## Finds the earliest controllable contact, independently of flight kind or intended target.
+func find_control_contact(
+	trajectory: BallShotTrajectory,
+	players: PlayerRuntimeSystem,
+	starts: Dictionary[String, Vector2] = {},
+	heights: Dictionary[String, float] = {},
+	step_seconds: float = 0.0,
+	elapsed_seconds: float = 0.0,
+) -> BallContactCandidate:
+	if trajectory.duration_seconds <= ContactPolynomial.EPSILON:
+		return null
+	var best: BallContactCandidate
+	for player in players.get_players():
+		if not _can_control_ball(player):
+			continue
+		var earliest := 0.0
+		if player.player_id == _last_releaser_id:
+			earliest = maxf(_reacquire_delay_at_step_start_seconds - elapsed_seconds, 0.0)
+		if earliest > trajectory.duration_seconds:
+			continue
+		var start := player.state.position_m
+		var end := start
+		var start_height := player.state.height_m
+		var end_height := start_height
+		if step_seconds > 0.0 and starts.has(player.player_id):
+			start = starts[player.player_id].lerp(end, elapsed_seconds / step_seconds)
+			end = starts[player.player_id].lerp(end,
+				(elapsed_seconds + trajectory.duration_seconds) / step_seconds)
+			start_height = lerpf(heights[player.player_id], player.state.height_m,
+				elapsed_seconds / step_seconds)
+			end_height = lerpf(heights[player.player_id], player.state.height_m,
+				(elapsed_seconds + trajectory.duration_seconds) / step_seconds)
+		var time := _first_control_time(trajectory, player, start, end,
+			start_height, end_height, earliest)
+		if time < 0.0 or (best != null
+			and time >= best.time_seconds - ContactPolynomial.EPSILON):
+			continue # Sorted player IDs break simultaneous contacts deterministically.
+		best = BallContactCandidate.new()
+		best.player_id = player.player_id
+		best.time_seconds = time
+		best.position_m = trajectory.position_at(time)
+		best.height_m = maxf(ContactPolynomial.evaluate(trajectory.height_coefficients, time), 0.0)
+		best.player_position_m = start.lerp(end, time / trajectory.duration_seconds)
+	return best
+
+
+## Commits a scheduler-validated reception using the same atomic ownership path as pickup.
+func acquire_contact_ball(contact: BallContactCandidate, players: PlayerRuntimeSystem) -> BallAdvanceResult:
+	var result := BallAdvanceResult.new()
+	var player := players.get_player(contact.player_id)
+	if _state == null or not _state.owner_player_id.is_empty() or not _can_control_ball(player):
+		return result
+	var was_pass := _state.flight_kind == BallMatchState.FlightKind.PASS
+	_claim_ball(player, result)
+	if was_pass:
+		result.received_by_player_id = player.player_id
+	return result
+
+
+## Intersects distance, height, speed and release-protection intervals without sampling gaps.
+func _first_control_time(trajectory: BallShotTrajectory, player: PlayerRuntime,
+		start: Vector2, end: Vector2, start_height: float, end_height: float,
+		earliest: float) -> float:
+	var duration := trajectory.duration_seconds
+	var offset := trajectory.start_position_m - start
+	var relative_velocity := trajectory.direction * trajectory.speed_mps - (end - start) / duration
+	var acceleration := -trajectory.direction * trajectory.deceleration_mps2 * 0.5
+	var x: Array[float] = [offset.x, relative_velocity.x, acceleration.x]
+	var y: Array[float] = [offset.y, relative_velocity.y, acceleration.y]
+	var planar := ContactPolynomial.multiply(x, x)
+	var yy := ContactPolynomial.multiply(y, y)
+	for index in range(planar.size()):
+		planar[index] += yy[index]
+	planar[0] -= _possession_radius_m * _possession_radius_m
+	var upper: Array[float] = trajectory.height_coefficients.duplicate()
+	var lower: Array[float] = [-1.0]
+	var minimum_height: Array[float] = [-1.0]
+	if player.state.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE:
+		upper[0] -= start_height + AERIAL_RECEIVE_HEIGHT_TOLERANCE_M
+		upper[1] -= (end_height - start_height) / duration
+		lower = upper.duplicate()
+		for index in range(lower.size()):
+			lower[index] = -lower[index]
+		lower[0] -= 2.0 * AERIAL_RECEIVE_HEIGHT_TOLERANCE_M
+		minimum_height = trajectory.height_coefficients.duplicate()
+		for index in range(minimum_height.size()):
+			minimum_height[index] = -minimum_height[index]
+		minimum_height[0] += MAX_RECEIVE_HEIGHT_M + ContactPolynomial.EPSILON
+	else:
+		upper[0] -= MAX_RECEIVE_HEIGHT_M + (
+			_shot_config.ball_radius_m if _shot_config != null else 0.0)
+	var speed: Array[float] = [-1.0]
+	if is_finite(_ball_control_max_speed_mps):
+		speed = [trajectory.speed_mps - _ball_control_max_speed_mps, -trajectory.deceleration_mps2]
+	var constraints: Array[Array] = [planar, lower, upper, minimum_height, speed]
+	var points: Array[float] = [earliest, duration]
+	for polynomial in constraints:
+		points.append_array(ContactPolynomial.roots(polynomial, earliest, duration))
+	points.sort()
+	for index in range(points.size()):
+		var time := points[index]
+		if _control_constraints_hold(constraints, time):
+			return time
+		if index + 1 < points.size() and _control_constraints_hold(
+			constraints, (time + points[index + 1]) * 0.5):
+			return time
+	return -1.0
+
+
+## Applies inclusive speed, planar and vertical bounds at a candidate physical time.
+func _control_constraints_hold(constraints: Array[Array], time: float) -> bool:
+	for polynomial in constraints:
+		if ContactPolynomial.evaluate(polynomial, time) > ContactPolynomial.EPSILON:
+			return false
+	return true
 
 
 ## Transfers an owned ball after the simulation has accepted a legal tackle.
@@ -229,9 +387,12 @@ func reset_ball(reset_position_m: Vector2) -> void:
 	_pending_pass_target_id = ""
 	_pending_pass_elapsed_seconds = 0.0
 	_clear_pending_shot()
-	_last_shooter_id = ""
+	_last_releaser_id = ""
 	_last_kicker_id = ""
 	_reacquire_delay_remaining_seconds = 0.0
+	_reacquire_delay_at_step_start_seconds = 0.0
+	_shot_source = null
+	_shot_sequence = 0
 
 
 
@@ -356,6 +517,7 @@ func advance_post_goal_motion(
 	return contacts
 
 
+## Returns the registered ball's read-only state, or null before registration.
 func create_snapshot() -> BallStateSnapshot:
 	if _state == null:
 		return null
@@ -390,6 +552,7 @@ func _advance_owned(
 
 ## Launches the existing teammate pass without changing its trajectory rules.
 func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResult) -> void:
+	_shot_source = null
 	var passer := players.get_player(_state.owner_player_id)
 	var receiver := players.get_player(_pending_pass_target_id)
 	_pending_pass_target_id = ""
@@ -412,6 +575,7 @@ func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResul
 		flight_range_m,
 		apex_height_m,
 	)
+	_protect_releaser(passer.player_id)
 	_last_kicker_id = passer.player_id
 	result.passed_by_player_id = passer.player_id
 
@@ -431,6 +595,7 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 		shooter.state_machine.finish_action()
 		return
 	var release_height_m := _state.height_m
+	_record_shot_source(shooter)
 	var attribute_fraction := float(shooter.shooting_attribute - 1) / 99.0
 	var attribute_multiplier := lerpf(
 		_shot_config.shot_min_attribute_multiplier,
@@ -454,13 +619,12 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 		)
 	else:
 		_state._release(release_position_m)
-	_last_shooter_id = shooter.player_id
+	_protect_releaser(shooter.player_id)
 	_last_kicker_id = shooter.player_id
-	_reacquire_delay_remaining_seconds = _shot_config.shot_reacquire_delay_seconds
 	result.shot_by_player_id = shooter.player_id
 
 
-## Routes passes and shots to their own deterministic movement rules.
+## Advances to the earliest reception or header before completing unowned ball motion.
 func _advance_flight(
 	fixed_delta_seconds: float,
 	players: PlayerRuntimeSystem,
@@ -468,30 +632,38 @@ func _advance_flight(
 	header_contact: HeaderContactCandidate = null,
 	header_action: MatchAction = null,
 	header_direction: Vector2 = Vector2.ZERO,
+	defer_shot_motion: bool = false,
+	starts: Dictionary[String, Vector2] = {},
+	heights: Dictionary[String, float] = {},
 ) -> void:
 	result.has_motion_segment = true
 	result.motion_start_position_m = _state.position_m
+	var trajectory := BallShotTrajectory.new(_state, fixed_delta_seconds, _shot_config)
+	var contact := find_control_contact(trajectory, players, starts, heights, fixed_delta_seconds)
+	var has_header := (header_contact != null and header_action != null
+		and _state.flight_kind == BallMatchState.FlightKind.PASS
+		and header_contact.contact_fraction >= 0.0 and header_contact.contact_fraction <= 1.0)
+	var travel_distance_m := trajectory.distance_at(trajectory.duration_seconds)
+	var header_seconds := INF
+	if has_header:
+		header_seconds = trajectory.time_at_distance(travel_distance_m * header_contact.contact_fraction)
+	if contact != null and contact.time_seconds < header_seconds - ContactPolynomial.EPSILON:
+		result.motion_end_position_m = contact.position_m
+		var reception := acquire_contact_ball(contact, players)
+		result.new_owner_player_id = reception.new_owner_player_id
+		result.received_by_player_id = reception.received_by_player_id
+		return
+	if has_header:
+		_advance_header_contact(fixed_delta_seconds, travel_distance_m,
+			header_contact, header_action, header_direction, result,
+			players.get_player(header_contact.player_id), defer_shot_motion)
+		return
 	if _state.flight_kind == BallMatchState.FlightKind.SHOT:
 		_advance_shot(fixed_delta_seconds)
 		result.motion_end_position_m = _state.position_m
 		return
-	var remaining_distance_m := _state.flight_range_m - _state.flight_distance_m
-	var travel_distance_m := minf(
-		_state.velocity_mps.length() * fixed_delta_seconds,
-		remaining_distance_m,
-	)
-	var next_position_m := _state.position_m + _state.velocity_mps.normalized() * travel_distance_m
-	if header_contact != null and header_action != null and (
-		_state.flight_kind == BallMatchState.FlightKind.PASS
-	) and header_contact.contact_fraction >= 0.0 and header_contact.contact_fraction <= 1.0:
-		_advance_header_contact(fixed_delta_seconds, travel_distance_m,
-			header_contact, header_action, header_direction, result)
-		return
+	var next_position_m := trajectory.position_at(trajectory.duration_seconds)
 	result.motion_end_position_m = next_position_m
-	var receiver := players.get_player(_state.target_player_id)
-	if _state.flight_kind == BallMatchState.FlightKind.PASS and _can_receive_flight(receiver, next_position_m):
-		_receive_pass(receiver, result)
-		return
 	_state._advance_flight(next_position_m, travel_distance_m)
 	if _state.flight_distance_m + DISTANCE_EPSILON >= _state.flight_range_m:
 		var was_pass := _state.flight_kind == BallMatchState.FlightKind.PASS
@@ -507,6 +679,8 @@ func _advance_header_contact(
 	action: MatchAction,
 	direction: Vector2,
 	result: BallAdvanceResult,
+	player: PlayerRuntime,
+	defer_shot_motion: bool = false,
 ) -> void:
 	assert(_shot_config != null and not direction.is_zero_approx())
 	var pass_start_m := _state.position_m
@@ -521,15 +695,19 @@ func _advance_header_contact(
 	result.header_by_player_id = contact.player_id
 	result.header_action_type = action.action_type
 	_last_kicker_id = contact.player_id
+	_protect_releaser(contact.player_id)
 	var remaining_seconds := fixed_delta_seconds * (1.0 - contact.contact_fraction)
 	if action.action_type == MatchAction.Type.HEADER_SHOT:
+		_record_shot_source(player)
 		var speed_mps := _shot_config.header_shot_speed_mps
 		var stop_speed_mps := _shot_config.shot_stop_speed_mps
 		var range_m := (speed_mps * speed_mps - stop_speed_mps * stop_speed_mps) / (
 			2.0 * _shot_config.shot_ground_deceleration_mps2)
 		_state._launch_shot(contact.contact_position_m, direction.normalized() * speed_mps,
 			range_m, _shot_config.header_shot_apex_height_m, contact_height_m)
-		if remaining_seconds > 0.0:
+		if defer_shot_motion:
+			result.deferred_shot_seconds = remaining_seconds
+		elif remaining_seconds > 0.0:
 			_advance_shot(remaining_seconds)
 	else:
 		_state._launch_clearance(contact.contact_position_m,
@@ -566,50 +744,24 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 		_state._advance_shot(next_position_m, direction * next_speed_mps, travel_distance_m)
 
 
-## Rechecks either ground control or airborne contact along the directed pass segment.
-func _can_receive_flight(receiver: PlayerRuntime, next_position_m: Vector2) -> bool:
-	if receiver == null:
-		return false
-	if receiver.state.action_state != PlayerMatchState.ActionState.IDLE or (
-		receiver.state.possession_state != PlayerMatchState.PossessionState.NO_BALL
-	):
-		return false
-	if not _is_controllable_ball_speed(_state.velocity_mps.length()):
-		return false
-	var segment := next_position_m - _state.position_m
-	var segment_length_squared := segment.length_squared()
-	if segment_length_squared <= DISTANCE_EPSILON:
-		return false
-	var segment_fraction := clampf(
-		(receiver.state.position_m - _state.position_m).dot(segment)
-		/ segment_length_squared,
-		0.0,
-		1.0,
-	)
-	var closest_position_m := _state.position_m + segment * segment_fraction
-	var closest_flight_distance_m := _state.flight_distance_m + segment.length() * segment_fraction
-	if closest_position_m.distance_squared_to(receiver.state.position_m) > (
-		_possession_radius_m * _possession_radius_m
-	):
-		return false
-	var contact_height_m := _state.calculate_height_at_distance(closest_flight_distance_m)
-	if receiver.state.jump_phase == PlayerMatchState.JumpPhase.NONE:
-		return contact_height_m <= MAX_RECEIVE_HEIGHT_M
-	return (
-		receiver.state.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE
-		and contact_height_m > MAX_RECEIVE_HEIGHT_M
-		and absf(contact_height_m - receiver.state.height_m)
-			<= AERIAL_RECEIVE_HEIGHT_TOLERANCE_M
-	)
-
-
-## Transfers an intercepted pass into owned-ball state at the receiver's control point.
-func _receive_pass(receiver: PlayerRuntime, result: BallAdvanceResult) -> void:
+## Clears old trajectories and protection while assigning exactly one ball owner.
+func _claim_ball(receiver: PlayerRuntime, result: BallAdvanceResult) -> void:
+	_shot_source = null
+	_last_releaser_id = ""
+	_reacquire_delay_remaining_seconds = 0.0
+	_reacquire_delay_at_step_start_seconds = 0.0
 	_state._set_owner(receiver.player_id)
 	receiver.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
 	_set_ball_at_control_point(receiver)
 	result.new_owner_player_id = receiver.player_id
-	result.received_by_player_id = receiver.player_id
+
+
+## Protects only the latest releasing player for the same configured interval after any kick.
+func _protect_releaser(player_id: String) -> void:
+	_last_releaser_id = player_id
+	_reacquire_delay_remaining_seconds = (
+		_shot_config.shot_reacquire_delay_seconds if _shot_config != null else 0.0)
+	_reacquire_delay_at_step_start_seconds = _reacquire_delay_remaining_seconds
 
 
 ## Gives a stopped or free ball to the nearest eligible player.
@@ -617,13 +769,10 @@ func _try_acquire_loose_ball(players: PlayerRuntimeSystem, result: BallAdvanceRe
 	var new_owner := _find_possession_candidate(players)
 	if new_owner == null:
 		return
-	_state._set_owner(new_owner.player_id)
-	new_owner.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
-	_set_ball_at_control_point(new_owner)
-	result.new_owner_player_id = new_owner.player_id
+	_claim_ball(new_owner, result)
 
 
-## Finds the nearest available player after excluding recently released shooters.
+## Finds the nearest available player after excluding the protected last releaser.
 func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 	var nearest_player: PlayerRuntime
 	var nearest_distance_squared := _possession_radius_m * _possession_radius_m + DISTANCE_EPSILON
@@ -633,7 +782,7 @@ func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 		if not _can_gain_ball(player_runtime):
 			continue
 		if (
-			player_runtime.player_id == _last_shooter_id
+			player_runtime.player_id == _last_releaser_id
 			and _reacquire_delay_remaining_seconds > 0.0
 		):
 			continue
@@ -646,12 +795,18 @@ func _find_possession_candidate(players: PlayerRuntimeSystem) -> PlayerRuntime:
 	return nearest_player
 
 
-## Requires the same available action state for free-ball pickup and directed reception.
+## Requires ground availability for static pickup and selecting a pass target.
 func _can_gain_ball(player: PlayerRuntime) -> bool:
+	return _can_control_ball(player) and player.state.jump_phase == PlayerMatchState.JumpPhase.NONE
+
+
+## Shares action and possession eligibility across every ordinary unowned-ball reception.
+func _can_control_ball(player: PlayerRuntime) -> bool:
 	return (
 		player != null
 		and player.state.action_state == PlayerMatchState.ActionState.IDLE
-		and player.state.jump_phase == PlayerMatchState.JumpPhase.NONE
+		and player.state.jump_phase in [
+			PlayerMatchState.JumpPhase.NONE, PlayerMatchState.JumpPhase.AIRBORNE]
 		and player.state.possession_state == PlayerMatchState.PossessionState.NO_BALL
 	)
 
