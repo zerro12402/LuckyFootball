@@ -30,6 +30,7 @@ var _out_of_play_velocity_mps: Vector2 = Vector2.ZERO
 var _attacking_goals_by_team: Dictionary[String, Vector2] = {}
 var _pending_tackle_targets: Dictionary[String, String] = {}
 var _pending_knockdown_targets: Dictionary[String, String] = {}
+var _pending_header_actions: Dictionary[String, MatchAction] = {}
 var _melee_outcome: MeleeOutcome
 
 
@@ -55,13 +56,15 @@ func _init(
 		_match_rules = MatchRules.new(field_definition, match_config.ball_radius_m)
 
 
-## Registers a player only before play, with shooting from its static definition.
+## Registers a player only before play, with explicit static contest attributes.
 func register_player(
 	player_id: String,
 	initial_position_m: Vector2,
 	movement_speed_mps: float = PlayerStateMachine.DEFAULT_MOVEMENT_SPEED_MPS,
 	team_id: String = "default_team",
 	shooting_attribute: int = 0,
+	strength_attribute: int = 50,
+	technique_attribute: int = 50,
 ) -> bool:
 	if _state.phase != MatchState.Phase.READY or not initial_position_m.is_finite():
 		return false
@@ -71,6 +74,8 @@ func register_player(
 		movement_speed_mps,
 		team_id,
 		shooting_attribute,
+		strength_attribute,
+		technique_attribute,
 	)
 
 
@@ -169,6 +174,8 @@ func advance_fixed_step(
 			was_accepted = _try_start_knockdown(action)
 		elif action.action_type == MatchAction.Type.JUMP:
 			was_accepted = _try_start_jump(action)
+		elif action.action_type in [MatchAction.Type.HEADER_SHOT, MatchAction.Type.HEADER_CLEAR]:
+			was_accepted = _try_prepare_header(action)
 		else:
 			was_accepted = _player_runtime_system.apply_action(action)
 		if was_accepted:
@@ -176,7 +183,11 @@ func advance_fixed_step(
 	# Check frame-start contact before movement can carry the attacker past a nearby target.
 	var was_ball_released_by_knockdown := _resolve_pending_knockdowns(step_events)
 	var recovering_player_ids: Array[String] = []
+	var player_start_positions: Dictionary[String, Vector2] = {}
+	var player_start_heights: Dictionary[String, float] = {}
 	for player in _player_runtime_system.get_players():
+		player_start_positions[player.player_id] = player.state.position_m
+		player_start_heights[player.player_id] = player.state.height_m
 		if player.state.action_state == PlayerMatchState.ActionState.GETTING_UP:
 			recovering_player_ids.append(player.player_id)
 	_player_runtime_system.advance(fixed_delta_seconds)
@@ -189,11 +200,35 @@ func advance_fixed_step(
 		_ball_runtime_system.state != null
 		and _ball_runtime_system.state.motion_state != BallMatchState.MotionState.IN_FLIGHT
 	)
+	var header_contact := _find_header_contact(
+		fixed_delta_seconds, player_start_positions, player_start_heights)
+	var header_action: MatchAction
+	var header_direction := Vector2.ZERO
+	if header_contact != null and _pending_header_actions.has(header_contact.player_id):
+		header_action = _pending_header_actions[header_contact.player_id]
+		header_direction = _header_direction(header_contact, header_action)
+		var heading_player := _player_runtime_system.get_player(header_contact.player_id)
+		if header_direction.is_zero_approx() or (
+			not heading_player.state_machine.try_start_header(_match_config, header_direction)
+		):
+			header_contact = null
+			header_action = null
+	if header_contact != null and header_action == null:
+		header_contact = null
 	var ball_result := _ball_runtime_system.advance(
 		fixed_delta_seconds,
 		_player_runtime_system,
 		false,
+		header_contact,
+		header_action,
+		header_direction,
 	)
+	if _ball_runtime_system.state == null or (
+		_ball_runtime_system.state.motion_state != BallMatchState.MotionState.IN_FLIGHT
+	) or (
+		_ball_runtime_system.state.flight_kind != BallMatchState.FlightKind.PASS
+	):
+		_pending_header_actions.clear()
 	var boundary_result: MatchBoundaryResult
 	var is_carried_boundary := false
 	if ball_result.has_owned_motion_segment and _match_rules != null:
@@ -206,10 +241,16 @@ func advance_fixed_step(
 	if boundary_result == null:
 		_append_kick_events(ball_result, step_events)
 		if ball_result.has_motion_segment and _match_rules != null:
-			boundary_result = _match_rules.resolve_ball_boundary(
-				ball_result.motion_start_position_m,
-				ball_result.motion_end_position_m,
-			)
+			if ball_result.has_pre_header_segment:
+				boundary_result = _match_rules.resolve_ball_boundary(
+					ball_result.pre_header_start_position_m,
+					ball_result.pre_header_end_position_m,
+				)
+			if boundary_result == null:
+				boundary_result = _match_rules.resolve_ball_boundary(
+					ball_result.motion_start_position_m,
+					ball_result.motion_end_position_m,
+				)
 	if boundary_result != null:
 		var exit_velocity_mps := Vector2.ZERO
 		if not is_carried_boundary:
@@ -373,6 +414,13 @@ func _append_kick_events(result: BallAdvanceResult, events: Array[MatchEvent]) -
 		events.append(_create_event(MatchEvent.Type.BALL_PASSED, result.passed_by_player_id))
 	if not result.shot_by_player_id.is_empty():
 		events.append(_create_event(MatchEvent.Type.BALL_SHOT, result.shot_by_player_id))
+	if not result.header_by_player_id.is_empty():
+		events.append(_create_event(MatchEvent.Type.HEADER_CONTEST_WON,
+			result.header_by_player_id, MatchEvent.ResetReason.NONE,
+			MatchBoundaryResult.Side.NONE, result.header_contact_position_m))
+		events.append(_create_event(MatchEvent.Type.BALL_HEADED,
+			result.header_by_player_id, MatchEvent.ResetReason.NONE,
+			MatchBoundaryResult.Side.NONE, result.header_contact_position_m))
 
 
 ## Suppresses pass reception or miss events when the boundary settled first.
@@ -419,6 +467,7 @@ func _settle_boundary(
 	_player_runtime_system.stop_all_players_for_settlement(is_carried_boundary)
 	_pending_tackle_targets.clear()
 	_pending_knockdown_targets.clear()
+	_pending_header_actions.clear()
 	if boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
 		_pending_reset_reason = MatchEvent.ResetReason.GOAL
 		_settlement_remaining_seconds = _match_config.goal_net_max_motion_seconds
@@ -474,6 +523,7 @@ func _reset_round(
 	_player_runtime_system.reset_all_players()
 	_pending_tackle_targets.clear()
 	_pending_knockdown_targets.clear()
+	_pending_header_actions.clear()
 	_pending_reset_reason = MatchEvent.ResetReason.NONE
 	_pending_reset_side = MatchBoundaryResult.Side.NONE
 	_settlement_remaining_seconds = 0.0
@@ -742,16 +792,120 @@ func _try_start_shot(action: MatchAction) -> bool:
 	return _ball_runtime_system.try_start_shot(shooter, shot_direction, action.power)
 
 
-## Accepts a jump only for the current carrier; height and ownership remain separate.
+## Allows only the carrier or the target of an incoming high pass to jump.
 func _try_start_jump(action: MatchAction) -> bool:
 	if _match_config == null or _ball_runtime_system.state == null:
-		return false
-	if _ball_runtime_system.state.owner_player_id != action.player_id:
 		return false
 	var player := _player_runtime_system.get_player(action.player_id)
 	if player == null:
 		return false
-	return player.state_machine.try_start_jump(_match_config)
+	var ball := _ball_runtime_system.state
+	var is_carrier := ball.owner_player_id == action.player_id
+	var is_incoming_high_pass := (
+		ball.motion_state == BallMatchState.MotionState.IN_FLIGHT
+		and ball.flight_kind == BallMatchState.FlightKind.PASS
+		and ball.target_player_id == action.player_id
+		and ball.calculate_height_at_distance(ball.flight_range_m * 0.5)
+			> BallRuntimeSystem.MAX_RECEIVE_HEIGHT_M
+	)
+	if not is_carrier and not is_incoming_high_pass:
+		return false
+	return player.state_machine.try_start_jump(_match_config, is_incoming_high_pass)
+
+
+## Holds a requested head action while the current high pass approaches the player.
+func _try_prepare_header(action: MatchAction) -> bool:
+	var ball := _ball_runtime_system.state
+	var player := _player_runtime_system.get_player(action.player_id)
+	if _match_config == null or ball == null or player == null:
+		return false
+	if ball.motion_state != BallMatchState.MotionState.IN_FLIGHT or (
+		ball.flight_kind != BallMatchState.FlightKind.PASS
+	):
+		return false
+	if action.action_type == MatchAction.Type.HEADER_SHOT and (
+		not _attacking_goals_by_team.has(player.team_id)
+	):
+		return false
+	if action.action_type == MatchAction.Type.HEADER_CLEAR and (
+		 not action.direction.is_finite() or action.direction.is_zero_approx()
+	):
+		return false
+	_pending_header_actions[action.player_id] = action
+	return true
+
+
+## Sweeps the current pass against every eligible player path in the fixed step.
+func _find_header_contact(
+	fixed_delta_seconds: float,
+	start_positions: Dictionary[String, Vector2],
+	start_heights: Dictionary[String, float],
+) -> HeaderContactCandidate:
+	var ball := _ball_runtime_system.state
+	if _match_config == null or ball == null or (
+		ball.motion_state != BallMatchState.MotionState.IN_FLIGHT
+	) or ball.flight_kind != BallMatchState.FlightKind.PASS:
+		return null
+	var travel_distance_m := minf(ball.velocity_mps.length() * fixed_delta_seconds,
+		ball.flight_range_m - ball.flight_distance_m)
+	if travel_distance_m <= 0.0:
+		return null
+	var end_position_m := ball.position_m + ball.velocity_mps.normalized() * travel_distance_m
+	var trajectories: Array[HeaderPlayerTrajectory] = []
+	for player in _player_runtime_system.get_players():
+		var is_eligible := (
+			player.state.action_state == PlayerMatchState.ActionState.IDLE
+			and player.state.possession_state == PlayerMatchState.PossessionState.NO_BALL
+		)
+		trajectories.append(HeaderPlayerTrajectory.new(
+			player.player_id, player.team_id,
+			start_positions[player.player_id], player.state.position_m,
+			start_heights[player.player_id], player.state.height_m,
+			player.strength_attribute, player.technique_attribute, is_eligible,
+		))
+	var candidates := HeaderContactResolver.find_candidates(ball, end_position_m,
+		trajectories, _match_config.header_contact_radius_m,
+		_match_config.header_min_contact_height_m, _match_config.header_reach_height_m)
+	if candidates.is_empty():
+		return null
+	var winner := candidates[0]
+	for index in range(1, candidates.size()):
+		var contender := candidates[index]
+		if contender.team_id == winner.team_id:
+			continue
+		if (contender.contact_fraction - candidates[0].contact_fraction) * (
+			travel_distance_m / ball.velocity_mps.length()
+		) > _match_config.header_simultaneous_window_seconds:
+			break
+		var winner_score := _header_score(winner)
+		var contender_score := _header_score(contender)
+		if contender_score > winner_score or (
+			is_equal_approx(contender_score, winner_score)
+			and contender.player_id < winner.player_id
+		):
+			winner = contender
+	if _match_rules != null:
+		var before_contact := _match_rules.resolve_ball_boundary(
+			ball.position_m, winner.contact_position_m)
+		if before_contact != null:
+			return null
+	return winner
+
+
+## Weighs explicit player attributes only for opponents arriving almost together.
+func _header_score(candidate: HeaderContactCandidate) -> float:
+	return (candidate.strength * _match_config.header_strength_weight
+		+ candidate.technique * _match_config.header_technique_weight)
+
+
+## Uses the opponent goal for shots and the supplied vector for clearances.
+func _header_direction(candidate: HeaderContactCandidate, action: MatchAction) -> Vector2:
+	if action.action_type == MatchAction.Type.HEADER_CLEAR:
+		return action.direction.normalized()
+	if not _attacking_goals_by_team.has(candidate.team_id):
+		return Vector2.ZERO
+	var goal_center: Vector2 = _attacking_goals_by_team[candidate.team_id]
+	return (goal_center - candidate.contact_position_m).normalized()
 
 
 func _create_event(

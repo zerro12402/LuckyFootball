@@ -1,3 +1,4 @@
+## Checks shared demo mode setup, switching, input availability, and reset flow.
 extends SceneTree
 
 var _started_snapshots: Array[MatchStateSnapshot] = []
@@ -5,10 +6,12 @@ var _actions: Array[MatchAction] = []
 var _failures: PackedStringArray = []
 
 
+## Waits for the scene tree before creating mode scenes.
 func _init() -> void:
 	call_deferred("_run_tests")
 
 
+## Runs the independent mode checks and returns a failure code when needed.
 func _run_tests() -> void:
 	test_mode_scenes_when_loaded_have_expected_demo_configuration()
 	test_mode_menu_when_selected_replaces_active_scene()
@@ -22,6 +25,7 @@ func _run_tests() -> void:
 	quit(1)
 
 
+## Ensures each saved entry scene still selects its intended shared demo preset.
 func test_mode_scenes_when_loaded_have_expected_demo_configuration() -> void:
 	var formal_scene := load("res://scenes/match/formal_match.tscn") as PackedScene
 	var touch_scene := load("res://scenes/test/touch_dribble_demo.tscn") as PackedScene
@@ -51,6 +55,7 @@ func test_mode_scenes_when_loaded_have_expected_demo_configuration() -> void:
 		pass_demo.free()
 
 
+## Verifies menu selection replaces one active scene with the next.
 func test_mode_menu_when_selected_replaces_active_scene() -> void:
 	var menu_scene := load("res://scenes/main/game_modes.tscn") as PackedScene
 	if menu_scene == null:
@@ -93,6 +98,7 @@ func test_mode_menu_when_selected_replaces_active_scene() -> void:
 	menu.queue_free()
 
 
+## Checks that touch mode excludes team keys and resets on the next fixed step.
 func test_touch_dribble_mode_when_reset_keeps_one_player() -> void:
 	_started_snapshots.clear()
 	_actions.clear()
@@ -118,12 +124,20 @@ func test_touch_dribble_mode_when_reset_keeps_one_player() -> void:
 	_press_key(keyboard, KEY_TAB)
 	_expect(_actions.is_empty(), "Expected pass and player switch unavailable")
 	_press_key(keyboard, KEY_QUOTELEFT)
-	_expect(_started_snapshots.size() == 2, "Expected reset to restart touch mode")
-	_expect(_started_snapshots[1].players.size() == 1, "Expected one player after reset")
-	_expect(_started_snapshots[1].simulation_step == 0, "Expected fresh simulation")
+	bootstrap._process(bootstrap.fixed_delta_seconds)
+	var reset_snapshot := bootstrap._match_simulation.create_snapshot()
+	_expect(reset_snapshot.players.size() == 1, "Expected one player after reset")
+	_expect(reset_snapshot.ball.position_m == GameBootstrap.TEST_BALL_INITIAL_POSITION_M,
+		"Expected ball to return to its initial position")
+	var did_reset := false
+	for event in bootstrap.get_event_history():
+		if event.event_type == MatchEvent.Type.RESET_COMPLETED:
+			did_reset = true
+	_expect(did_reset, "Expected reset completion after the queued fixed step")
 	bootstrap.queue_free()
 
 
+## Sends one keyboard event through the real input adapter.
 func _press_key(adapter: KeyboardPlayerInputAdapter, key_code: int) -> void:
 	var key_event := InputEventKey.new()
 	key_event.keycode = key_code
@@ -131,14 +145,17 @@ func _press_key(adapter: KeyboardPlayerInputAdapter, key_code: int) -> void:
 	adapter._unhandled_key_input(key_event)
 
 
+## Collects startup snapshots emitted by the bootstrap.
 func _record_start(snapshot: MatchStateSnapshot) -> void:
 	_started_snapshots.append(snapshot)
 
 
+## Collects actions proposed by keyboard input without altering the match.
 func _record_action(action: MatchAction) -> void:
 	_actions.append(action)
 
 
+## Records one assertion for the test exit code.
 func _expect(condition: bool, failure_message: String) -> void:
 	if not condition:
 		_failures.append(failure_message)

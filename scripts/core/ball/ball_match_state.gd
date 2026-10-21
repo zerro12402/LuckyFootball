@@ -1,4 +1,4 @@
-## Holds the ball's ownership and one active pass or shot trajectory.
+## Holds the ball's ownership and one active pass, shot, or clearance trajectory.
 class_name BallMatchState
 extends RefCounted
 
@@ -13,6 +13,7 @@ enum FlightKind {
 	NONE,
 	PASS,
 	SHOT,
+	CLEARANCE,
 }
 
 var position_m: Vector2:
@@ -135,10 +136,34 @@ func _launch_shot(
 	_motion_state = MotionState.IN_FLIGHT
 
 
+## Redirects a contested pass into an unowned high clearance at contact height.
+func _launch_clearance(
+	release_position_m: Vector2,
+	clear_velocity_mps: Vector2,
+	flight_range_m: float,
+	apex_height_m: float,
+	start_height_m: float,
+) -> void:
+	assert(clear_velocity_mps.is_finite() and not clear_velocity_mps.is_zero_approx())
+	assert(flight_range_m > 0.0 and apex_height_m > 0.0 and start_height_m >= 0.0)
+	_position_m = release_position_m
+	_owner_player_id = ""
+	_target_player_id = ""
+	_velocity_mps = clear_velocity_mps
+	_flight_distance_m = 0.0
+	_flight_range_m = flight_range_m
+	_flight_apex_height_m = apex_height_m
+	_flight_start_height_m = start_height_m
+	_height_m = start_height_m
+	_flight_kind = FlightKind.CLEARANCE
+	_motion_state = MotionState.IN_FLIGHT
+
+
 ## Advances a pass while keeping its parabolic height synchronized with distance.
 func _advance_flight(new_position_m: Vector2, traveled_distance_m: float) -> void:
 	assert(_motion_state == MotionState.IN_FLIGHT, "Ball must be in flight")
-	assert(_flight_kind == FlightKind.PASS, "Pass distance requires a pass trajectory")
+	assert(_flight_kind in [FlightKind.PASS, FlightKind.CLEARANCE],
+		"Flight distance requires a pass or clearance trajectory")
 	_position_m = new_position_m
 	_flight_distance_m += traveled_distance_m
 	_height_m = calculate_height_at_distance(_flight_distance_m)

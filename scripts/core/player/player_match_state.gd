@@ -25,6 +25,7 @@ enum ActionState {
 	KNOCKED_DOWN,
 	GETTING_UP,
 	LANDING,
+	HEADING,
 }
 
 enum ActionPhase {

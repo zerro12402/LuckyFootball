@@ -1,4 +1,4 @@
-## Owns one player's state machine and validated static shooting attribute.
+## Owns one player's state machine and explicit contest attributes.
 class_name PlayerRuntime
 extends RefCounted
 
@@ -14,6 +14,14 @@ var shooting_attribute: int:
 	get:
 		return _shooting_attribute
 
+var strength_attribute: int:
+	get:
+		return _strength_attribute
+
+var technique_attribute: int:
+	get:
+		return _technique_attribute
+
 var state: PlayerMatchState:
 	get:
 		return _state_machine.state
@@ -26,6 +34,8 @@ var _state_machine: PlayerStateMachine
 var _spawn_position_m: Vector2
 var _team_id: String
 var _shooting_attribute: int
+var _strength_attribute: int
+var _technique_attribute: int
 
 
 ## Reserves attribute zero for tests that do not register a player definition.
@@ -35,14 +45,20 @@ func _init(
 	movement_speed_mps: float = PlayerStateMachine.DEFAULT_MOVEMENT_SPEED_MPS,
 	new_team_id: String = "default_team",
 	new_shooting_attribute: int = 0,
+	new_strength_attribute: int = 50,
+	new_technique_attribute: int = 50,
 ) -> void:
 	assert(not new_team_id.is_empty(), "Player runtime requires a team ID")
 	assert(new_shooting_attribute >= 0 and new_shooting_attribute <= 100)
+	assert(new_strength_attribute >= 0 and new_strength_attribute <= 100)
+	assert(new_technique_attribute >= 0 and new_technique_attribute <= 100)
 	var initial_state := PlayerMatchState.new(new_player_id, initial_position_m)
 	_state_machine = PlayerStateMachine.new(initial_state, movement_speed_mps)
 	_spawn_position_m = initial_position_m
 	_team_id = new_team_id
 	_shooting_attribute = new_shooting_attribute
+	_strength_attribute = new_strength_attribute
+	_technique_attribute = new_technique_attribute
 
 
 ## Returns the runtime to its registered spawn without changing static attributes.

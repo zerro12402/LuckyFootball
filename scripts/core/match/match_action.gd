@@ -14,6 +14,8 @@ enum Type {
 	RESET_ROUND,
 	RESTART_TEST,
 	JUMP,
+	HEADER_SHOT,
+	HEADER_CLEAR,
 }
 
 var player_id: String:

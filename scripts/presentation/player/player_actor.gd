@@ -11,6 +11,8 @@ const KNOCKDOWN_ANIMATION := &"knockdown"
 const JUMP_ANIMATION := &"jump"
 const LANDING_ANIMATION := &"landing"
 const HIT_ANIMATION := &"hit"
+const HEADER_FIRST_ANIMATION := &"header_first"
+const HEADER_SECOND_ANIMATION := &"header_second"
 const JUMP_FOOT_ANCHORS := [
 	Vector2(0.0, 8.0), Vector2(-2.0, 13.0),
 	Vector2(1.0, 12.0), Vector2(0.0, 13.0),
@@ -29,6 +31,9 @@ var _tackle_duration_seconds: float = 1.0
 var _knockdown_duration_seconds: float = 1.0
 var _knockdown_jump_height_m: float = 0.5
 var _landing_animation_seconds: float = 0.3
+var _header_first_frame_seconds: float = 0.3
+var _header_second_frame_seconds: float = 1.0
+var _use_shoot_pose_during_jump: bool = false
 var _ground_sprite_position: Vector2
 var _active_animation: StringName = &""
 
@@ -107,10 +112,32 @@ func configure_knockdown(
 	_landing_animation_seconds = landing_animation_seconds
 
 
+## Selects each header frame from the same validated durations used by simulation.
+func configure_header_timing(first_frame_seconds: float, second_frame_seconds: float) -> void:
+	assert(first_frame_seconds > 0.0 and is_finite(first_frame_seconds))
+	assert(second_frame_seconds > 0.0 and is_finite(second_frame_seconds))
+	_header_first_frame_seconds = first_frame_seconds
+	_header_second_frame_seconds = second_frame_seconds
+
+
+## Holds the shooting sprite row throughout this demo's stationary aerial shot.
+func configure_aerial_shot_pose(enabled: bool) -> void:
+	_use_shoot_pose_during_jump = enabled
+
+
 ## Prioritizes the visible action and jump phase when choosing a sprite-sheet row.
 func _resolve_animation(player_snapshot: PlayerStateSnapshot) -> StringName:
+	if player_snapshot.action_state == PlayerMatchState.ActionState.HEADING:
+		if player_snapshot.action_state_elapsed_seconds < _header_first_frame_seconds:
+			return HEADER_FIRST_ANIMATION
+		return HEADER_SECOND_ANIMATION
 	if player_snapshot.jump_phase == PlayerMatchState.JumpPhase.LANDING:
 		return LANDING_ANIMATION
+	if _use_shoot_pose_during_jump and player_snapshot.jump_phase in [
+		PlayerMatchState.JumpPhase.TAKEOFF,
+		PlayerMatchState.JumpPhase.AIRBORNE,
+	]:
+		return SHOOT_ANIMATION
 	if player_snapshot.action_state == PlayerMatchState.ActionState.PASSING:
 		return PASS_ANIMATION
 	if player_snapshot.action_state == PlayerMatchState.ActionState.SHOOTING:
@@ -144,7 +171,12 @@ func _resolve_animation(player_snapshot: PlayerStateSnapshot) -> StringName:
 ## Avoids restarting an action animation on every presentation frame.
 func _play_animation(animation_name: StringName) -> void:
 	if _active_animation == animation_name:
-		if _animation_player.is_playing() or animation_name in [HIT_ANIMATION, LANDING_ANIMATION]:
+		if _animation_player.is_playing() or animation_name in [
+			HIT_ANIMATION, LANDING_ANIMATION,
+			HEADER_FIRST_ANIMATION, HEADER_SECOND_ANIMATION,
+		] or (
+			animation_name == SHOOT_ANIMATION and _use_shoot_pose_during_jump
+		):
 			return
 	var playback_speed := 1.0
 	if animation_name == HIT_ANIMATION:
@@ -155,5 +187,9 @@ func _play_animation(animation_name: StringName) -> void:
 		playback_speed = 1.0 / _knockdown_duration_seconds
 	elif animation_name == LANDING_ANIMATION:
 		playback_speed = 0.3 / _landing_animation_seconds
+	elif animation_name == HEADER_FIRST_ANIMATION:
+		playback_speed = 0.3 / _header_first_frame_seconds
+	elif animation_name == HEADER_SECOND_ANIMATION:
+		playback_speed = 1.0 / _header_second_frame_seconds
 	_animation_player.play(animation_name, -1.0, playback_speed)
 	_active_animation = animation_name

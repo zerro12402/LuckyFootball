@@ -3,6 +3,20 @@ class_name MatchConfigDataRepository
 extends RefCounted
 
 const CSV_HEADERS: Array[String] = ["key", "value", "comment"]
+const HEADER_DEFAULTS := {
+	"header_contact_radius_m": 0.75,
+	"header_min_contact_height_m": 0.3,
+	"header_reach_height_m": 1.9,
+	"header_simultaneous_window_seconds": 0.05,
+	"header_strength_weight": 0.6,
+	"header_technique_weight": 0.4,
+	"header_shot_speed_mps": 16.0,
+	"header_shot_apex_height_m": 0.65,
+	"header_clear_speed_mps": 12.0,
+	"header_clear_apex_height_m": 1.2,
+	"header_first_frame_seconds": 0.3,
+	"header_second_frame_seconds": 1.0,
+}
 const REQUIRED_KEYS: Array[String] = [
 	"shot_base_speed_mps",
 	"shot_min_attribute_multiplier",
@@ -96,7 +110,7 @@ func load_from_csv(csv_path: String) -> MatchConfigDataLoadResult:
 			has_config = true
 		elif not has_config:
 			result._add_error("Match config row %d appears before config_id" % row_number)
-		elif not REQUIRED_KEYS.has(key):
+		elif not REQUIRED_KEYS.has(key) and not HEADER_DEFAULTS.has(key):
 			result._add_error("Match config row %d has unknown key %s" % [row_number, key])
 		elif config_values.has(key):
 			result._add_error("Match config row %d has duplicate key %s" % [row_number, key])
@@ -195,6 +209,31 @@ func _parse_config(
 	):
 		result._add_error("Match config row %d has invalid jump parameters" % row_number)
 		return null
+	var header_values: Dictionary[String, float] = {}
+	for key in HEADER_DEFAULTS:
+		var value: float = HEADER_DEFAULTS[key]
+		if config_values.has(key):
+			var raw_header_value := config_values[key]
+			if not raw_header_value.is_valid_float() or not is_finite(raw_header_value.to_float()):
+				result._add_error("Match config row %d has invalid %s" % [row_number, key])
+				return null
+			value = raw_header_value.to_float()
+		header_values[key] = value
+	if (header_values["header_contact_radius_m"] <= 0.0
+		or header_values["header_min_contact_height_m"] <= 0.2
+		or header_values["header_reach_height_m"] <= header_values["header_min_contact_height_m"]
+		or header_values["header_simultaneous_window_seconds"] < 0.0
+		or header_values["header_strength_weight"] < 0.0
+		or header_values["header_technique_weight"] < 0.0
+		or header_values["header_strength_weight"] + header_values["header_technique_weight"] <= 0.0
+		or header_values["header_shot_speed_mps"] <= values[4]
+		or header_values["header_shot_apex_height_m"] <= 0.0
+		or header_values["header_clear_speed_mps"] <= 0.0
+		or header_values["header_clear_apex_height_m"] <= 0.0
+		or header_values["header_first_frame_seconds"] <= 0.0
+		or header_values["header_second_frame_seconds"] <= 0.0):
+		result._add_error("Match config row %d has invalid header parameters" % row_number)
+		return null
 	return MatchConfigDefinition.new(
 		config_id, values[0], values[1], values[2], values[3],
 		values[4], values[5], values[6], values[7], values[8], values[9], values[10],
@@ -205,6 +244,18 @@ func _parse_config(
 		values[30], values[31], values[32], values[33], values[34],
 		values[35], values[36], values[37], values[38], values[39], values[40],
 		values[41], values[42], values[43], values[44], values[45], values[46],
+		header_values["header_contact_radius_m"],
+		header_values["header_min_contact_height_m"],
+		header_values["header_reach_height_m"],
+		header_values["header_simultaneous_window_seconds"],
+		header_values["header_strength_weight"],
+		header_values["header_technique_weight"],
+		header_values["header_shot_speed_mps"],
+		header_values["header_shot_apex_height_m"],
+		header_values["header_clear_speed_mps"],
+		header_values["header_clear_apex_height_m"],
+		header_values["header_first_frame_seconds"],
+		header_values["header_second_frame_seconds"],
 	)
 
 

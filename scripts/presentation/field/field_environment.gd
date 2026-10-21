@@ -12,6 +12,8 @@ const REQUIRED_VIEW_SIZE := Vector2(960.0, 540.0)
 @onready var _debug_overlay: FieldDebugOverlay = %DebugOverlay
 @onready var _demo_player: PlayerActor = %DemoPlayer
 @onready var _demo_teammate: PlayerActor = %DemoTeammate
+@onready var _demo_opponent: PlayerActor = %DemoOpponent
+@onready var _demo_challenger: PlayerActor = %DemoChallenger
 @onready var _ball: BallActor = %Ball
 
 var field_definition: FieldDefinition:
@@ -77,12 +79,16 @@ func toggle_meter_ticks() -> void:
 func configure_hit_stun(duration_seconds: float) -> void:
 	_demo_player.configure_hit_stun(duration_seconds)
 	_demo_teammate.configure_hit_stun(duration_seconds)
+	_demo_opponent.configure_hit_stun(duration_seconds)
+	_demo_challenger.configure_hit_stun(duration_seconds)
 
 
 ## Synchronizes tackle playback with its configured fixed-step duration.
 func configure_tackle_duration(duration_seconds: float) -> void:
 	_demo_player.configure_tackle_duration(duration_seconds)
 	_demo_teammate.configure_tackle_duration(duration_seconds)
+	_demo_opponent.configure_tackle_duration(duration_seconds)
+	_demo_challenger.configure_tackle_duration(duration_seconds)
 
 
 ## Applies the same configured hop height and timing to both visible players.
@@ -93,28 +99,52 @@ func configure_knockdown(
 ) -> void:
 	_demo_player.configure_knockdown(duration_seconds, jump_height_m, landing_animation_seconds)
 	_demo_teammate.configure_knockdown(duration_seconds, jump_height_m, landing_animation_seconds)
+	_demo_opponent.configure_knockdown(duration_seconds, jump_height_m, landing_animation_seconds)
+	_demo_challenger.configure_knockdown(duration_seconds, jump_height_m, landing_animation_seconds)
+
+
+## Synchronizes each visible actor's header frames with the simulation clock.
+func configure_header_timing(first_frame_seconds: float, second_frame_seconds: float) -> void:
+	_demo_player.configure_header_timing(first_frame_seconds, second_frame_seconds)
+	_demo_teammate.configure_header_timing(first_frame_seconds, second_frame_seconds)
+	_demo_opponent.configure_header_timing(first_frame_seconds, second_frame_seconds)
+	_demo_challenger.configure_header_timing(first_frame_seconds, second_frame_seconds)
+
+
+## Uses the shooting row for the receiver's jump in the lofted-pass demo only.
+func configure_teammate_aerial_shot_pose(enabled: bool) -> void:
+	_demo_teammate.configure_aerial_shot_pose(enabled)
 
 
 ## Assigns the actors displayed by the current test scene.
 func set_presented_players(
-	player_id: String, teammate_id: String = "", is_opponent: bool = false
+	player_id: String, teammate_id: String = "", is_opponent: bool = false,
+	opponent_id: String = "", challenger_id: String = "",
 ) -> void:
 	assert(not player_id.is_empty(), "The controlled player requires an ID")
 	assert(player_id != teammate_id, "Demo players require distinct IDs")
 	_presented_player_ids = [player_id]
 	_demo_teammate.visible = not teammate_id.is_empty()
+	_demo_opponent.visible = not opponent_id.is_empty()
+	_demo_challenger.visible = not challenger_id.is_empty()
 	_demo_teammate.modulate = (
 		Color(1.0, 0.55, 0.55) if is_opponent else Color(0.55, 0.9, 1.0)
 	)
 	if not teammate_id.is_empty():
 		_presented_player_ids.append(teammate_id)
+	if not opponent_id.is_empty():
+		_presented_player_ids.append(opponent_id)
+	if not challenger_id.is_empty():
+		_presented_player_ids.append(challenger_id)
 
 
 ## Copies a match snapshot into visible actors without changing simulation state.
 func present(snapshot: MatchStateSnapshot) -> void:
 	if _projection == null:
 		return
-	var player_actors: Array[PlayerActor] = [_demo_player, _demo_teammate]
+	var player_actors: Array[PlayerActor] = [
+		_demo_player, _demo_teammate, _demo_opponent, _demo_challenger,
+	]
 	var aerial_carrier_actor: PlayerActor
 	for player_index in range(_presented_player_ids.size()):
 		var player_snapshot := snapshot.get_player(_presented_player_ids[player_index])

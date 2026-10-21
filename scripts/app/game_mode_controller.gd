@@ -11,6 +11,7 @@ enum Mode {
 	KNOCKDOWN_TEST,
 	ATTACK_RECOIL_TEST,
 	AERIAL_JUMP_SHOT_TEST,
+	LOFTED_RECEIVE_AERIAL_SHOT_TEST,
 }
 
 @export var formal_match_scene: PackedScene
@@ -24,6 +25,7 @@ enum Mode {
 @onready var _knockdown_test_button: Button = %KnockdownTestButton
 @onready var _attack_recoil_test_button: Button = %AttackRecoilTestButton
 @onready var _aerial_jump_shot_test_button: Button = %AerialJumpShotTestButton
+@onready var _lofted_receive_aerial_shot_test_button: Button = %LoftedReceiveAerialShotTestButton
 
 var current_mode: Mode:
 	get:
@@ -42,6 +44,7 @@ func _ready() -> void:
 	_knockdown_test_button.pressed.connect(_show_knockdown_test)
 	_attack_recoil_test_button.pressed.connect(_show_attack_recoil_test)
 	_aerial_jump_shot_test_button.pressed.connect(_show_aerial_jump_shot_test)
+	_lofted_receive_aerial_shot_test_button.pressed.connect(_show_lofted_receive_aerial_shot_test)
 	show_mode(Mode.PASS_AND_SHOOT)
 
 
@@ -67,6 +70,8 @@ func show_mode(mode: Mode) -> void:
 	_knockdown_test_button.set_pressed_no_signal(mode == Mode.KNOCKDOWN_TEST)
 	_attack_recoil_test_button.set_pressed_no_signal(mode == Mode.ATTACK_RECOIL_TEST)
 	_aerial_jump_shot_test_button.set_pressed_no_signal(mode == Mode.AERIAL_JUMP_SHOT_TEST)
+	_lofted_receive_aerial_shot_test_button.set_pressed_no_signal(
+		mode == Mode.LOFTED_RECEIVE_AERIAL_SHOT_TEST)
 
 
 ## Keeps formal play separate while all interactive demos share one scene resource.
@@ -92,6 +97,9 @@ func _configure_demo_mode(mode: Mode, demo_bootstrap: GameBootstrap) -> void:
 		Mode.AERIAL_JUMP_SHOT_TEST:
 			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.AERIAL_JUMP_SHOT_TEST
 			demo_bootstrap.random_seed = 44
+		Mode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST
+			demo_bootstrap.random_seed = 47
 		_:
 			assert(false, "Unsupported demo mode")
 
@@ -126,3 +134,8 @@ func _show_attack_recoil_test() -> void:
 ## Opens the aerial presets in the same shared bootstrap scene as other demos.
 func _show_aerial_jump_shot_test() -> void:
 	show_mode(Mode.AERIAL_JUMP_SHOT_TEST)
+
+
+## Opens the high-pass reception and teammate aerial-shot test in the shared scene.
+func _show_lofted_receive_aerial_shot_test() -> void:
+	show_mode(Mode.LOFTED_RECEIVE_AERIAL_SHOT_TEST)

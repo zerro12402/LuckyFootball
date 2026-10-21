@@ -47,3 +47,15 @@ knockdown_hit_window_start_seconds,0.0,击倒突进可命中时间窗口起点�
 knockdown_hit_window_end_seconds,0.8,击倒突进可命中时间窗口终点，单位秒
 knockdown_knockback_distance_m,2.0,受击球员沿攻击方向击退的距离，单位米
 knockdown_knockback_duration_seconds,0.2,受击球员完成击退位移的时长，单位秒
+header_contact_radius_m,0.75,高空争顶的水平接触半径，单位米
+header_min_contact_height_m,0.3,头球接触最低球高度，单位米
+header_reach_height_m,1.9,球员站位和跳跃高度之上的可触球高度，单位米
+header_simultaneous_window_seconds,0.05,双方近同时争顶判定时间窗，单位秒
+header_strength_weight,0.6,近同时争顶时强壮度权重
+header_technique_weight,0.4,近同时争顶时技巧权重
+header_shot_speed_mps,16.0,头球攻门初速度，单位米每秒
+header_shot_apex_height_m,0.65,头球攻门附加抛物线顶点高度，单位米
+header_clear_speed_mps,12.0,头球解围初速度，单位米每秒
+header_clear_apex_height_m,1.2,头球解围附加抛物线顶点高度，单位米
+header_first_frame_seconds,0.3,头球动作第一帧持续时长，单位秒
+header_second_frame_seconds,1.0,头球动作第二帧持续时长，单位秒

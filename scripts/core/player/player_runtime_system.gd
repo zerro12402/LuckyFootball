@@ -12,6 +12,8 @@ func register_player(
 	movement_speed_mps: float = PlayerStateMachine.DEFAULT_MOVEMENT_SPEED_MPS,
 	team_id: String = "default_team",
 	shooting_attribute: int = 0,
+	strength_attribute: int = 50,
+	technique_attribute: int = 50,
 ) -> bool:
 	if player_id.is_empty() or team_id.is_empty() or _players_by_id.has(player_id):
 		return false
@@ -23,6 +25,8 @@ func register_player(
 		movement_speed_mps,
 		team_id,
 		shooting_attribute,
+		strength_attribute,
+		technique_attribute,
 	)
 	return true
 

@@ -2,6 +2,44 @@
 class_name MatchConfigDefinition
 extends RefCounted
 
+var header_contact_radius_m: float:
+	get: return _header_contact_radius_m
+var header_min_contact_height_m: float:
+	get: return _header_min_contact_height_m
+var header_reach_height_m: float:
+	get: return _header_reach_height_m
+var header_simultaneous_window_seconds: float:
+	get: return _header_simultaneous_window_seconds
+var header_strength_weight: float:
+	get: return _header_strength_weight
+var header_technique_weight: float:
+	get: return _header_technique_weight
+var header_shot_speed_mps: float:
+	get: return _header_shot_speed_mps
+var header_shot_apex_height_m: float:
+	get: return _header_shot_apex_height_m
+var header_clear_speed_mps: float:
+	get: return _header_clear_speed_mps
+var header_clear_apex_height_m: float:
+	get: return _header_clear_apex_height_m
+var header_first_frame_seconds: float:
+	get: return _header_first_frame_seconds
+var header_second_frame_seconds: float:
+	get: return _header_second_frame_seconds
+
+var _header_contact_radius_m: float
+var _header_min_contact_height_m: float
+var _header_reach_height_m: float
+var _header_simultaneous_window_seconds: float
+var _header_strength_weight: float
+var _header_technique_weight: float
+var _header_shot_speed_mps: float
+var _header_shot_apex_height_m: float
+var _header_clear_speed_mps: float
+var _header_clear_apex_height_m: float
+var _header_first_frame_seconds: float
+var _header_second_frame_seconds: float
+
 var config_id: String:
 	get:
 		return _config_id
@@ -296,7 +334,41 @@ func _init(
 	new_jump_landing_seconds: float,
 	new_jump_apex_height_m: float,
 	new_ground_tackle_clearance_height_m: float,
+	new_header_contact_radius_m: float = 0.75,
+	new_header_min_contact_height_m: float = 0.3,
+	new_header_reach_height_m: float = 1.9,
+	new_header_simultaneous_window_seconds: float = 0.05,
+	new_header_strength_weight: float = 0.6,
+	new_header_technique_weight: float = 0.4,
+	new_header_shot_speed_mps: float = 16.0,
+	new_header_shot_apex_height_m: float = 0.65,
+	new_header_clear_speed_mps: float = 12.0,
+	new_header_clear_apex_height_m: float = 1.2,
+	new_header_first_frame_seconds: float = 0.3,
+	new_header_second_frame_seconds: float = 1.0,
 ) -> void:
+	assert(new_header_contact_radius_m > 0.0)
+	assert(new_header_min_contact_height_m > 0.2)
+	assert(new_header_reach_height_m > new_header_min_contact_height_m)
+	assert(new_header_simultaneous_window_seconds >= 0.0)
+	assert(new_header_strength_weight >= 0.0 and new_header_technique_weight >= 0.0)
+	assert(new_header_strength_weight + new_header_technique_weight > 0.0)
+	assert(new_header_shot_speed_mps > new_shot_stop_speed_mps
+		and new_header_clear_speed_mps > 0.0)
+	assert(new_header_shot_apex_height_m > 0.0 and new_header_clear_apex_height_m > 0.0)
+	assert(new_header_first_frame_seconds > 0.0 and new_header_second_frame_seconds > 0.0)
+	_header_contact_radius_m = new_header_contact_radius_m
+	_header_min_contact_height_m = new_header_min_contact_height_m
+	_header_reach_height_m = new_header_reach_height_m
+	_header_simultaneous_window_seconds = new_header_simultaneous_window_seconds
+	_header_strength_weight = new_header_strength_weight
+	_header_technique_weight = new_header_technique_weight
+	_header_shot_speed_mps = new_header_shot_speed_mps
+	_header_shot_apex_height_m = new_header_shot_apex_height_m
+	_header_clear_speed_mps = new_header_clear_speed_mps
+	_header_clear_apex_height_m = new_header_clear_apex_height_m
+	_header_first_frame_seconds = new_header_first_frame_seconds
+	_header_second_frame_seconds = new_header_second_frame_seconds
 	assert(not new_config_id.is_empty(), "Match config requires an ID")
 	assert(new_shot_base_speed_mps > 0.0, "Shot base speed must be positive")
 	assert(new_shot_min_attribute_multiplier > 0.0, "Shot multiplier must be positive")

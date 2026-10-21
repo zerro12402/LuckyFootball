@@ -8,6 +8,9 @@ const INPUT_EPSILON := 0.0001
 const PASS_WINDUP_SECONDS := 0.2
 const PASS_RECOVERY_SECONDS := 0.3
 const PASS_ACTION_DURATION_SECONDS := 0.4
+const HEADER_FORWARD_DISTANCE_M := 1.0
+const HEADER_JUMP_HEIGHT_M := 0.8
+const HEADER_LANDING_DURATION_SECONDS := 0.3
 
 var state: PlayerMatchState:
 	get:
@@ -34,6 +37,9 @@ var _knockdown_direction: Vector2 = Vector2.ZERO
 var _knockdown_cooldown_remaining_seconds: float = 0.0
 var _knockback_direction: Vector2 = Vector2.ZERO
 var _knockback_elapsed_seconds: float = 0.0
+var _header_direction: Vector2 = Vector2.ZERO
+var _header_config: MatchConfigDefinition
+var _is_header_landing: bool = false
 
 
 ## Checks the runtime invariants shared by movement and timed actions.
@@ -52,6 +58,8 @@ func advance(fixed_delta_seconds: float) -> void:
 	assert(fixed_delta_seconds > 0.0, "Fixed delta must be positive")
 	if _state.action_state == PlayerMatchState.ActionState.TACKLING:
 		_advance_tackle_motion(fixed_delta_seconds)
+	elif _state.action_state == PlayerMatchState.ActionState.HEADING:
+		_advance_header_motion(fixed_delta_seconds)
 	elif _state.action_state == PlayerMatchState.ActionState.ATTACKING:
 		_advance_knockdown_motion(fixed_delta_seconds)
 	elif _state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
@@ -63,6 +71,7 @@ func advance(fixed_delta_seconds: float) -> void:
 		and _state.action_state != PlayerMatchState.ActionState.KNOCKED_DOWN
 		and _state.action_state != PlayerMatchState.ActionState.GETTING_UP
 		and _state.action_state != PlayerMatchState.ActionState.LANDING
+		and _state.action_state != PlayerMatchState.ActionState.HEADING
 	):
 		_state._set_position(
 			_state.position_m
@@ -92,6 +101,8 @@ func advance(fixed_delta_seconds: float) -> void:
 		_advance_getting_up()
 	elif _state.action_state == PlayerMatchState.ActionState.LANDING:
 		_advance_landing()
+	elif _state.action_state == PlayerMatchState.ActionState.HEADING:
+		_advance_header_action()
 
 
 ## Normalizes movement intent while preserving the previous left-right facing on vertical input.
@@ -110,6 +121,9 @@ func set_movement_input(new_input: Vector2) -> bool:
 	]:
 		return false
 	var clamped_input := new_input.limit_length(1.0)
+	if _state.action_state == PlayerMatchState.ActionState.HEADING:
+		_state._set_movement_input(clamped_input)
+		return true
 	if _state.action_state == PlayerMatchState.ActionState.STAGGERED:
 		# Remember the latest intent without allowing motion until recovery.
 		_state._set_movement_input(clamped_input)
@@ -138,6 +152,7 @@ func set_movement_state(new_state: int) -> bool:
 		PlayerMatchState.ActionState.ATTACKING,
 		PlayerMatchState.ActionState.GETTING_UP,
 		PlayerMatchState.ActionState.LANDING,
+		PlayerMatchState.ActionState.HEADING,
 	]:
 		return false
 	_state._set_movement_state(new_state)
@@ -169,6 +184,22 @@ func try_start_action(new_action_state: int) -> bool:
 	return true
 
 
+## Locks the head direction and begins a two-frame airborne follow-through.
+func try_start_header(config: MatchConfigDefinition, direction: Vector2) -> bool:
+	if config == null or not direction.is_finite() or direction.is_zero_approx():
+		return false
+	if _state.possession_state != PlayerMatchState.PossessionState.NO_BALL:
+		return false
+	if not try_start_action(PlayerMatchState.ActionState.HEADING):
+		return false
+	_header_config = config
+	_header_direction = direction.normalized()
+	_update_horizontal_facing(_header_direction)
+	_state._set_jump_state(PlayerMatchState.JumpPhase.AIRBORNE, 0.0, 0.0)
+	_state._set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)
+	return true
+
+
 ## Captures shot timing and facing at command acceptance, before the kick frame.
 func try_start_shot(config: MatchConfigDefinition, direction: Vector2) -> bool:
 	if config == null or not direction.is_finite() or direction.is_zero_approx():
@@ -185,13 +216,16 @@ func try_start_shot(config: MatchConfigDefinition, direction: Vector2) -> bool:
 	return true
 
 
-## Starts a possession-preserving jump without occupying the shooting action slot.
-func try_start_jump(config: MatchConfigDefinition) -> bool:
+## Starts a jump after simulation has authorized either possession or an incoming pass.
+func try_start_jump(config: MatchConfigDefinition, allow_without_ball: bool = false) -> bool:
 	if config == null or _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
 		return false
 	if _state.action_state != PlayerMatchState.ActionState.IDLE:
 		return false
-	if _state.possession_state != PlayerMatchState.PossessionState.POSSESSING:
+	if _state.possession_state != PlayerMatchState.PossessionState.POSSESSING and not (
+		allow_without_ball
+		and _state.possession_state == PlayerMatchState.PossessionState.NO_BALL
+	):
 		return false
 	_jump_config = config
 	_state._set_jump_state(PlayerMatchState.JumpPhase.TAKEOFF, 0.0, 0.0)
@@ -316,6 +350,8 @@ func finish_action() -> bool:
 		return false
 	var was_shooting := _state.action_state == PlayerMatchState.ActionState.SHOOTING
 	var was_staggered := _state.action_state == PlayerMatchState.ActionState.STAGGERED
+	var was_heading := _state.action_state == PlayerMatchState.ActionState.HEADING
+	var was_header_landing := _is_header_landing
 	_state._set_action_state(
 		PlayerMatchState.ActionState.IDLE,
 		PlayerMatchState.ActionPhase.NONE,
@@ -330,6 +366,11 @@ func finish_action() -> bool:
 	_knockback_direction = Vector2.ZERO
 	_knockback_elapsed_seconds = 0.0
 	_hit_stun_duration_seconds = 0.0
+	_header_direction = Vector2.ZERO
+	_header_config = null
+	_is_header_landing = false
+	if was_heading or was_header_landing:
+		_cancel_jump()
 	if was_staggered and _state.movement_input.length() > INPUT_EPSILON:
 		_update_horizontal_facing(_state.movement_input)
 		_set_movement_state_if_changed(PlayerMatchState.MovementState.MOVING)
@@ -369,6 +410,9 @@ func reset_to_spawn(spawn_position_m: Vector2) -> void:
 	_knockback_direction = Vector2.ZERO
 	_knockback_elapsed_seconds = 0.0
 	_hit_stun_duration_seconds = 0.0
+	_header_direction = Vector2.ZERO
+	_header_config = null
+	_is_header_landing = false
 
 
 ## Applies the existing dribble speed reduction without changing the base speed.
@@ -381,6 +425,24 @@ func _get_current_movement_speed_mps() -> float:
 ## Advances a deterministic height arc independently of the player's other action.
 func _advance_jump(fixed_delta_seconds: float) -> void:
 	if _state.jump_phase == PlayerMatchState.JumpPhase.NONE:
+		return
+	if _state.action_state == PlayerMatchState.ActionState.HEADING:
+		assert(_header_config != null, "Heading requires match configuration")
+		var header_duration := (
+			_header_config.header_first_frame_seconds
+			+ _header_config.header_second_frame_seconds
+		)
+		var header_elapsed := minf(
+			_state.action_state_elapsed_seconds,
+			header_duration,
+		)
+		var header_progress := header_elapsed / header_duration
+		var header_height := (
+			4.0 * HEADER_JUMP_HEIGHT_M * header_progress * (1.0 - header_progress)
+		)
+		_state._set_jump_state(
+			PlayerMatchState.JumpPhase.AIRBORNE, header_elapsed, header_height,
+		)
 		return
 	assert(_jump_config != null, "Active jump requires match configuration")
 	var elapsed_seconds := _state.jump_elapsed_seconds + fixed_delta_seconds
@@ -534,13 +596,47 @@ func _advance_knockdown_action() -> void:
 		set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)
 
 
+## Moves forward during the first header image and stops at a fixed total distance.
+func _advance_header_motion(fixed_delta_seconds: float) -> void:
+	assert(_header_config != null, "Heading requires match configuration")
+	var first_frame_seconds := _header_config.header_first_frame_seconds
+	var remaining_seconds := maxf(
+		first_frame_seconds - _state.action_state_elapsed_seconds, 0.0,
+	)
+	var motion_seconds := minf(fixed_delta_seconds, remaining_seconds)
+	if motion_seconds <= 0.0:
+		return
+	_state._set_position(_state.position_m + _header_direction * (
+		HEADER_FORWARD_DISTANCE_M / first_frame_seconds
+	) * motion_seconds)
+
+
+## Keeps both header frames for their full duration before starting the landing pose.
+func _advance_header_action() -> void:
+	assert(_header_config != null, "Heading requires match configuration")
+	var header_duration := (
+		_header_config.header_first_frame_seconds
+		+ _header_config.header_second_frame_seconds
+	)
+	if _state.action_state_elapsed_seconds + INPUT_EPSILON < header_duration:
+		return
+	_cancel_jump()
+	_is_header_landing = true
+	_state._set_action_state(
+		PlayerMatchState.ActionState.LANDING,
+		PlayerMatchState.ActionPhase.ACTIVE,
+	)
+
+
 ## Holds the attacker in its final landing pose before releasing the action lock.
 func _advance_landing() -> void:
-	assert(_knockdown_config != null, "Landing requires match configuration")
-	var landing_duration_seconds := (
-		_knockdown_config.knockdown_landing_animation_seconds
-		+ _knockdown_config.knockdown_crouch_hold_seconds
-	)
+	var landing_duration_seconds := HEADER_LANDING_DURATION_SECONDS
+	if not _is_header_landing:
+		assert(_knockdown_config != null, "Landing requires match configuration")
+		landing_duration_seconds = (
+			_knockdown_config.knockdown_landing_animation_seconds
+			+ _knockdown_config.knockdown_crouch_hold_seconds
+		)
 	if _state.action_state_elapsed_seconds >= landing_duration_seconds:
 		finish_action()
 

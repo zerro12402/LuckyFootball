@@ -9,6 +9,7 @@ const DEFAULT_MAX_PASS_DISTANCE_M := 20.0
 const DEFAULT_LOFTED_PASS_MIN_DISTANCE_M := 8.0
 const DEFAULT_LOFTED_PASS_APEX_HEIGHT_M := 1.8
 const MAX_RECEIVE_HEIGHT_M := 0.2
+const AERIAL_RECEIVE_HEIGHT_TOLERANCE_M := 0.5
 const MIN_PASS_DISTANCE_M := 1.0
 const DISTANCE_EPSILON := 0.000001
 const NET_CONTACT_TIME_EPSILON := 0.0000001
@@ -139,6 +140,9 @@ func advance(
 	fixed_delta_seconds: float,
 	player_runtime_system: PlayerRuntimeSystem,
 	should_acquire_loose_ball: bool = true,
+	header_contact: HeaderContactCandidate = null,
+	header_action: MatchAction = null,
+	header_direction: Vector2 = Vector2.ZERO,
 ) -> BallAdvanceResult:
 	assert(fixed_delta_seconds > 0.0, "Fixed delta must be positive")
 	assert(player_runtime_system != null, "Ball system requires player runtimes")
@@ -152,7 +156,8 @@ func advance(
 	if _state.motion_state == BallMatchState.MotionState.OWNED:
 		_advance_owned(fixed_delta_seconds, player_runtime_system, result)
 	if _state.motion_state == BallMatchState.MotionState.IN_FLIGHT:
-		_advance_flight(fixed_delta_seconds, player_runtime_system, result)
+		_advance_flight(fixed_delta_seconds, player_runtime_system, result,
+			header_contact, header_action, header_direction)
 	elif _state.motion_state == BallMatchState.MotionState.LOOSE and should_acquire_loose_ball:
 		_try_acquire_loose_ball(player_runtime_system, result)
 	return result
@@ -460,6 +465,9 @@ func _advance_flight(
 	fixed_delta_seconds: float,
 	players: PlayerRuntimeSystem,
 	result: BallAdvanceResult,
+	header_contact: HeaderContactCandidate = null,
+	header_action: MatchAction = null,
+	header_direction: Vector2 = Vector2.ZERO,
 ) -> void:
 	result.has_motion_segment = true
 	result.motion_start_position_m = _state.position_m
@@ -473,15 +481,67 @@ func _advance_flight(
 		remaining_distance_m,
 	)
 	var next_position_m := _state.position_m + _state.velocity_mps.normalized() * travel_distance_m
+	if header_contact != null and header_action != null and (
+		_state.flight_kind == BallMatchState.FlightKind.PASS
+	) and header_contact.contact_fraction >= 0.0 and header_contact.contact_fraction <= 1.0:
+		_advance_header_contact(fixed_delta_seconds, travel_distance_m,
+			header_contact, header_action, header_direction, result)
+		return
 	result.motion_end_position_m = next_position_m
 	var receiver := players.get_player(_state.target_player_id)
-	if _can_receive_flight(receiver, next_position_m):
+	if _state.flight_kind == BallMatchState.FlightKind.PASS and _can_receive_flight(receiver, next_position_m):
 		_receive_pass(receiver, result)
 		return
 	_state._advance_flight(next_position_m, travel_distance_m)
 	if _state.flight_distance_m + DISTANCE_EPSILON >= _state.flight_range_m:
+		var was_pass := _state.flight_kind == BallMatchState.FlightKind.PASS
 		_state._release(next_position_m)
-		result.was_pass_missed = true
+		result.was_pass_missed = was_pass
+
+
+## Advances to the precise high contact, redirects once, then spends unused step time.
+func _advance_header_contact(
+	fixed_delta_seconds: float,
+	travel_distance_m: float,
+	contact: HeaderContactCandidate,
+	action: MatchAction,
+	direction: Vector2,
+	result: BallAdvanceResult,
+) -> void:
+	assert(_shot_config != null and not direction.is_zero_approx())
+	var pass_start_m := _state.position_m
+	var contact_distance_m := travel_distance_m * contact.contact_fraction
+	_state._advance_flight(contact.contact_position_m, contact_distance_m)
+	var contact_height_m := _state.height_m
+	result.has_pre_header_segment = true
+	result.pre_header_start_position_m = pass_start_m
+	result.pre_header_end_position_m = contact.contact_position_m
+	result.motion_start_position_m = contact.contact_position_m
+	result.header_contact_position_m = contact.contact_position_m
+	result.header_by_player_id = contact.player_id
+	result.header_action_type = action.action_type
+	_last_kicker_id = contact.player_id
+	var remaining_seconds := fixed_delta_seconds * (1.0 - contact.contact_fraction)
+	if action.action_type == MatchAction.Type.HEADER_SHOT:
+		var speed_mps := _shot_config.header_shot_speed_mps
+		var stop_speed_mps := _shot_config.shot_stop_speed_mps
+		var range_m := (speed_mps * speed_mps - stop_speed_mps * stop_speed_mps) / (
+			2.0 * _shot_config.shot_ground_deceleration_mps2)
+		_state._launch_shot(contact.contact_position_m, direction.normalized() * speed_mps,
+			range_m, _shot_config.header_shot_apex_height_m, contact_height_m)
+		if remaining_seconds > 0.0:
+			_advance_shot(remaining_seconds)
+	else:
+		_state._launch_clearance(contact.contact_position_m,
+			direction.normalized() * _shot_config.header_clear_speed_mps,
+			_max_pass_distance_m, _shot_config.header_clear_apex_height_m, contact_height_m)
+		if remaining_seconds > 0.0:
+			var clearance_distance_m := minf(
+				_state.velocity_mps.length() * remaining_seconds,
+				_state.flight_range_m)
+			var clearance_end_m := _state.position_m + direction.normalized() * clearance_distance_m
+			_state._advance_flight(clearance_end_m, clearance_distance_m)
+	result.motion_end_position_m = _state.position_m
 
 
 ## Decelerates the shot horizontally while height follows its fixed-distance arc.
@@ -506,9 +566,13 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 		_state._advance_shot(next_position_m, direction * next_speed_mps, travel_distance_m)
 
 
-## Rechecks action state, ball speed, and height where the directed pass crosses its target.
+## Rechecks either ground control or airborne contact along the directed pass segment.
 func _can_receive_flight(receiver: PlayerRuntime, next_position_m: Vector2) -> bool:
-	if not _can_gain_ball(receiver):
+	if receiver == null:
+		return false
+	if receiver.state.action_state != PlayerMatchState.ActionState.IDLE or (
+		receiver.state.possession_state != PlayerMatchState.PossessionState.NO_BALL
+	):
 		return false
 	if not _is_controllable_ball_speed(_state.velocity_mps.length()):
 		return false
@@ -524,10 +588,18 @@ func _can_receive_flight(receiver: PlayerRuntime, next_position_m: Vector2) -> b
 	)
 	var closest_position_m := _state.position_m + segment * segment_fraction
 	var closest_flight_distance_m := _state.flight_distance_m + segment.length() * segment_fraction
-	if _state.calculate_height_at_distance(closest_flight_distance_m) > MAX_RECEIVE_HEIGHT_M:
-		return false
-	return closest_position_m.distance_squared_to(receiver.state.position_m) <= (
+	if closest_position_m.distance_squared_to(receiver.state.position_m) > (
 		_possession_radius_m * _possession_radius_m
+	):
+		return false
+	var contact_height_m := _state.calculate_height_at_distance(closest_flight_distance_m)
+	if receiver.state.jump_phase == PlayerMatchState.JumpPhase.NONE:
+		return contact_height_m <= MAX_RECEIVE_HEIGHT_M
+	return (
+		receiver.state.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE
+		and contact_height_m > MAX_RECEIVE_HEIGHT_M
+		and absf(contact_height_m - receiver.state.height_m)
+			<= AERIAL_RECEIVE_HEIGHT_TOLERANCE_M
 	)
 
 

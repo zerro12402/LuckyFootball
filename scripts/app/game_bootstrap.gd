@@ -1,4 +1,4 @@
-## Builds test matches and connects input, fixed simulation, and presentation.
+## Builds test matches and feeds input through fixed simulation to presentation.
 class_name GameBootstrap
 extends Node
 
@@ -18,6 +18,7 @@ enum DemoMode {
 	KNOCKDOWN_TEST,
 	ATTACK_RECOIL_TEST,
 	AERIAL_JUMP_SHOT_TEST,
+	LOFTED_RECEIVE_AERIAL_SHOT_TEST,
 }
 
 const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
@@ -25,6 +26,8 @@ const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
 const TEST_OPPONENT_POSITION_M := Vector2(6.0, 0.0)
 const TEST_KNOCKDOWN_OPPONENT_POSITION_M := Vector2(1.05, 0.0)
 const TEST_AERIAL_OPPONENT_POSITION_M := Vector2(-1.0, 0.0)
+const TEST_LOFTED_RECEIVER_POSITION_M := Vector2(10.0, 0.0)
+const AERIAL_RECEIVE_JUMP_LEAD_SECONDS := 0.2
 const TEST_OPPONENT_TEAM_ID := "opponent_team"
 const TEST_BALL_INITIAL_POSITION_M := Vector2(3.0, 0.0)
 const TEST_TEAM_ID := "demo_team"
@@ -55,6 +58,10 @@ var demo_opponent_id: String:
 	get:
 		return _demo_opponent_id
 
+var demo_teammate_id: String:
+	get:
+		return _demo_teammate_id
+
 var _data_repository: DataRepository
 var _field_definition: FieldDefinition
 var _match_config: MatchConfigDefinition
@@ -62,6 +69,9 @@ var _match_simulation: MatchSimulation
 var _game_loop: GameLoop
 var _queued_actions: Array[MatchAction] = []
 var _pending_aerial_shot: MatchAction
+var _pending_aerial_shot_jump_started: bool = false
+var _lofted_receiver_jump_requested: bool = false
+var _lofted_receiver_jump_started: bool = false
 var _demo_player_id: String = ""
 var _demo_teammate_id: String = ""
 var _demo_opponent_id: String = ""
@@ -92,6 +102,9 @@ func _ready() -> void:
 			_match_config.knockdown_jump_height_m,
 			_match_config.knockdown_landing_animation_seconds,
 		)
+		_field_environment.configure_teammate_aerial_shot_pose(
+			demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST
+		)
 
 	var player_definitions := _data_repository.player_definitions
 	var required_player_count := 1
@@ -103,9 +116,9 @@ func _ready() -> void:
 	_demo_player_id = player_definitions[0].player_id
 	_demo_teammate_id = ""
 	_demo_opponent_id = ""
-	if demo_mode == DemoMode.PASS_AND_SHOOT:
+	if demo_mode in [DemoMode.PASS_AND_SHOOT, DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST]:
 		_demo_teammate_id = player_definitions[1].player_id
-	elif demo_mode in [
+	if demo_mode in [
 		DemoMode.TACKLE_TEST,
 		DemoMode.KNOCKDOWN_TEST,
 		DemoMode.ATTACK_RECOIL_TEST,
@@ -125,6 +138,8 @@ func _ready() -> void:
 				DemoMode.ATTACK_RECOIL_TEST,
 				DemoMode.AERIAL_JUMP_SHOT_TEST,
 			],
+			"",
+			"",
 		)
 	if _keyboard_input != null:
 		_keyboard_input.action_requested.connect(queue_action)
@@ -132,6 +147,9 @@ func _ready() -> void:
 			_keyboard_input.meter_ticks_toggle_requested.connect(
 				_field_environment.toggle_meter_ticks
 			)
+	var lofted_pass_hint := get_node_or_null("LoftedPassHint") as CanvasLayer
+	if lofted_pass_hint != null:
+		lofted_pass_hint.visible = demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST
 
 	reset_demo()
 
@@ -143,6 +161,9 @@ func reset_demo() -> void:
 	set_process(false)
 	_queued_actions.clear()
 	_pending_aerial_shot = null
+	_pending_aerial_shot_jump_started = false
+	_lofted_receiver_jump_requested = false
+	_lofted_receiver_jump_started = false
 	var melee_outcome := MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN
 	if demo_mode == DemoMode.ATTACK_RECOIL_TEST:
 		melee_outcome = MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
@@ -162,16 +183,23 @@ func reset_demo() -> void:
 		TEST_PLAYER_MOVEMENT_SPEED_MPS,
 		TEST_TEAM_ID,
 		demo_player.shooting,
+		demo_player.strength,
+		demo_player.technique,
 	)
 	assert(did_register_player, "Demo player must register before the match starts")
 	if not _demo_teammate_id.is_empty():
 		var demo_teammate := _data_repository.get_player_by_id(_demo_teammate_id)
+		var teammate_position_m := TEST_TEAMMATE_POSITION_M
+		if demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
+			teammate_position_m = TEST_LOFTED_RECEIVER_POSITION_M
 		var did_register_teammate := _match_simulation.register_player(
 			_demo_teammate_id,
-			TEST_TEAMMATE_POSITION_M,
+			teammate_position_m,
 			TEST_PLAYER_MOVEMENT_SPEED_MPS,
 			TEST_TEAM_ID,
 			demo_teammate.shooting,
+			demo_teammate.strength,
+			demo_teammate.technique,
 		)
 		assert(did_register_teammate, "Demo teammate must register before the match starts")
 	if not _demo_opponent_id.is_empty():
@@ -183,11 +211,14 @@ func reset_demo() -> void:
 			opponent_position_m = TEST_AERIAL_OPPONENT_POSITION_M
 		assert(_match_simulation.register_player(
 			_demo_opponent_id, opponent_position_m,
-			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID, opponent.shooting
+			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID,
+			opponent.shooting, opponent.strength, opponent.technique,
 		))
 	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
 	if demo_mode in [DemoMode.TACKLE_TEST, DemoMode.AERIAL_JUMP_SHOT_TEST]:
 		initial_ball_position_m = Vector2(0.5, 0.0)
+	elif demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
+		initial_ball_position_m = Vector2(0.55, 0.0)
 	elif demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 		initial_ball_position_m = Vector2(1.6, 0.0)
 	var did_register_ball := _match_simulation.register_ball(
@@ -222,10 +253,19 @@ func reset_demo() -> void:
 	# Begin the aerial test with legal possession so Space works immediately.
 	if demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
+	if demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
+		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_publish_frame(0.0)
 	set_process(true)
+
+
+## Exposes a copy of meaningful simulation events to the shared preset panel.
+func get_event_history() -> Array[MatchEvent]:
+	if _match_simulation == null:
+		return []
+	return _match_simulation.get_event_history()
 
 ## Advances and presents the match from the display frame clock.
 func _process(delta: float) -> void:
@@ -243,7 +283,10 @@ func queue_action(action: MatchAction) -> void:
 		reset_demo()
 		return
 	if (
-		demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST
+		demo_mode in [
+			DemoMode.AERIAL_JUMP_SHOT_TEST,
+			DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST,
+		]
 		and action.action_type == MatchAction.Type.SHOOT
 		and _match_simulation != null
 	):
@@ -261,6 +304,7 @@ func queue_action(action: MatchAction) -> void:
 				break
 		if is_takeoff or has_queued_jump:
 			_pending_aerial_shot = action
+			_pending_aerial_shot_jump_started = is_takeoff
 			return
 	_queued_actions.append(action)
 
@@ -292,37 +336,109 @@ func finish_match() -> bool:
 	return true
 
 
-## Releases an airborne shot when legal, then broadcasts the fixed-loop snapshot.
+## Predicts the directed pass contact and submits one early jump through MatchAction.
+func _queue_lofted_receiver_jump(frame_actions: Array[MatchAction]) -> void:
+	if demo_mode != DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST or (
+		_lofted_receiver_jump_requested
+	):
+		return
+	var snapshot := _match_simulation.create_snapshot()
+	var ball := snapshot.ball
+	var receiver := snapshot.get_player(_demo_teammate_id)
+	if receiver == null or ball.motion_state != BallMatchState.MotionState.IN_FLIGHT or (
+		ball.target_player_id != _demo_teammate_id or ball.height_m <= 0.0
+	):
+		return
+	if receiver.jump_phase != PlayerMatchState.JumpPhase.NONE or (
+		receiver.action_state != PlayerMatchState.ActionState.IDLE
+		or receiver.possession_state != PlayerMatchState.PossessionState.NO_BALL
+	):
+		return
+	var speed_mps := ball.velocity_mps.length()
+	if speed_mps <= 0.0:
+		return
+	var flight_direction := ball.velocity_mps / speed_mps
+	var to_receiver := receiver.position_m - ball.position_m
+	var along_path_m := to_receiver.dot(flight_direction)
+	var cross_path_m := (to_receiver - flight_direction * along_path_m).length()
+	if along_path_m <= 0.0 or (
+		cross_path_m > BallRuntimeSystem.DEFAULT_POSSESSION_RADIUS_M
+	):
+		return
+	var seconds_until_contact := maxf(
+		(along_path_m - BallRuntimeSystem.DEFAULT_POSSESSION_RADIUS_M) / speed_mps,
+		0.0,
+	)
+	if seconds_until_contact > AERIAL_RECEIVE_JUMP_LEAD_SECONDS or (
+		seconds_until_contact < _match_config.jump_takeoff_seconds
+	):
+		return
+	frame_actions.append(MatchAction.new(_demo_teammate_id, MatchAction.Type.JUMP))
+	_lofted_receiver_jump_requested = true
+
+
+## Clears the request after an observed jump fully lands, not while it is still queued.
+func _finish_lofted_receiver_jump(snapshot: MatchStateSnapshot) -> void:
+	if not _lofted_receiver_jump_requested:
+		return
+	var receiver := snapshot.get_player(_demo_teammate_id)
+	if receiver == null:
+		return
+	if receiver.jump_phase != PlayerMatchState.JumpPhase.NONE:
+		_lofted_receiver_jump_started = true
+	elif _lofted_receiver_jump_started:
+		_lofted_receiver_jump_requested = false
+		_lofted_receiver_jump_started = false
+
+
+## Releases queued aerial shots and presents the fixed-loop snapshot.
 func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_actions: Array[MatchAction] = _queued_actions.duplicate()
 	_queued_actions.clear()
+	_queue_lofted_receiver_jump(frame_actions)
 	if _pending_aerial_shot != null:
 		var snapshot := _match_simulation.create_snapshot()
 		var player := snapshot.get_player(_pending_aerial_shot.player_id)
-		var has_jump_command := false
-		for frame_action in frame_actions:
-			if (
-				frame_action.action_type == MatchAction.Type.JUMP
-				and frame_action.player_id == _pending_aerial_shot.player_id
-			):
-				has_jump_command = true
-				break
+		if player != null and player.jump_phase in [
+			PlayerMatchState.JumpPhase.TAKEOFF,
+			PlayerMatchState.JumpPhase.AIRBORNE,
+		]:
+			_pending_aerial_shot_jump_started = true
 		if player == null or snapshot.ball.owner_player_id != _pending_aerial_shot.player_id:
 			_pending_aerial_shot = null
 		elif player.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE:
 			frame_actions.append(_pending_aerial_shot)
 			_pending_aerial_shot = null
-		elif player.jump_phase != PlayerMatchState.JumpPhase.TAKEOFF and not has_jump_command:
+		# Keep waiting through NONE while GameLoop buffers a jump at high display rates.
+		elif _pending_aerial_shot_jump_started and player.jump_phase in [
+			PlayerMatchState.JumpPhase.NONE,
+			PlayerMatchState.JumpPhase.LANDING,
+		]:
 			_pending_aerial_shot = null
+		if _pending_aerial_shot == null:
+			_pending_aerial_shot_jump_started = false
 	var frame_result := _game_loop.advance_frame(frame_delta_seconds, frame_actions)
+	_finish_lofted_receiver_jump(frame_result.snapshot)
 	for event in frame_result.events:
-		if event.event_type == MatchEvent.Type.RESET_COMPLETED and _keyboard_input != null:
-			_keyboard_input.configure(
-				_demo_player_id,
-				_demo_teammate_id,
-				_demo_opponent_id,
-				demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
-			)
+		if (
+			demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST
+			and event.event_type == MatchEvent.Type.BALL_PASS_RECEIVED
+			and event.subject_id == _demo_teammate_id
+		):
+			queue_action(MatchAction.new(_demo_teammate_id, MatchAction.Type.SHOOT))
+		if event.event_type == MatchEvent.Type.RESET_COMPLETED:
+			_queued_actions.clear()
+			_pending_aerial_shot = null
+			_pending_aerial_shot_jump_started = false
+			_lofted_receiver_jump_requested = false
+			_lofted_receiver_jump_started = false
+			if _keyboard_input != null:
+				_keyboard_input.configure(
+					_demo_player_id,
+					_demo_teammate_id,
+					_demo_opponent_id,
+					demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
+				)
 			break
 	if _field_environment != null:
 		_field_environment.present(frame_result.snapshot)

@@ -67,3 +67,20 @@ text = "重置"
 unique_name_in_owner = true
 layout_mode = 2
 text = "准备就绪"
+
+[node name="LoftedPassHint" type="CanvasLayer" parent="."]
+visible = false
+layer = 10
+
+[node name="HintPanel" type="PanelContainer" parent="LoftedPassHint"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -290.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 58.0
+
+[node name="HintLabel" type="Label" parent="LoftedPassHint/HintPanel"]
+layout_mode = 2
+text = "按 J 传高空球，队友预判起跳并在空中接球射门；按 ~ 重置"
