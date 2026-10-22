@@ -2,6 +2,14 @@
 class_name PlayerActor
 extends Node2D
 
+const SAVE_UP_ANIMATION := &"save_up"
+const SAVE_DOWN_ANIMATION := &"save_down"
+const KEEPER_HOLD_ANIMATION := &"keeper_hold"
+# Authored local hand points for the only nonempty frame in rows 12/13.
+const SAVE_UP_HAND := Vector2(-4.0, -14.0)
+const SAVE_DOWN_HAND := Vector2(4.0, 8.0)
+const KEEPER_HOLD_HAND := Vector2(5.0, 0.0)
+
 const IDLE_ANIMATION := &"idle"
 const MOVE_ANIMATION := &"move"
 const PASS_ANIMATION := &"pass"
@@ -25,6 +33,9 @@ const BALL_OFFSET_FROM_FOOT := Vector2(5.0, -2.0)
 
 @onready var _body_sprite: Sprite2D = %BodySprite
 @onready var _animation_player: AnimationPlayer = %AnimationPlayer
+
+var _is_hand_holder: bool = false
+var _save_duration_seconds: float = 1.2
 
 var _hit_stun_duration_seconds: float = 1.0
 var _tackle_duration_seconds: float = 1.0
@@ -67,6 +78,11 @@ func present(
 			sin(PI * progress) * _knockdown_jump_height_m * pixels_per_meter
 		)
 	_play_animation(_resolve_animation(player_snapshot))
+	if player_snapshot.action_state == PlayerMatchState.ActionState.SAVING:
+		_animation_player.seek(clampf(player_snapshot.action_state_elapsed_seconds,
+			0.0, _save_duration_seconds - 0.00001), true)
+	elif _is_hand_holder:
+		_animation_player.seek(0.0, true)
 	if player_snapshot.jump_phase != PlayerMatchState.JumpPhase.NONE:
 		_animation_player.advance(0.0)
 
@@ -127,6 +143,14 @@ func configure_aerial_shot_pose(enabled: bool) -> void:
 
 ## Prioritizes the visible action and jump phase when choosing a sprite-sheet row.
 func _resolve_animation(player_snapshot: PlayerStateSnapshot) -> StringName:
+	if player_snapshot.action_state == PlayerMatchState.ActionState.SAVING:
+		if player_snapshot.save_lane == ShotAim.Lane.UPPER:
+			return SAVE_UP_ANIMATION
+		if player_snapshot.save_lane == ShotAim.Lane.LOWER:
+			return SAVE_DOWN_ANIMATION
+		return KEEPER_HOLD_ANIMATION if _is_hand_holder else IDLE_ANIMATION
+	if _is_hand_holder and player_snapshot.action_state == PlayerMatchState.ActionState.IDLE:
+		return KEEPER_HOLD_ANIMATION
 	if player_snapshot.action_state == PlayerMatchState.ActionState.HEADING:
 		if player_snapshot.action_state_elapsed_seconds < _header_first_frame_seconds:
 			return HEADER_FIRST_ANIMATION
@@ -179,6 +203,8 @@ func _play_animation(animation_name: StringName) -> void:
 		):
 			return
 	var playback_speed := 1.0
+	if animation_name in [SAVE_UP_ANIMATION, SAVE_DOWN_ANIMATION]:
+		playback_speed = 1.0 / _save_duration_seconds
 	if animation_name == HIT_ANIMATION:
 		playback_speed = 1.0 / _hit_stun_duration_seconds
 	elif animation_name == TACKLE_ANIMATION:
@@ -193,3 +219,21 @@ func _play_animation(animation_name: StringName) -> void:
 		playback_speed = 1.0 / _header_second_frame_seconds
 	_animation_player.play(animation_name, -1.0, playback_speed)
 	_active_animation = animation_name
+
+
+## Receives read-only ownership and timing; visual attachment never awards ball control.
+func configure_keeper_hands(is_holder: bool, duration_seconds: float) -> void:
+	_is_hand_holder = is_holder
+	_save_duration_seconds = duration_seconds
+
+
+## Mirrors the current authored hand anchor with the same transform as the player sprite.
+func get_keeper_hand_world_position() -> Vector2:
+	var anchor := KEEPER_HOLD_HAND
+	if _body_sprite.frame_coords.y == 11:
+		anchor = SAVE_UP_HAND
+	elif _body_sprite.frame_coords.y == 12:
+		anchor = SAVE_DOWN_HAND
+	if _body_sprite.flip_h:
+		anchor.x = -anchor.x
+	return _body_sprite.to_global(anchor)

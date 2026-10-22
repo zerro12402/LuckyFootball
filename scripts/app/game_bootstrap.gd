@@ -20,7 +20,16 @@ enum DemoMode {
 	AERIAL_JUMP_SHOT_TEST,
 	LOFTED_RECEIVE_AERIAL_SHOT_TEST,
 	BALL_IMPACT_TEST,
+	GOALKEEPER_TEST,
 }
+
+enum KeeperShotSource { GROUND, AERIAL, HEADER }
+var keeper_lane: int = -1
+var keeper_sample: float = -1.0
+var keeper_source: KeeperShotSource = KeeperShotSource.GROUND
+var keeper_starts_down: bool = false
+var _keeper_reaction_requested: bool = false
+var _keeper_header_requested: bool = false
 
 enum BallImpactPreset { SWEPT_DEFENDERS, BLOCK_REBOUND, KNOCKDOWN_CONTINUE, KNOCKDOWN_REBOUND, WEAK_SHOT_REBOUND }
 
@@ -100,6 +109,7 @@ func _ready() -> void:
 		return
 	if _field_environment != null:
 		_field_environment.configure(_field_definition)
+		_field_environment.configure_keeper_timing(_match_config.keeper_action_duration_seconds)
 		_field_environment.configure_hit_stun(_match_config.tackle_hit_stun_seconds)
 		_field_environment.configure_tackle_duration(_match_config.tackle_action_duration_seconds)
 		_field_environment.configure_knockdown(
@@ -115,6 +125,8 @@ func _ready() -> void:
 	var required_player_count := 1
 	if demo_mode != DemoMode.TOUCH_AND_DRIBBLE:
 		required_player_count = 2
+	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		required_player_count = 3
 	if player_definitions.size() < required_player_count:
 		startup_failed.emit(PackedStringArray(["Demo players are missing"]))
 		return
@@ -129,8 +141,11 @@ func _ready() -> void:
 		DemoMode.ATTACK_RECOIL_TEST,
 		DemoMode.AERIAL_JUMP_SHOT_TEST,
 		DemoMode.BALL_IMPACT_TEST,
+		DemoMode.GOALKEEPER_TEST,
 	]:
 		_demo_opponent_id = player_definitions[1].player_id
+	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		_demo_opponent_id = player_definitions[2].player_id
 	if _field_environment != null:
 		var second_player_id := _demo_teammate_id
 		if not _demo_opponent_id.is_empty():
@@ -144,6 +159,7 @@ func _ready() -> void:
 				DemoMode.ATTACK_RECOIL_TEST,
 				DemoMode.AERIAL_JUMP_SHOT_TEST,
 				DemoMode.BALL_IMPACT_TEST,
+				DemoMode.GOALKEEPER_TEST,
 			],
 			"",
 			"",
@@ -166,6 +182,8 @@ func reset_demo() -> void:
 	if _data_repository == null or _demo_player_id.is_empty():
 		return
 	set_process(false)
+	_keeper_reaction_requested = false
+	_keeper_header_requested = false
 	_queued_actions.clear()
 	_pending_aerial_shot = null
 	_pending_aerial_shot_jump_started = false
@@ -176,8 +194,18 @@ func reset_demo() -> void:
 		melee_outcome = MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
 	if demo_mode == DemoMode.BALL_IMPACT_TEST:
 		random_seed = 2 if ball_impact_preset == BallImpactPreset.KNOCKDOWN_REBOUND else 1
+	var aim_sampler := Callable()
+	var save_sampler := Callable()
+	if demo_mode == DemoMode.BALL_IMPACT_TEST:
+		aim_sampler = func() -> int: return ShotAim.Lane.CENTER
+	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		if keeper_lane >= 0:
+			aim_sampler = func() -> int: return keeper_lane
+		if keeper_sample >= 0.0:
+			save_sampler = func() -> float: return keeper_sample
 	_match_simulation = MatchSimulation.new(
-		random_seed, _match_config, _field_definition, melee_outcome
+		random_seed, _match_config, _field_definition, melee_outcome,
+		Callable(), Callable(), aim_sampler, save_sampler
 	)
 	var opponent_goal_center_m := Vector2(_field_definition.length_m * 0.5, 0.0)
 	var did_register_goal := _match_simulation.register_team_attacking_goal(
@@ -185,12 +213,17 @@ func reset_demo() -> void:
 		opponent_goal_center_m,
 	)
 	assert(did_register_goal, "Demo team requires an opponent goal before play")
+	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		_demo_teammate_id = (_data_repository.player_definitions[1].player_id
+			if keeper_source == KeeperShotSource.HEADER else "")
 	var demo_player := _data_repository.get_player_by_id(_demo_player_id)
 	var player_position_m := Vector2.ZERO
 	var shooting := demo_player.shooting
 	if demo_mode == DemoMode.BALL_IMPACT_TEST:
 		player_position_m = opponent_goal_center_m - Vector2(10.0, 0.0)
 		shooting = 80 # Explicit test context; CSV attribute integration is a separate feature.
+	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		player_position_m = Vector2(11.0 if keeper_source == KeeperShotSource.HEADER else 15.0, 0.0)
 	var did_register_player := _match_simulation.register_player(
 		_demo_player_id,
 		player_position_m,
@@ -206,6 +239,8 @@ func reset_demo() -> void:
 		var teammate_position_m := TEST_TEAMMATE_POSITION_M
 		if demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
 			teammate_position_m = TEST_LOFTED_RECEIVER_POSITION_M
+		if demo_mode == DemoMode.GOALKEEPER_TEST:
+			teammate_position_m = Vector2(20.0, 0.0)
 		var did_register_teammate := _match_simulation.register_player(
 			_demo_teammate_id,
 			teammate_position_m,
@@ -231,11 +266,16 @@ func reset_demo() -> void:
 				opponent_strength = 80
 			elif ball_impact_preset == BallImpactPreset.WEAK_SHOT_REBOUND:
 				opponent_strength = 90
+		if demo_mode == DemoMode.GOALKEEPER_TEST:
+			opponent_position_m = Vector2(23.0, 0.0)
 		assert(_match_simulation.register_player(
 			_demo_opponent_id, opponent_position_m,
 			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID,
 			opponent.shooting, opponent_strength, opponent.technique,
+			demo_mode == DemoMode.GOALKEEPER_TEST,
 		))
+		if demo_mode == DemoMode.GOALKEEPER_TEST and keeper_starts_down:
+			_match_simulation._player_runtime_system.get_player(_demo_opponent_id).state_machine.start_knockdown(_match_config)
 		if demo_mode == DemoMode.BALL_IMPACT_TEST:
 			_register_ball_impact_extra_defender(opponent_goal_center_m)
 	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
@@ -243,7 +283,7 @@ func reset_demo() -> void:
 		initial_ball_position_m = Vector2(0.5, 0.0)
 	elif demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
 		initial_ball_position_m = Vector2(0.55, 0.0)
-	elif demo_mode == DemoMode.BALL_IMPACT_TEST:
+	elif demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST]:
 		initial_ball_position_m = player_position_m + Vector2(0.55, 0.0)
 	elif demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
 		initial_ball_position_m = Vector2(1.6, 0.0)
@@ -272,7 +312,7 @@ func reset_demo() -> void:
 			_demo_teammate_id,
 			_demo_opponent_id,
 			demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
-			demo_mode == DemoMode.BALL_IMPACT_TEST,
+			demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST],
 		)
 
 	var did_start := _match_simulation.start_match()
@@ -282,8 +322,11 @@ func reset_demo() -> void:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
 	if demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
-	if demo_mode == DemoMode.BALL_IMPACT_TEST:
+	if demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST]:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
+	if demo_mode == DemoMode.GOALKEEPER_TEST and _field_environment != null:
+		_field_environment.set_presented_players(_demo_player_id, _demo_opponent_id,
+			true, _demo_teammate_id)
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_publish_frame(0.0)
@@ -336,6 +379,7 @@ func queue_action(action: MatchAction) -> void:
 		demo_mode in [
 			DemoMode.AERIAL_JUMP_SHOT_TEST,
 			DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST,
+			DemoMode.GOALKEEPER_TEST,
 		]
 		and action.action_type == MatchAction.Type.SHOOT
 		and _match_simulation != null
@@ -446,6 +490,7 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_actions: Array[MatchAction] = _queued_actions.duplicate()
 	_queued_actions.clear()
 	_queue_lofted_receiver_jump(frame_actions)
+	_queue_keeper_test_actions(frame_actions, frame_delta_seconds)
 	if _pending_aerial_shot != null:
 		var snapshot := _match_simulation.create_snapshot()
 		var player := snapshot.get_player(_pending_aerial_shot.player_id)
@@ -477,6 +522,8 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 		):
 			queue_action(MatchAction.new(_demo_teammate_id, MatchAction.Type.SHOOT))
 		if event.event_type == MatchEvent.Type.RESET_COMPLETED:
+			_keeper_reaction_requested = false
+			_keeper_header_requested = false
 			_queued_actions.clear()
 			_pending_aerial_shot = null
 			_pending_aerial_shot_jump_started = false
@@ -488,7 +535,7 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 					_demo_teammate_id,
 					_demo_opponent_id,
 					demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
-					demo_mode == DemoMode.BALL_IMPACT_TEST,
+					demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST],
 				)
 			break
 	if _field_environment != null:
@@ -501,3 +548,58 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 		frame_result.events,
 		frame_result.interpolation_alpha,
 	)
+
+
+## Rebuilds selected test inputs; all movement, kicking and saving still use MatchAction.
+func select_keeper_preset(start_shot: bool = true) -> void:
+	assert(demo_mode == DemoMode.GOALKEEPER_TEST)
+	reset_demo()
+	if not start_shot:
+		return
+	if keeper_source == KeeperShotSource.HEADER:
+		queue_action(MatchAction.new(_demo_player_id, MatchAction.Type.PASS, Vector2.ZERO, _demo_teammate_id))
+	else:
+		if keeper_source == KeeperShotSource.AERIAL:
+			queue_action(MatchAction.new(_demo_player_id, MatchAction.Type.JUMP))
+		queue_action(MatchAction.new(_demo_player_id, MatchAction.Type.SHOOT))
+
+
+## Test-only reaction submits a matching intention after real release, never decides success.
+func _queue_keeper_test_actions(actions: Array[MatchAction], frame_seconds: float) -> void:
+	if demo_mode != DemoMode.GOALKEEPER_TEST:
+		return
+	var ball := _match_simulation.create_snapshot().ball
+	if ball == null:
+		return
+	if ball.flight_kind == BallMatchState.FlightKind.PASS and not _keeper_header_requested:
+		actions.append(MatchAction.new(_demo_teammate_id, MatchAction.Type.HEADER_SHOT))
+		_keeper_header_requested = true
+	if ball.flight_kind == BallMatchState.FlightKind.SHOT and not _keeper_reaction_requested:
+		var aim := ball.shot_aim
+		if aim != null and _is_keeper_contact_imminent(ball, aim, frame_seconds):
+			actions.append(MatchAction.new(_demo_opponent_id, MatchAction.Type.SAVE,
+				Vector2(-1.0, float(aim.lane - ShotAim.Lane.CENTER))))
+			_keeper_reaction_requested = true
+
+
+## Predicts the first planar hand contact so the demo does not dive immediately at release.
+func _is_keeper_contact_imminent(ball: BallStateSnapshot, aim: ShotAim, frame_seconds: float) -> bool:
+	var keeper := _match_simulation.create_snapshot().get_player(_demo_opponent_id)
+	if keeper == null or ball.velocity_mps.is_zero_approx():
+		return false
+	var hand := keeper.position_m + keeper.facing_direction * _match_config.keeper_hand_forward_m
+	hand.y += float(aim.lane - ShotAim.Lane.CENTER) * _match_config.keeper_hand_lateral_m
+	var offset := hand - ball.position_m
+	var direction := ball.velocity_mps.normalized()
+	var along := offset.dot(direction)
+	var radius := _match_config.keeper_contact_radius_m + _match_config.ball_radius_m
+	var perpendicular_squared := maxf(offset.length_squared() - along * along, 0.0)
+	if along < 0.0 or perpendicular_squared > radius * radius:
+		return false
+	var contact_distance := maxf(along - sqrt(radius * radius - perpendicular_squared), 0.0)
+	var speed := ball.velocity_mps.length()
+	var discriminant := speed * speed - 2.0 * _match_config.shot_ground_deceleration_mps2 * contact_distance
+	if discriminant < 0.0:
+		return false
+	var seconds := (speed - sqrt(discriminant)) / _match_config.shot_ground_deceleration_mps2
+	return seconds <= maxf(frame_seconds, fixed_delta_seconds)

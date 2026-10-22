@@ -4,6 +4,18 @@ extends RefCounted
 
 const CSV_HEADERS: Array[String] = ["key", "value", "comment"]
 const OPTIONAL_DEFAULTS := {
+	"shot_aim_width_fraction": 0.25,
+	"shot_aim_goal_width_m": 4.0,
+	"keeper_save_probability": 0.5,
+	"keeper_action_duration_seconds": 1.2,
+	"keeper_window_start_seconds": 0.0,
+	"keeper_window_end_seconds": 1.1,
+	"keeper_hand_lateral_m": 1.0,
+	"keeper_hand_forward_m": 0.45,
+	"keeper_hand_height_m": 0.8,
+	"keeper_contact_radius_m": 0.4,
+	"keeper_contact_height_m": 2.4,
+
 	"ball_impact_knockback_distance_m": 1.0,
 	"ball_impact_knockback_duration_seconds": 0.6,
 	"ball_impact_knockback_apex_height_m": 0.6,
@@ -257,6 +269,22 @@ func _parse_config(
 		or header_values["header_second_frame_seconds"] <= 0.0):
 		result._add_error("Match config row %d has invalid header parameters" % row_number)
 		return null
+	if (header_values["shot_aim_width_fraction"] <= 0.0
+		or header_values["shot_aim_width_fraction"] >= 0.5
+		or header_values["shot_aim_goal_width_m"] <= values[10] * 2.0
+		or header_values["keeper_save_probability"] < 0.0
+		or header_values["keeper_save_probability"] > 1.0
+		or header_values["keeper_action_duration_seconds"] <= 0.0
+		or header_values["keeper_window_start_seconds"] < 0.0
+		or header_values["keeper_window_end_seconds"] <= header_values["keeper_window_start_seconds"]
+		or header_values["keeper_window_end_seconds"] > header_values["keeper_action_duration_seconds"]
+		or header_values["keeper_hand_lateral_m"] < 0.0
+		or header_values["keeper_hand_forward_m"] < 0.0
+		or header_values["keeper_hand_height_m"] < 0.0
+		or header_values["keeper_contact_radius_m"] <= 0.0
+		or header_values["keeper_contact_height_m"] <= 0.0):
+		result._add_error("Match config row %d has invalid goalkeeper parameters" % row_number)
+		return null
 	return MatchConfigDefinition.new(
 		# Optional defaults preserve older fixtures; production presets declare every value.
 		config_id, values[0], values[1], values[2], values[3],
@@ -289,6 +317,17 @@ func _parse_config(
 		header_values["ball_impact_knockback_distance_m"],
 		header_values["ball_impact_knockback_duration_seconds"],
 		header_values["ball_impact_knockback_apex_height_m"],
+		header_values["shot_aim_width_fraction"],
+		header_values["shot_aim_goal_width_m"],
+		header_values["keeper_save_probability"],
+		header_values["keeper_action_duration_seconds"],
+		header_values["keeper_window_start_seconds"],
+		header_values["keeper_window_end_seconds"],
+		header_values["keeper_hand_lateral_m"],
+		header_values["keeper_hand_forward_m"],
+		header_values["keeper_hand_height_m"],
+		header_values["keeper_contact_radius_m"],
+		header_values["keeper_contact_height_m"],
 	)
 
 

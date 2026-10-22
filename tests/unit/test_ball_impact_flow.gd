@@ -103,7 +103,7 @@ func _test_low_speed_and_exact_sample_boundary() -> void:
 	_check(split.velocity_after_mps.length() <= split.velocity_before_mps.length(),
 		"Rebound cannot create speed")
 
-## Prevents post-boundary F08 and keeps goalkeeper contacts on a separate future F04 route.
+## Prevents post-boundary F08 and keeps goalkeeper contacts on a separate legal F04 save route.
 func _test_boundary_before_player_and_keeper_route() -> void:
 	var after := _match_with_defender(1, 0.1, false, 3.0)
 	_launch(after)
@@ -113,6 +113,7 @@ func _test_boundary_before_player_and_keeper_route() -> void:
 	_check(_count(after.get_event_history(), MatchEvent.Type.GOAL_SCORED) == 1,
 		"The first crossing must score once")
 	var keeper := _match_with_defender(1, 0.1, false, -2.0, true)
+	keeper.advance_fixed_step(0.01, [MatchAction.new("defender", MatchAction.Type.SAVE, Vector2.LEFT)])
 	_launch(keeper)
 	keeper.advance_fixed_step(0.5, [])
 	_check(_count(keeper.get_event_history(), MatchEvent.Type.GOALKEEPER_CONTACT) == 1,
@@ -127,7 +128,8 @@ func _test_chain_and_continuous_deduplication() -> void:
 	var half := _field.length_m * 0.5
 	# Install the second explicit defender before the READY match starts.
 	var chain := MatchSimulation.new(7, _config, _field,
-		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, _draw)
+		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, _draw, Callable(),
+		func() -> int: return ShotAim.Lane.CENTER)
 	chain.register_player("shooter", Vector2(half - 8.0, 0.0), 5.0, "attack", 80)
 	chain.register_player("a", Vector2(half - 5.0, 0.0), 5.0, "defense", 1, 60)
 	chain.register_player("b", Vector2(half - 2.0, 0.0), 5.0, "defense", 1, 60)
@@ -283,7 +285,8 @@ func _match_with_defender(strength: int, sample: float = 0.1, dodge: bool = fals
 	_sample = sample
 	var simulation := MatchSimulation.new(73, _config, _field,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, _draw,
-		func(_id: String) -> bool: return dodge)
+		func(_id: String) -> bool: return dodge,
+		func() -> int: return ShotAim.Lane.CENTER, func() -> float: return 0.1)
 	var half := _field.length_m * 0.5
 	simulation.register_player("shooter", Vector2(half - 6.0, 0.0), 5.0, "attack", 80)
 	simulation.register_player("defender", Vector2(half + x_from_goal, 0.0),

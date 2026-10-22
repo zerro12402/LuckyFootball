@@ -16,6 +16,7 @@ enum Type {
 	JUMP,
 	HEADER_SHOT,
 	HEADER_CLEAR,
+	SAVE,
 }
 
 var player_id: String:

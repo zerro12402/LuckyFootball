@@ -2,6 +2,11 @@
 class_name BallContactPlayer
 extends RefCounted
 
+var earliest_seconds: float = 0.0
+var latest_seconds: float = INF
+var radius_m: float = -1.0
+var body_height_m: float = -1.0
+
 var player_id: String
 var start_position_m: Vector2
 var end_position_m: Vector2

@@ -3,6 +3,12 @@ class_name BallMatchState
 extends RefCounted
 
 
+enum ControlAttachment { FOOT, KEEPER_HANDS }
+
+var control_attachment: int:
+	get: return _control_attachment
+var _control_attachment: int = ControlAttachment.FOOT
+
 enum MotionState {
 	LOOSE,
 	OWNED,
@@ -83,6 +89,7 @@ func _set_position(new_position_m: Vector2) -> void:
 func _set_owner(player_id: String) -> void:
 	assert(not player_id.is_empty(), "Ball owner ID cannot be empty")
 	_owner_player_id = player_id
+	_control_attachment = ControlAttachment.FOOT
 	_motion_state = MotionState.OWNED
 	_clear_flight()
 
@@ -105,6 +112,7 @@ func _launch_pass(
 	assert(not pass_velocity_mps.is_zero_approx(), "A pass requires velocity")
 	assert(flight_range_m > 0.0, "A pass requires positive flight range")
 	assert(apex_height_m >= 0.0, "Pass apex height cannot be negative")
+	_control_attachment = ControlAttachment.FOOT
 	_owner_player_id = ""
 	_target_player_id = target_id
 	_velocity_mps = pass_velocity_mps
@@ -130,6 +138,7 @@ func _launch_shot(
 	assert(apex_height_m > 0.0, "Shot apex height must be positive")
 	assert(start_height_m >= 0.0 and is_finite(start_height_m))
 	_position_m = release_position_m
+	_control_attachment = ControlAttachment.FOOT
 	_owner_player_id = ""
 	_target_player_id = ""
 	_velocity_mps = shot_velocity_mps
@@ -153,6 +162,7 @@ func _launch_clearance(
 	assert(clear_velocity_mps.is_finite() and not clear_velocity_mps.is_zero_approx())
 	assert(flight_range_m > 0.0 and apex_height_m > 0.0 and start_height_m >= 0.0)
 	_position_m = release_position_m
+	_control_attachment = ControlAttachment.FOOT
 	_owner_player_id = ""
 	_target_player_id = ""
 	_velocity_mps = clear_velocity_mps
@@ -204,6 +214,7 @@ func calculate_height_at_distance(distance_m: float) -> float:
 func _set_post_goal_motion(new_position_m: Vector2, new_velocity_mps: Vector2) -> void:
 	_position_m = new_position_m
 	_velocity_mps = new_velocity_mps
+	_control_attachment = ControlAttachment.FOOT
 	_owner_player_id = ""
 	_target_player_id = ""
 	_flight_kind = FlightKind.SHOT
@@ -218,6 +229,7 @@ func _set_post_goal_motion(new_position_m: Vector2, new_velocity_mps: Vector2) -
 ## Leaves the ball free and motionless after a trajectory ends.
 func _release(new_position_m: Vector2) -> void:
 	_position_m = new_position_m
+	_control_attachment = ControlAttachment.FOOT
 	_owner_player_id = ""
 	_motion_state = MotionState.LOOSE
 	_clear_flight()
@@ -233,3 +245,8 @@ func _clear_flight() -> void:
 	_flight_apex_height_m = 0.0
 	_flight_start_height_m = 0.0
 	_height_m = 0.0
+
+
+## Changes the owned-ball attachment without creating another ball.
+func _set_attachment(attachment: int) -> void:
+	_control_attachment = attachment

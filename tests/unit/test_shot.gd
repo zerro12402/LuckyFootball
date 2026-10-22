@@ -68,7 +68,9 @@ func test_shot_without_goal_configuration_is_rejected() -> void:
 
 ## Keeps each team's goal assignment finite, unique, and fixed before kickoff.
 func test_invalid_goal_registration_is_rejected() -> void:
-	var simulation := MatchSimulation.new(73, _config)
+	var simulation := MatchSimulation.new(73, _config, null,
+		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, Callable(), Callable(),
+		func() -> int: return ShotAim.Lane.CENTER)
 	_expect(not simulation.register_team_attacking_goal("", _right_goal_center_m),
 		"Empty team ID accepted a goal")
 	_expect(not simulation.register_team_attacking_goal("team", Vector2.INF),
@@ -197,7 +199,7 @@ func test_player_without_shooting_attribute_cannot_shoot() -> void:
 		"Rejected shot changed ownership")
 
 
-## Targets the assigned opponent goal despite conflicting direction or facing.
+## Pins the center lane to isolate goal selection from conflicting direction or facing.
 func test_shot_aims_at_opponent_goal_ignoring_command_direction() -> void:
 	var right_match := _create_simulation(80)
 	right_match.advance_fixed_step(FIXED_DELTA, _shot_actions(1.0, Vector2.LEFT))
@@ -277,7 +279,9 @@ func _create_simulation(
 	attacks_left: bool = false,
 	has_goal: bool = true,
 ) -> MatchSimulation:
-	var simulation := MatchSimulation.new(73, _config)
+	var simulation := MatchSimulation.new(73, _config, null,
+		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, Callable(), Callable(),
+		func() -> int: return ShotAim.Lane.CENTER)
 	_expect(simulation.register_player(SHOOTER_ID, player_position_m, 5.0, "team", shooting),
 		"Expected player registration")
 	if has_goal:

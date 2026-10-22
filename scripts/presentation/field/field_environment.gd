@@ -22,6 +22,8 @@ var field_definition: FieldDefinition:
 
 var _field_definition: FieldDefinition
 var _projection: FieldArtProjection
+var _keeper_save_duration: float = 1.2
+
 var _presented_player_ids: Array[String] = []
 var _left_net_tween: Tween
 var _right_net_tween: Tween
@@ -145,11 +147,18 @@ func present(snapshot: MatchStateSnapshot) -> void:
 	var player_actors: Array[PlayerActor] = [
 		_demo_player, _demo_teammate, _demo_opponent, _demo_challenger,
 	]
+	var hand_carrier_actor: PlayerActor
 	var aerial_carrier_actor: PlayerActor
 	for player_index in range(_presented_player_ids.size()):
 		var player_snapshot := snapshot.get_player(_presented_player_ids[player_index])
 		if player_snapshot != null:
+			var holds_in_hands := (snapshot.ball != null
+				and snapshot.ball.owner_player_id == player_snapshot.player_id
+				and snapshot.ball.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS)
+			player_actors[player_index].configure_keeper_hands(holds_in_hands, _keeper_save_duration)
 			player_actors[player_index].present(player_snapshot, _projection)
+			if holds_in_hands:
+				hand_carrier_actor = player_actors[player_index]
 			if (
 				snapshot.ball != null
 				and snapshot.ball.owner_player_id == _presented_player_ids[player_index]
@@ -158,7 +167,9 @@ func present(snapshot: MatchStateSnapshot) -> void:
 				aerial_carrier_actor = player_actors[player_index]
 	if snapshot.ball != null:
 		_ball.present(snapshot.ball, _projection)
-		if aerial_carrier_actor != null:
+		if hand_carrier_actor != null:
+			_ball.place_owned_sprite_at_foot(hand_carrier_actor.get_keeper_hand_world_position())
+		elif aerial_carrier_actor != null:
 			_ball.place_owned_sprite_at_foot(
 				aerial_carrier_actor.get_aerial_ball_foot_world_position()
 			)
@@ -196,3 +207,8 @@ func _fit_camera_to_viewport() -> void:
 		viewport_size.y / REQUIRED_VIEW_SIZE.y,
 	)
 	_camera.zoom = Vector2.ONE * maxf(uniform_zoom, 0.01)
+
+
+## Uses the configured simulation duration for read-only keeper animation playback.
+func configure_keeper_timing(duration_seconds: float) -> void:
+	_keeper_save_duration = duration_seconds

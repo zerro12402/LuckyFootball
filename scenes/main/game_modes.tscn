@@ -87,3 +87,10 @@ layout_mode = 2
 focus_mode = 0
 toggle_mode = true
 text = "足球击倒测试（K）"
+
+[node name="KeeperTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=1275601668]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+text = "守门员扑救测试"

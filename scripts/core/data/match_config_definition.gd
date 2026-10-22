@@ -2,6 +2,52 @@
 class_name MatchConfigDefinition
 extends RefCounted
 
+var shot_aim_width_fraction: float:
+	get: return _shot_aim_width_fraction
+var _shot_aim_width_fraction: float
+
+var shot_aim_goal_width_m: float:
+	get: return _shot_aim_goal_width_m
+var _shot_aim_goal_width_m: float
+
+var keeper_save_probability: float:
+	get: return _keeper_save_probability
+var _keeper_save_probability: float
+
+var keeper_action_duration_seconds: float:
+	get: return _keeper_action_duration_seconds
+var _keeper_action_duration_seconds: float
+
+var keeper_window_start_seconds: float:
+	get: return _keeper_window_start_seconds
+var _keeper_window_start_seconds: float
+
+var keeper_window_end_seconds: float:
+	get: return _keeper_window_end_seconds
+var _keeper_window_end_seconds: float
+
+var keeper_hand_lateral_m: float:
+	get: return _keeper_hand_lateral_m
+var _keeper_hand_lateral_m: float
+
+var keeper_hand_forward_m: float:
+	get: return _keeper_hand_forward_m
+var _keeper_hand_forward_m: float
+
+var keeper_hand_height_m: float:
+	get: return _keeper_hand_height_m
+var _keeper_hand_height_m: float
+
+var keeper_contact_radius_m: float:
+	get: return _keeper_contact_radius_m
+var _keeper_contact_radius_m: float
+
+var keeper_contact_height_m: float:
+	get: return _keeper_contact_height_m
+var _keeper_contact_height_m: float
+
+
+
 var ball_impact_min_speed_mps: float:
 	get: return _ball_impact_min_speed_mps
 var ball_impact_body_radius_m: float:
@@ -384,7 +430,29 @@ func _init(
 	new_ball_impact_knockback_distance_m: float = 1.0,
 	new_ball_impact_knockback_duration_seconds: float = 0.6,
 	new_ball_impact_knockback_apex_height_m: float = 0.6,
+	new_shot_aim_width_fraction: float = 0.25,
+	new_shot_aim_goal_width_m: float = 4.0,
+	new_keeper_save_probability: float = 0.5,
+	new_keeper_action_duration_seconds: float = 1.2,
+	new_keeper_window_start_seconds: float = 0.0,
+	new_keeper_window_end_seconds: float = 1.1,
+	new_keeper_hand_lateral_m: float = 1.0,
+	new_keeper_hand_forward_m: float = 0.45,
+	new_keeper_hand_height_m: float = 0.8,
+	new_keeper_contact_radius_m: float = 0.4,
+	new_keeper_contact_height_m: float = 2.4,
 ) -> void:
+	_shot_aim_width_fraction = new_shot_aim_width_fraction
+	_shot_aim_goal_width_m = new_shot_aim_goal_width_m
+	_keeper_save_probability = new_keeper_save_probability
+	_keeper_action_duration_seconds = new_keeper_action_duration_seconds
+	_keeper_window_start_seconds = new_keeper_window_start_seconds
+	_keeper_window_end_seconds = new_keeper_window_end_seconds
+	_keeper_hand_lateral_m = new_keeper_hand_lateral_m
+	_keeper_hand_forward_m = new_keeper_hand_forward_m
+	_keeper_hand_height_m = new_keeper_hand_height_m
+	_keeper_contact_radius_m = new_keeper_contact_radius_m
+	_keeper_contact_height_m = new_keeper_contact_height_m
 	assert(new_ball_impact_knockback_distance_m >= 0.0)
 	assert(new_ball_impact_knockback_apex_height_m >= 0.0)
 	assert(new_ball_impact_knockback_duration_seconds > 0.0

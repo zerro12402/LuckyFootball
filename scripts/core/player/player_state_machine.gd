@@ -26,6 +26,7 @@ var knockdown_direction: Vector2:
 
 var _state: PlayerMatchState
 var _movement_speed_mps: float
+var _save_config: MatchConfigDefinition
 var _shot_config: MatchConfigDefinition
 var _jump_config: MatchConfigDefinition
 var _tackle_config: MatchConfigDefinition
@@ -69,6 +70,7 @@ func advance(fixed_delta_seconds: float) -> void:
 		_advance_knockback_motion(fixed_delta_seconds)
 	elif (
 		_state.movement_state == PlayerMatchState.MovementState.MOVING
+		and _state.action_state != PlayerMatchState.ActionState.SAVING
 		and _state.action_state != PlayerMatchState.ActionState.SHOOTING
 		and _state.action_state != PlayerMatchState.ActionState.STAGGERED
 		and _state.action_state != PlayerMatchState.ActionState.KNOCKED_DOWN
@@ -87,6 +89,13 @@ func advance(fixed_delta_seconds: float) -> void:
 		_tackle_cooldown_remaining_seconds - fixed_delta_seconds, 0.0
 	)
 	_state._advance_state_time(fixed_delta_seconds)
+	if _state.action_state == PlayerMatchState.ActionState.SAVING:
+		if _state.action_state_elapsed_seconds >= _save_config.keeper_action_duration_seconds:
+			finish_action()
+		elif _state.action_state_elapsed_seconds >= _save_config.keeper_window_end_seconds:
+			_state._set_action_phase(PlayerMatchState.ActionPhase.RECOVERY)
+		elif _state.action_state_elapsed_seconds >= _save_config.keeper_window_start_seconds:
+			_state._set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)
 	_advance_jump(fixed_delta_seconds)
 	if _state.action_state == PlayerMatchState.ActionState.PASSING:
 		_advance_pass_action()
@@ -122,6 +131,8 @@ func set_movement_input(new_input: Vector2) -> bool:
 		PlayerMatchState.ActionState.TACKLING,
 		PlayerMatchState.ActionState.ATTACKING,
 	]:
+		return false
+	if _state.action_state == PlayerMatchState.ActionState.SAVING:
 		return false
 	var clamped_input := new_input.limit_length(1.0)
 	if _state.action_state == PlayerMatchState.ActionState.HEADING:
@@ -370,6 +381,7 @@ func finish_action() -> bool:
 		return false
 	if _state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
 		_state._set_height(0.0)
+	_save_config = null
 	var was_shooting := _state.action_state == PlayerMatchState.ActionState.SHOOTING
 	var was_staggered := _state.action_state == PlayerMatchState.ActionState.STAGGERED
 	var was_heading := _state.action_state == PlayerMatchState.ActionState.HEADING
@@ -415,6 +427,8 @@ func stop_for_settlement(should_cancel_action: bool) -> void:
 
 ## Restores an actionable player without carrying an old windup or movement intent.
 func reset_to_spawn(spawn_position_m: Vector2) -> void:
+	_save_config = null
+	_state._set_save_lane(ShotAim.Lane.CENTER)
 	_state._set_position(spawn_position_m)
 	_state._set_facing_direction(Vector2.RIGHT)
 	_state._set_movement_input(Vector2.ZERO)
@@ -684,3 +698,23 @@ func _advance_getting_up() -> void:
 	assert(_knockdown_config != null, "Getting up requires match configuration")
 	if _state.action_state_elapsed_seconds >= _knockdown_config.knockdown_get_up_seconds:
 		finish_action()
+
+
+## Starts a command-driven save; only a later physical contact can award possession.
+func try_start_save(config: MatchConfigDefinition, lane: int, facing: Vector2) -> bool:
+	if config == null or lane < ShotAim.Lane.UPPER or lane > ShotAim.Lane.LOWER:
+		return false
+	if _state.possession_state != PlayerMatchState.PossessionState.NO_BALL:
+		return false
+	if _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
+		return false
+	if not try_start_action(PlayerMatchState.ActionState.SAVING):
+		return false
+	_save_config = config
+	if config.keeper_window_start_seconds <= 0.0:
+		_state._set_action_phase(PlayerMatchState.ActionPhase.ACTIVE)
+	_state._set_save_lane(lane)
+	_update_horizontal_facing(facing)
+	_state._set_movement_input(Vector2.ZERO)
+	_state._set_movement_state(PlayerMatchState.MovementState.IDLE)
+	return true

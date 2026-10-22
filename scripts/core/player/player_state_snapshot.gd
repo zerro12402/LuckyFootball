@@ -2,6 +2,10 @@
 class_name PlayerStateSnapshot
 extends RefCounted
 
+var save_lane: int:
+	get: return _save_lane
+var _save_lane: int = ShotAim.Lane.CENTER
+
 var player_id: String:
 	get:
 		return _player_id
@@ -65,6 +69,7 @@ var _height_m: float
 
 
 func _init(player_state: PlayerMatchState) -> void:
+	_save_lane = player_state.save_lane
 	_player_id = player_state.player_id
 	_position_m = player_state.position_m
 	_facing_direction = player_state.facing_direction

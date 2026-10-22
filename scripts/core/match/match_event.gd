@@ -32,6 +32,8 @@ enum Type {
 	BALL_CONTINUED,
 	BALL_REBOUNDED,
 	GOALKEEPER_CONTACT,
+	GOALKEEPER_SAVE_STARTED,
+	GOALKEEPER_SAVE_RESOLVED,
 }
 
 enum ResetReason {
@@ -113,6 +115,13 @@ var new_owner_id: String:
 var ball_impact: BallImpactResult:
 	get: return _ball_impact
 
+var shot_aim: ShotAim:
+	get: return _shot_aim
+var goalkeeper_save: GoalkeeperSaveResult:
+	get: return _goalkeeper_save
+var _shot_aim: ShotAim
+var _goalkeeper_save: GoalkeeperSaveResult
+
 var _ball_impact: BallImpactResult
 
 var _target_player_id: String = ""
@@ -151,7 +160,11 @@ func _init(
 	new_previous_owner_id: String = "",
 	new_new_owner_id: String = "",
 	new_ball_impact: BallImpactResult = null,
+	new_shot_aim: ShotAim = null,
+	new_goalkeeper_save: GoalkeeperSaveResult = null,
 ) -> void:
+	_shot_aim = new_shot_aim
+	_goalkeeper_save = new_goalkeeper_save
 	_event_type = new_event_type
 	_match_time_seconds = new_match_time_seconds
 	_simulation_step = new_simulation_step

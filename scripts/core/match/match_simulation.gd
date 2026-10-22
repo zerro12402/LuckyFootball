@@ -35,6 +35,10 @@ var _melee_outcome: MeleeOutcome
 var _ball_contact_latches: Dictionary[String, bool] = {}
 var _contact_shot_source: BallShotSource
 var _ball_route_sampler: Callable
+var _shot_aim_sampler: Callable
+var _keeper_sampler: Callable
+var _keeper_intents: Dictionary[String, float] = {}
+var _keeper_resolved: Dictionary[String, bool] = {}
 var _ball_dodge_result: Callable
 
 
@@ -46,6 +50,8 @@ func _init(
 	melee_outcome: MeleeOutcome = MeleeOutcome.TARGET_KNOCKED_DOWN,
 	ball_route_sampler: Callable = Callable(),
 	ball_dodge_result: Callable = Callable(),
+	shot_aim_sampler: Callable = Callable(),
+	keeper_sampler: Callable = Callable(),
 ) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
@@ -53,6 +59,9 @@ func _init(
 	_field_definition = field_definition
 	_melee_outcome = melee_outcome
 	_ball_route_sampler = ball_route_sampler if ball_route_sampler.is_valid() else _sample_ball_route
+	_shot_aim_sampler = shot_aim_sampler
+	_keeper_sampler = keeper_sampler if keeper_sampler.is_valid() else _sample_ball_route
+	_ball_runtime_system.configure_shot_aim(_select_shot_aim)
 	_ball_dodge_result = ball_dodge_result
 	if match_config != null:
 		_ball_runtime_system.configure_match_rules(match_config)
@@ -77,7 +86,7 @@ func register_player(
 ) -> bool:
 	if _state.phase != MatchState.Phase.READY or not initial_position_m.is_finite():
 		return false
-	return _player_runtime_system.register_player(
+	var registered := _player_runtime_system.register_player(
 		player_id,
 		initial_position_m,
 		movement_speed_mps,
@@ -87,6 +96,9 @@ func register_player(
 		technique_attribute,
 		is_goalkeeper,
 	)
+	if registered:
+		_orient_goalkeeper(_player_runtime_system.get_player(player_id))
+	return registered
 
 
 ## Associates a team with its opponent goal center before the match starts.
@@ -98,6 +110,8 @@ func register_team_attacking_goal(team_id: String, goal_center_m: Vector2) -> bo
 	if _attacking_goals_by_team.has(team_id):
 		return false
 	_attacking_goals_by_team[team_id] = goal_center_m
+	for player in _player_runtime_system.get_players():
+		_orient_goalkeeper(player)
 	return true
 
 
@@ -182,6 +196,10 @@ func advance_fixed_step(
 			was_accepted = _try_start_tackle(action)
 		elif action.action_type == MatchAction.Type.ATTACK:
 			was_accepted = _try_start_knockdown(action)
+		elif action.action_type == MatchAction.Type.SAVE:
+			was_accepted = _try_start_save(action, fixed_delta_seconds)
+			if was_accepted:
+				step_events.append(_create_event(MatchEvent.Type.GOALKEEPER_SAVE_STARTED, action.player_id))
 		elif action.action_type == MatchAction.Type.JUMP:
 			was_accepted = _try_start_jump(action)
 		elif action.action_type in [MatchAction.Type.HEADER_SHOT, MatchAction.Type.HEADER_CLEAR]:
@@ -322,6 +340,7 @@ func _advance_shot_contacts(seconds: float, fixed_seconds: float,
 	if source != _contact_shot_source:
 		_ball_contact_latches.clear()
 		_contact_shot_source = source
+		_keeper_resolved.clear()
 	var remaining := seconds
 	var elapsed := fixed_seconds - seconds
 	while remaining > 0.00000001:
@@ -350,8 +369,13 @@ func _advance_shot_contacts(seconds: float, fixed_seconds: float,
 			_append_post_motion_events(reception, events)
 			break
 		if candidates.is_empty():
-			_ball_runtime_system.advance_shot_motion(remaining)
-			break
+			# Landing splits height prediction; continue through the unused ground interval.
+			_ball_runtime_system.advance_shot_motion(trajectory.duration_seconds)
+			remaining = maxf(remaining - trajectory.duration_seconds, 0.0)
+			elapsed += trajectory.duration_seconds
+			if trajectory.duration_seconds <= BallContactResolver.EPSILON:
+				break
+			continue
 		var contact := candidates[0]
 		_ball_runtime_system.advance_shot_motion(contact.time_seconds)
 		remaining = maxf(remaining - contact.time_seconds, 0.0)
@@ -362,11 +386,9 @@ func _advance_shot_contacts(seconds: float, fixed_seconds: float,
 		# A latched body cannot consume zero time twice without full geometric separation.
 		_ball_contact_latches[contact.player_id] = true
 		if contact.kind == BallContactCandidate.Kind.GOALKEEPER:
-			events.append(MatchEvent.new(MatchEvent.Type.GOALKEEPER_CONTACT,
-				_state.elapsed_seconds - fixed_seconds + elapsed, _state.simulation_step,
-				source.player_id, MatchEvent.ResetReason.NONE, MatchBoundaryResult.Side.NONE,
-				contact.position_m, source.player_id, 0, false, null, contact.player_id))
-			continue # F04's independent save router is implemented by task group 4.
+			_commit_keeper_save(contact, source, events,
+				_state.elapsed_seconds - fixed_seconds + elapsed)
+			continue
 		_commit_ball_impact(contact, source, events,
 			_state.elapsed_seconds - fixed_seconds + elapsed)
 	return false
@@ -387,12 +409,30 @@ func _shot_contact_bodies(source: BallShotSource, elapsed: float, duration: floa
 		var start := starts[player.player_id]
 		var end := player.state.position_m
 		var start_height := heights[player.player_id]
-		bodies.append(BallContactPlayer.new(player.player_id,
+		var body := BallContactPlayer.new(player.player_id,
 			start.lerp(end, elapsed / fixed_seconds),
 			start.lerp(end, (elapsed + duration) / fixed_seconds),
 			lerpf(start_height, player.state.height_m, elapsed / fixed_seconds),
 			lerpf(start_height, player.state.height_m, (elapsed + duration) / fixed_seconds),
-			player.is_goalkeeper))
+			player.is_goalkeeper)
+		if player.is_goalkeeper:
+			if _keeper_resolved.has(player.player_id) or not _keeper_intents.has(player.player_id):
+				continue
+			if player.state.action_state not in [PlayerMatchState.ActionState.SAVING, PlayerMatchState.ActionState.IDLE]:
+				continue
+			var save_elapsed := _state.elapsed_seconds - fixed_seconds + elapsed - _keeper_intents[player.player_id]
+			body.earliest_seconds = maxf(_match_config.keeper_window_start_seconds - save_elapsed, 0.0)
+			body.latest_seconds = minf(_match_config.keeper_window_end_seconds - save_elapsed, duration)
+			if body.earliest_seconds > body.latest_seconds:
+				continue
+			var side := float(player.state.save_lane - ShotAim.Lane.CENTER)
+			var forward := player.state.facing_direction * _match_config.keeper_hand_forward_m
+			var hand_offset := forward + Vector2(0.0, side * _match_config.keeper_hand_lateral_m)
+			body.start_position_m += hand_offset
+			body.end_position_m += hand_offset
+			body.radius_m = _match_config.keeper_contact_radius_m
+			body.body_height_m = _match_config.keeper_contact_height_m
+		bodies.append(body)
 	return bodies
 
 
@@ -514,6 +554,16 @@ func _advance_settlement_step(
 	_settlement_remaining_seconds = maxf(
 		_settlement_remaining_seconds - fixed_delta_seconds, 0.0
 	)
+	var is_save_playing := false
+	for player in _player_runtime_system.get_players():
+		if player.state.action_state == PlayerMatchState.ActionState.SAVING:
+			if active_delta_seconds < fixed_delta_seconds:
+				player.advance(fixed_delta_seconds - active_delta_seconds)
+			is_save_playing = is_save_playing or player.state.action_state == PlayerMatchState.ActionState.SAVING
+	if is_save_playing:
+		events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
+		_record_step_events(events)
+		return events
 	if _pending_reset_reason == MatchEvent.ResetReason.GOAL:
 		if _goal_motion_elapsed_seconds >= _match_config.goal_net_max_motion_seconds - SETTLEMENT_TIME_EPSILON:
 			_reset_round(MatchEvent.ResetReason.GOAL, Vector2.ZERO, events, _pending_reset_side)
@@ -674,11 +724,15 @@ func _reset_round(
 	_state._set_round_phase(MatchState.RoundPhase.RESETTING)
 	_ball_runtime_system.reset_ball(ball_reset_position_m)
 	_player_runtime_system.reset_all_players()
+	for player in _player_runtime_system.get_players():
+		_orient_goalkeeper(player)
 	_pending_tackle_targets.clear()
 	_pending_knockdown_targets.clear()
 	_pending_header_actions.clear()
 	_ball_contact_latches.clear()
 	_contact_shot_source = null
+	_keeper_intents.clear()
+	_keeper_resolved.clear()
 	_pending_reset_reason = MatchEvent.ResetReason.NONE
 	_pending_reset_side = MatchBoundaryResult.Side.NONE
 	_settlement_remaining_seconds = 0.0
@@ -1086,5 +1140,78 @@ func _create_event(
 		last_kicker_id,
 		goal_count,
 		is_corner,
-		net_contact,
+		net_contact, "", "", "", null,
+		_ball_runtime_system.current_shot_aim if event_type == MatchEvent.Type.BALL_SHOT else null,
 	)
+
+
+## Chooses one planar goal lane at actual release; fixed samplers are test-only injections.
+func _select_shot_aim(player: PlayerRuntime, origin: Vector2) -> ShotAim:
+	var lane := int(_shot_aim_sampler.call()) if _shot_aim_sampler.is_valid() else _rng.randi_range(0, 2)
+	assert(lane >= ShotAim.Lane.UPPER and lane <= ShotAim.Lane.LOWER)
+	var goal: Vector2 = _attacking_goals_by_team[player.team_id]
+	var width := _field_definition.goal_width_m if _field_definition != null else _match_config.shot_aim_goal_width_m
+	var margin := minf(width * _match_config.shot_aim_width_fraction,
+		maxf(width * 0.5 - _match_config.ball_radius_m - MatchRules.LINE_EPSILON_M, 0.0))
+	var point := goal + Vector2(0.0, float(lane - ShotAim.Lane.CENTER) * margin)
+	assert(not point.is_equal_approx(origin))
+	return ShotAim.new(lane, point)
+
+
+## Validates the keeper command before recording its fixed-time save window.
+func _try_start_save(action: MatchAction, fixed_seconds: float) -> bool:
+	var keeper := _player_runtime_system.get_player(action.player_id)
+	if keeper == null or not keeper.is_goalkeeper or not action.direction.is_finite():
+		return false
+	var lane := ShotAim.Lane.CENTER
+	if action.direction.y < 0.0:
+		lane = ShotAim.Lane.UPPER
+	elif action.direction.y > 0.0:
+		lane = ShotAim.Lane.LOWER
+	if not keeper.state_machine.try_start_save(_match_config, lane, action.direction):
+		return false
+	_keeper_intents[keeper.player_id] = _state.elapsed_seconds - fixed_seconds
+	return true
+
+
+## Samples F04 once and commits either hand possession or an unchanged miss trajectory.
+func _commit_keeper_save(contact: BallContactCandidate, source: BallShotSource,
+		events: Array[MatchEvent], contact_time: float) -> void:
+	var keeper := _player_runtime_system.get_player(contact.player_id)
+	_keeper_resolved[keeper.player_id] = true
+	var result := GoalkeeperSaveResolver.resolve(keeper.player_id, source, keeper.state.save_lane,
+		contact.position_m, contact.height_m, _match_config.keeper_save_probability, _keeper_sampler)
+	events.append(MatchEvent.new(MatchEvent.Type.GOALKEEPER_CONTACT, contact_time,
+		_state.simulation_step, source.player_id, MatchEvent.ResetReason.NONE,
+		MatchBoundaryResult.Side.NONE, contact.position_m, source.player_id, 0, false, null,
+		keeper.player_id, "", "", null, null, result))
+	if result.did_catch:
+		_ball_runtime_system.catch_by_keeper(keeper)
+	elif keeper.state.save_lane == ShotAim.Lane.CENTER:
+		if keeper.state_machine.start_knockdown(_match_config):
+			keeper.state_machine.start_knockback(_ball_runtime_system.state.velocity_mps,
+				_match_config.ball_impact_knockback_distance_m,
+				_match_config.ball_impact_knockback_duration_seconds,
+				_match_config.ball_impact_knockback_apex_height_m)
+	events.append(MatchEvent.new(MatchEvent.Type.GOALKEEPER_SAVE_RESOLVED, contact_time,
+		_state.simulation_step, keeper.player_id, MatchEvent.ResetReason.NONE,
+		MatchBoundaryResult.Side.NONE, contact.position_m, source.player_id, 0, false, null,
+		keeper.player_id, "", keeper.player_id if result.did_catch else "", null, null, result))
+	if result.did_catch:
+		events.append(MatchEvent.new(MatchEvent.Type.BALL_POSSESSION_GAINED, contact_time,
+			_state.simulation_step, keeper.player_id, MatchEvent.ResetReason.NONE,
+			MatchBoundaryResult.Side.NONE, contact.position_m, source.player_id, 0, false,
+			null, keeper.player_id, "", keeper.player_id))
+	elif keeper.state.save_lane == ShotAim.Lane.CENTER:
+		events.append(MatchEvent.new(MatchEvent.Type.PLAYER_KNOCKED_DOWN, contact_time,
+			_state.simulation_step, keeper.player_id))
+
+
+## Restores a keeper's field-facing direction after registration or round reset.
+func _orient_goalkeeper(player: PlayerRuntime) -> void:
+	if not player.is_goalkeeper or not _attacking_goals_by_team.has(player.team_id):
+		return
+	var goal: Vector2 = _attacking_goals_by_team[player.team_id]
+	var horizontal := goal.x - player.state.position_m.x
+	if not is_zero_approx(horizontal):
+		player.state._set_facing_direction(Vector2.LEFT if horizontal < 0.0 else Vector2.RIGHT)

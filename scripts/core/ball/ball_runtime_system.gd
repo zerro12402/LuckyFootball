@@ -46,6 +46,11 @@ var shot_source: BallShotSource:
 	get: return _shot_source
 var _shot_source: BallShotSource
 var _shot_sequence: int = 0
+var _shot_aim_selector: Callable
+var _current_shot_aim: ShotAim
+
+var current_shot_aim: ShotAim:
+	get: return _current_shot_aim
 
 
 ## Validates the existing pass parameters before the ball is registered.
@@ -393,6 +398,7 @@ func reset_ball(reset_position_m: Vector2) -> void:
 	_reacquire_delay_at_step_start_seconds = 0.0
 	_shot_source = null
 	_shot_sequence = 0
+	_current_shot_aim = null
 
 
 
@@ -521,7 +527,8 @@ func advance_post_goal_motion(
 func create_snapshot() -> BallStateSnapshot:
 	if _state == null:
 		return null
-	return BallStateSnapshot.new(_state)
+	return BallStateSnapshot.new(_state, _current_shot_aim
+		if _state.flight_kind == BallMatchState.FlightKind.SHOT else null)
 
 
 ## Follows the owner through windup, then releases the queued kick once.
@@ -595,6 +602,11 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 		shooter.state_machine.finish_action()
 		return
 	var release_height_m := _state.height_m
+	var from_hands := _state.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS
+	var aim_origin := _state.position_m if from_hands else shooter.state.position_m
+	if _shot_aim_selector.is_valid():
+		_current_shot_aim = _shot_aim_selector.call(shooter, aim_origin)
+		direction = (_current_shot_aim.point_m - aim_origin).normalized()
 	_record_shot_source(shooter)
 	var attribute_fraction := float(shooter.shooting_attribute - 1) / 99.0
 	var attribute_multiplier := lerpf(
@@ -603,13 +615,17 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 		attribute_fraction,
 	)
 	var initial_speed_mps := _shot_config.shot_base_speed_mps * power * attribute_multiplier
-	var release_position_m := shooter.state.position_m + direction * _dribble_offset_m
+	var release_position_m := (_state.position_m if from_hands
+		else shooter.state.position_m + direction * _dribble_offset_m)
 	shooter.state_machine.set_possession_state(PlayerMatchState.PossessionState.NO_BALL)
 	if initial_speed_mps > _shot_config.shot_stop_speed_mps:
 		var stop_speed_mps := _shot_config.shot_stop_speed_mps
 		var flight_range_m := (
 			initial_speed_mps * initial_speed_mps - stop_speed_mps * stop_speed_mps
 		) / (2.0 * _shot_config.shot_ground_deceleration_mps2)
+		if _current_shot_aim != null:
+			flight_range_m = minf(flight_range_m,
+				release_position_m.distance_to(_current_shot_aim.point_m))
 		_state._launch_shot(
 			release_position_m,
 			direction * initial_speed_mps,
@@ -698,11 +714,16 @@ func _advance_header_contact(
 	_protect_releaser(contact.player_id)
 	var remaining_seconds := fixed_delta_seconds * (1.0 - contact.contact_fraction)
 	if action.action_type == MatchAction.Type.HEADER_SHOT:
+		if _shot_aim_selector.is_valid():
+			_current_shot_aim = _shot_aim_selector.call(player, contact.contact_position_m)
+			direction = (_current_shot_aim.point_m - contact.contact_position_m).normalized()
 		_record_shot_source(player)
 		var speed_mps := _shot_config.header_shot_speed_mps
 		var stop_speed_mps := _shot_config.shot_stop_speed_mps
 		var range_m := (speed_mps * speed_mps - stop_speed_mps * stop_speed_mps) / (
 			2.0 * _shot_config.shot_ground_deceleration_mps2)
+		if _current_shot_aim != null:
+			range_m = minf(range_m, contact.contact_position_m.distance_to(_current_shot_aim.point_m))
 		_state._launch_shot(contact.contact_position_m, direction.normalized() * speed_mps,
 			range_m, _shot_config.header_shot_apex_height_m, contact_height_m)
 		if defer_shot_motion:
@@ -802,6 +823,10 @@ func _can_gain_ball(player: PlayerRuntime) -> bool:
 
 ## Shares action and possession eligibility across every ordinary unowned-ball reception.
 func _can_control_ball(player: PlayerRuntime) -> bool:
+	# A keeper facing a shot must use F04, even when ordinary pickup would be earlier.
+	if player != null and player.is_goalkeeper and _state != null and (
+		_state.flight_kind == BallMatchState.FlightKind.SHOT):
+		return false
 	return (
 		player != null
 		and player.state.action_state == PlayerMatchState.ActionState.IDLE
@@ -825,8 +850,15 @@ func _follow_owner(players: PlayerRuntimeSystem) -> void:
 	_set_ball_at_control_point(owner)
 
 
-## Holds the ball in front of the owner's current horizontal facing.
+## Follows the owned ball at either its configured hand attachment or normal foot point.
 func _set_ball_at_control_point(owner: PlayerRuntime) -> void:
+	if _state.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS:
+		var lateral := float(owner.state.save_lane - ShotAim.Lane.CENTER)
+		_state._set_position(owner.state.position_m
+			+ owner.state.facing_direction * _shot_config.keeper_hand_forward_m
+			+ Vector2(0.0, lateral * _shot_config.keeper_hand_lateral_m))
+		_state._set_control_height(owner.state.height_m + _shot_config.keeper_hand_height_m)
+		return
 	_state._set_position(
 		owner.state.position_m + owner.state.facing_direction * _dribble_offset_m
 	)
@@ -840,3 +872,17 @@ func _clear_pending_shot() -> void:
 	_pending_shot_power = 0.0
 	_pending_shot_elapsed_seconds = 0.0
 	_pending_shot_started_airborne = false
+
+
+## Injects release-time targeting without letting input adapters alter a ball trajectory.
+func configure_shot_aim(selector: Callable) -> void:
+	_shot_aim_selector = selector
+
+
+## Commits an authorized F04 catch through the unique ownership path, then attaches hands.
+func catch_by_keeper(keeper: PlayerRuntime) -> BallAdvanceResult:
+	var result := BallAdvanceResult.new()
+	_claim_ball(keeper, result)
+	_state._set_attachment(BallMatchState.ControlAttachment.KEEPER_HANDS)
+	_set_ball_at_control_point(keeper)
+	return result

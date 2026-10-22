@@ -68,3 +68,15 @@ header_clear_speed_mps,12.0,头球解围初速度，单位米每秒
 header_clear_apex_height_m,1.2,头球解围附加抛物线顶点高度，单位米
 header_first_frame_seconds,0.3,头球动作第一帧持续时长，单位秒
 header_second_frame_seconds,1.0,头球动作第二帧持续时长，单位秒
+
+shot_aim_width_fraction,0.25,Goalkeeper and planar shot aim rules
+shot_aim_goal_width_m,4.0,Goalkeeper and planar shot aim rules
+keeper_save_probability,0.5,Goalkeeper and planar shot aim rules
+keeper_action_duration_seconds,1.2,Goalkeeper and planar shot aim rules
+keeper_window_start_seconds,0.0,Goalkeeper and planar shot aim rules
+keeper_window_end_seconds,1.1,Goalkeeper and planar shot aim rules
+keeper_hand_lateral_m,1.0,Goalkeeper and planar shot aim rules
+keeper_hand_forward_m,0.45,Goalkeeper and planar shot aim rules
+keeper_hand_height_m,0.8,Goalkeeper and planar shot aim rules
+keeper_contact_radius_m,0.4,Goalkeeper and planar shot aim rules
+keeper_contact_height_m,2.4,Goalkeeper and planar shot aim rules

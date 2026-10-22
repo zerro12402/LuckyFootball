@@ -13,6 +13,7 @@ enum Mode {
 	AERIAL_JUMP_SHOT_TEST,
 	LOFTED_RECEIVE_AERIAL_SHOT_TEST,
 	BALL_IMPACT_TEST,
+	GOALKEEPER_TEST,
 }
 
 @export var formal_match_scene: PackedScene
@@ -27,6 +28,7 @@ enum Mode {
 @onready var _attack_recoil_test_button: Button = %AttackRecoilTestButton
 @onready var _aerial_jump_shot_test_button: Button = %AerialJumpShotTestButton
 @onready var _lofted_receive_aerial_shot_test_button: Button = %LoftedReceiveAerialShotTestButton
+@onready var _keeper_test_button: Button = %KeeperTestButton
 @onready var _ball_impact_test_button: Button = %BallImpactTestButton
 
 var current_mode: Mode:
@@ -48,6 +50,7 @@ func _ready() -> void:
 	_aerial_jump_shot_test_button.pressed.connect(_show_aerial_jump_shot_test)
 	_lofted_receive_aerial_shot_test_button.pressed.connect(_show_lofted_receive_aerial_shot_test)
 	_ball_impact_test_button.pressed.connect(_show_ball_impact_test)
+	_keeper_test_button.pressed.connect(_show_keeper_test)
 	show_mode(Mode.PASS_AND_SHOOT)
 
 
@@ -76,6 +79,7 @@ func show_mode(mode: Mode) -> void:
 	_lofted_receive_aerial_shot_test_button.set_pressed_no_signal(
 		mode == Mode.LOFTED_RECEIVE_AERIAL_SHOT_TEST)
 	_ball_impact_test_button.set_pressed_no_signal(mode == Mode.BALL_IMPACT_TEST)
+	_keeper_test_button.set_pressed_no_signal(mode == Mode.GOALKEEPER_TEST)
 
 
 ## Keeps formal play separate while all interactive demos share one scene resource.
@@ -104,6 +108,8 @@ func _configure_demo_mode(mode: Mode, demo_bootstrap: GameBootstrap) -> void:
 		Mode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
 			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST
 			demo_bootstrap.random_seed = 47
+		Mode.GOALKEEPER_TEST:
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.GOALKEEPER_TEST
 		Mode.BALL_IMPACT_TEST:
 			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.BALL_IMPACT_TEST
 		_:
@@ -150,3 +156,8 @@ func _show_lofted_receive_aerial_shot_test() -> void:
 ## Opens ball impact presets in the existing shared demo scene.
 func _show_ball_impact_test() -> void:
 	show_mode(Mode.BALL_IMPACT_TEST)
+
+
+## Opens the keeper presets through the same shared demo scene.
+func _show_keeper_test() -> void:
+	show_mode(Mode.GOALKEEPER_TEST)

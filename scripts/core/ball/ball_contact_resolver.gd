@@ -69,27 +69,33 @@ static func _first_body_contact(trajectory: BallShotTrajectory, player: BallCont
 	var yy := ContactPolynomial.multiply(y, y)
 	for index in range(planar.size()):
 		planar[index] += yy[index]
-	planar[0] -= pow(config.ball_impact_body_radius_m + config.ball_radius_m, 2.0)
+	var radius := player.radius_m if player.radius_m > 0.0 else config.ball_impact_body_radius_m
+	planar[0] -= pow(radius + config.ball_radius_m, 2.0)
 	var lower: Array[float] = trajectory.height_coefficients.duplicate()
 	lower[0] -= player.start_height_m - config.ball_radius_m
 	lower[1] -= (player.end_height_m - player.start_height_m) / duration
 	var upper: Array[float] = lower.duplicate()
-	upper[0] -= config.ball_impact_body_height_m + 2.0 * config.ball_radius_m
-	var points: Array[float] = [0.0, duration]
+	var body_height := (player.body_height_m if player.body_height_m > 0.0
+		else config.ball_impact_body_height_m)
+	upper[0] -= body_height + 2.0 * config.ball_radius_m
+	var points: Array[float] = [0.0, duration, clampf(player.earliest_seconds, 0.0, duration),
+		clampf(player.latest_seconds, 0.0, duration)]
 	for polynomial in [planar, lower, upper]:
 		points.append_array(ContactPolynomial.roots(polynomial, 0.0, duration))
 	points.sort()
 	var has_separated := not is_latched
 	for index in range(points.size()):
 		var point := points[index]
-		if _inside(planar, lower, upper, point):
+		if (point >= player.earliest_seconds - EPSILON
+			and point <= player.latest_seconds + EPSILON and _inside(planar, lower, upper, point)):
 			if has_separated:
 				return point
 		else:
 			has_separated = true
 		if index + 1 < points.size() and points[index + 1] - point > EPSILON:
 			var midpoint := (point + points[index + 1]) * 0.5
-			if _inside(planar, lower, upper, midpoint):
+			if (midpoint >= player.earliest_seconds and midpoint <= player.latest_seconds
+				and _inside(planar, lower, upper, midpoint)):
 				if has_separated:
 					return point
 			else:

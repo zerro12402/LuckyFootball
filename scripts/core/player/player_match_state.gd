@@ -2,6 +2,10 @@
 class_name PlayerMatchState
 extends RefCounted
 
+var save_lane: int:
+	get: return _save_lane
+var _save_lane: int = ShotAim.Lane.CENTER
+
 enum MovementState {
 	IDLE,
 	MOVING,
@@ -26,6 +30,7 @@ enum ActionState {
 	GETTING_UP,
 	LANDING,
 	HEADING,
+	SAVING,
 }
 
 enum ActionPhase {
@@ -173,3 +178,8 @@ func _set_facing_direction(new_direction: Vector2) -> void:
 func _advance_state_time(fixed_delta_seconds: float) -> void:
 	_movement_state_elapsed_seconds += fixed_delta_seconds
 	_action_state_elapsed_seconds += fixed_delta_seconds
+
+
+## Locks the intended save lane independently of animation state.
+func _set_save_lane(lane: int) -> void:
+	_save_lane = lane

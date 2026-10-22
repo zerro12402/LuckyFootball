@@ -3,6 +3,7 @@ extends SceneTree
 
 var _snapshot: MatchStateSnapshot
 var _shot_event_count: int = 0
+var _shot_aim: ShotAim
 var _failures: PackedStringArray = []
 
 
@@ -11,7 +12,7 @@ func _init() -> void:
 	call_deferred("_run_test")
 
 
-## Moves above the center line, then checks K shoots toward the right goal center.
+## Moves above the center line, then checks K shoots toward its locked right-goal target.
 func _run_test() -> void:
 	var bootstrap := GameBootstrap.new()
 	var keyboard := KeyboardPlayerInputAdapter.new()
@@ -53,8 +54,11 @@ func _run_test() -> void:
 	_expect(_snapshot.ball.owner_player_id.is_empty(), "Demo shot retained ball ownership")
 	_expect(_snapshot.ball.velocity_mps.length() > 0.0,
 		"Demo shot did not launch the ball")
+	_expect(_shot_aim != null, "Shot must expose its locked goal target")
+	if _shot_aim != null:
+		expected_direction = (_shot_aim.point_m - shot_origin_m).normalized()
 	_expect(_snapshot.ball.velocity_mps.normalized().is_equal_approx(expected_direction),
-		"Demo shot did not aim at the opponent goal center")
+		"Demo shot did not aim at its locked opponent-goal target")
 	bootstrap.queue_free()
 	_finish()
 
@@ -68,6 +72,7 @@ func _record_frame(
 	_snapshot = snapshot
 	for event in events:
 		if event.event_type == MatchEvent.Type.BALL_SHOT:
+			_shot_aim = event.shot_aim
 			_shot_event_count += 1
 
 

@@ -207,8 +207,51 @@ tracks/0/keys = {
 "values": [Vector2i(1, 9)]
 }
 
+[sub_resource type="Animation" id="Animation_save_up"]
+resource_name = "save_up"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/path = NodePath("BodySprite:frame_coords")
+tracks/0/interp = 1
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [Vector2i(0, 11)]
+}
+
+[sub_resource type="Animation" id="Animation_save_down"]
+resource_name = "save_down"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/path = NodePath("BodySprite:frame_coords")
+tracks/0/interp = 1
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [Vector2i(0, 12)]
+}
+
+[sub_resource type="Animation" id="Animation_keeper_hold"]
+resource_name = "keeper_hold"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/path = NodePath("BodySprite:frame_coords")
+tracks/0/interp = 1
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [Vector2i(0, 0)]
+}
+
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_player"]
 _data = {
+&"save_up": SubResource("Animation_save_up"),
+&"save_down": SubResource("Animation_save_down"),
+&"keeper_hold": SubResource("Animation_keeper_hold"),
+
 &"RESET": SubResource("Animation_reset"),
 &"hit": SubResource("Animation_hit"),
 &"header_first": SubResource("Animation_header_first"),

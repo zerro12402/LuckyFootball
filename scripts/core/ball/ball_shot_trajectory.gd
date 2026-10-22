@@ -23,6 +23,12 @@ func _init(ball: BallMatchState, seconds: float, config: MatchConfigDefinition) 
 	else:
 		duration_seconds = minf(seconds, maxf(
 			(ball.flight_range_m - ball.flight_distance_m) / speed_mps, 0.0))
+	if ball.flight_kind == BallMatchState.FlightKind.SHOT:
+		if ball.flight_distance_m >= ball.flight_range_m - ContactPolynomial.EPSILON:
+			height_coefficients = [0.0, 0.0, 0.0, 0.0, 0.0]
+			return
+		duration_seconds = minf(duration_seconds,
+			time_at_distance(ball.flight_range_m - ball.flight_distance_m))
 	var progress: Array[float] = [ball.flight_distance_m / ball.flight_range_m,
 		speed_mps / ball.flight_range_m, -0.5 * deceleration_mps2 / ball.flight_range_m]
 	var squared := ContactPolynomial.multiply(progress, progress)

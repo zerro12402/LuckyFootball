@@ -7,6 +7,8 @@
 [ext_resource type="Script" path="res://scripts/input/aerial_play_test_controls.gd" id="5_aerial_controls"]
 [ext_resource type="Script" path="res://scripts/input/ball_impact_test_controls.gd" id="6_impact_controls"]
 
+[ext_resource type="Script" path="res://scripts/input/goalkeeper_test_controls.gd" id="7_keeper_controls"]
+
 [node name="GameBootstrap" type="Node" unique_id=1859715035]
 script = ExtResource("1_bootstrap")
 
@@ -146,3 +148,7 @@ text = "重置（K 射门）"
 unique_name_in_owner = true
 layout_mode = 2
 text = "按 K 射门；~ 重置"
+
+[node name="GoalkeeperControls" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("7_keeper_controls")
