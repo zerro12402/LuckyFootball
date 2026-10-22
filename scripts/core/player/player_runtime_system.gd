@@ -15,10 +15,16 @@ func register_player(
 	strength_attribute: int = 50,
 	technique_attribute: int = 50,
 	is_goalkeeper: bool = false,
+	speed_attribute: int = 0,
+	tackling_attribute: int = 50,
 ) -> bool:
 	if player_id.is_empty() or team_id.is_empty() or _players_by_id.has(player_id):
 		return false
 	if shooting_attribute < 0 or shooting_attribute > 100:
+		return false
+	if tackling_attribute < 1 or tackling_attribute > 100:
+		return false
+	if speed_attribute < 0 or speed_attribute > 100 or not is_finite(movement_speed_mps) or movement_speed_mps <= 0.0:
 		return false
 	_players_by_id[player_id] = PlayerRuntime.new(
 		player_id,
@@ -29,6 +35,8 @@ func register_player(
 		strength_attribute,
 		technique_attribute,
 		is_goalkeeper,
+		speed_attribute,
+		tackling_attribute,
 	)
 	return true
 

@@ -13,7 +13,7 @@ var _max_frame_delta_seconds: float
 var _max_steps_per_frame: int
 var _accumulator_seconds: float = 0.0
 var _pending_actions: Array[MatchAction] = []
-var _tackle_ai: TackleChaseAI
+var _tackle_ais: Array[TackleChaseAI] = []
 
 
 ## Validates the timing limits shared by every frame of this match.
@@ -23,6 +23,7 @@ func _init(
 	max_frame_delta_seconds: float = DEFAULT_MAX_FRAME_DELTA_SECONDS,
 	max_steps_per_frame: int = DEFAULT_MAX_STEPS_PER_FRAME,
 	tackle_ai: TackleChaseAI = null,
+	additional_tackle_ais: Array[TackleChaseAI] = [],
 ) -> void:
 	assert(simulation != null, "GameLoop requires a MatchSimulation")
 	assert(fixed_delta_seconds > 0.0, "Fixed delta must be positive")
@@ -32,7 +33,9 @@ func _init(
 	_fixed_delta_seconds = fixed_delta_seconds
 	_max_frame_delta_seconds = max_frame_delta_seconds
 	_max_steps_per_frame = max_steps_per_frame
-	_tackle_ai = tackle_ai
+	if tackle_ai != null:
+		_tackle_ais.append(tackle_ai)
+	_tackle_ais.append_array(additional_tackle_ais)
 
 
 ## Buffers commands until the next fixed step and returns the latest state and events.
@@ -53,10 +56,10 @@ func advance_frame(
 		):
 			var step_actions: Array[MatchAction] = _pending_actions.duplicate()
 			_pending_actions.clear()
-			if _tackle_ai != null:
-				step_actions.append_array(_tackle_ai.propose_actions(
-					_simulation.create_snapshot()
-				))
+			if not _tackle_ais.is_empty():
+				var snapshot := _simulation.create_snapshot()
+				for ai in _tackle_ais:
+					step_actions.append_array(ai.propose_actions(snapshot))
 			frame_events.append_array(
 				_simulation.advance_fixed_step(_fixed_delta_seconds, step_actions)
 			)

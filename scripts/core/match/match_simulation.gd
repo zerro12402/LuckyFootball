@@ -37,6 +37,7 @@ var _contact_shot_source: BallShotSource
 var _ball_route_sampler: Callable
 var _shot_aim_sampler: Callable
 var _keeper_sampler: Callable
+var _tackle_sampler: Callable
 var _keeper_intents: Dictionary[String, float] = {}
 var _keeper_resolved: Dictionary[String, bool] = {}
 var _ball_dodge_result: Callable
@@ -52,6 +53,7 @@ func _init(
 	ball_dodge_result: Callable = Callable(),
 	shot_aim_sampler: Callable = Callable(),
 	keeper_sampler: Callable = Callable(),
+	tackle_sampler: Callable = Callable(),
 ) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
@@ -61,6 +63,7 @@ func _init(
 	_ball_route_sampler = ball_route_sampler if ball_route_sampler.is_valid() else _sample_ball_route
 	_shot_aim_sampler = shot_aim_sampler
 	_keeper_sampler = keeper_sampler if keeper_sampler.is_valid() else _sample_ball_route
+	_tackle_sampler = tackle_sampler if tackle_sampler.is_valid() else _sample_ball_route
 	_ball_runtime_system.configure_shot_aim(_select_shot_aim)
 	_ball_dodge_result = ball_dodge_result
 	if match_config != null:
@@ -83,6 +86,8 @@ func register_player(
 	strength_attribute: int = 50,
 	technique_attribute: int = 50,
 	is_goalkeeper: bool = false,
+	speed_attribute: int = 0,
+	tackling_attribute: int = 50,
 ) -> bool:
 	if _state.phase != MatchState.Phase.READY or not initial_position_m.is_finite():
 		return false
@@ -95,10 +100,33 @@ func register_player(
 		strength_attribute,
 		technique_attribute,
 		is_goalkeeper,
+		speed_attribute,
+		tackling_attribute,
 	)
 	if registered:
 		_orient_goalkeeper(_player_runtime_system.get_player(player_id))
 	return registered
+
+
+## Binds CSV speed through F01 while keeping explicit contest overrides confined to test setups.
+func register_player_from_definition(
+	definition: PlayerDefinition,
+	initial_position_m: Vector2,
+	team_id: String,
+	is_goalkeeper: bool = false,
+	shooting_override: int = -1,
+	strength_override: int = -1,
+) -> bool:
+	if definition == null or _match_config == null or definition.speed < 1 or definition.speed > 100:
+		return false
+	if shooting_override < -1 or shooting_override > 100 or strength_override < -1 or strength_override > 100:
+		return false
+	var speed_mps := PlayerRuntime.calculate_movement_speed_mps(
+		definition.speed, _match_config.player_speed_at_100_mps)
+	return register_player(definition.player_id, initial_position_m, speed_mps, team_id,
+		definition.shooting if shooting_override == -1 else shooting_override,
+		definition.strength if strength_override == -1 else strength_override,
+		definition.technique, is_goalkeeper, definition.speed, definition.tackling)
 
 
 ## Associates a team with its opponent goal center before the match starts.
@@ -486,7 +514,7 @@ func _settle_shot_contact_boundary(contact: BallContactCandidate, remaining: flo
 		_ball_runtime_system.advance_out_of_play(remaining, velocity)
 
 
-## Uses one explicit match-stream draw in [0, 1), consumed only after successful F08.
+## Supplies one seeded sample; each contest calls it only after confirming its own eligibility.
 func _sample_ball_route() -> float:
 	return float(_rng.randi()) / 4294967296.0
 
@@ -754,13 +782,15 @@ func _reset_round(
 	))
 
 
-## Accepts a tackle command only for a nearby opponent carrying the ball.
+## Allows an early windup against a nearby carrier; actual contact keeps its smaller radius.
 func _try_start_tackle(action: MatchAction) -> bool:
 	if _match_config == null or action.target_player_id.is_empty():
 		return false
 	var tackler := _player_runtime_system.get_player(action.player_id)
 	var carrier := _player_runtime_system.get_player(action.target_player_id)
-	if not _is_legal_tackle_contact(tackler, carrier):
+	if not _is_legal_tackle_contact(tackler, carrier, _match_config.tackle_start_range_m):
+		return false
+	if carrier.technique_attribute < 1:
 		return false
 	if not tackler.state_machine.try_start_tackle(_match_config):
 		return false
@@ -778,35 +808,45 @@ func _resolve_pending_tackles(events: Array[MatchEvent]) -> void:
 			continue
 		if tackler.state.action_phase == PlayerMatchState.ActionPhase.WINDUP:
 			continue
+		if tackler.state.action_phase != PlayerMatchState.ActionPhase.ACTIVE:
+			_pending_tackle_targets.erase(tackler.player_id)
+			continue
 		var carrier_id := _pending_tackle_targets[tackler.player_id]
-		_pending_tackle_targets.erase(tackler.player_id)
 		var carrier := _player_runtime_system.get_player(carrier_id)
 		if not _is_legal_tackle_contact(tackler, carrier):
+			continue
+		_pending_tackle_targets.erase(tackler.player_id)
+		var contest := TackleContestResolver.resolve(tackler.tackling_attribute,
+			carrier.technique_attribute, _match_config, _tackle_sampler)
+		if not contest.succeeded:
+			# A failed contact keeps possession; the existing jump drives animation and ball height.
+			carrier.state_machine.try_start_jump(_match_config)
+			_append_tackle_contest_event(events, tackler.player_id, carrier.player_id, contest)
 			continue
 		if not _ball_runtime_system.transfer_tackled_ball(carrier, tackler):
 			continue
 		# Ball ownership changes at contact; the tackle keeps lunging until its configured end.
 		carrier.state_machine.start_hit_stun(_match_config.tackle_hit_stun_seconds)
-		events.append(MatchEvent.new(
-			MatchEvent.Type.TACKLE_SUCCEEDED,
-			_state.elapsed_seconds,
-			_state.simulation_step,
-			tackler.player_id,
-			MatchEvent.ResetReason.NONE,
-			MatchBoundaryResult.Side.NONE,
-			_ball_runtime_system.state.position_m,
-			"", 0, false, null,
-			carrier.player_id,
-			carrier.player_id,
-			tackler.player_id,
-		))
+		_append_tackle_contest_event(events, tackler.player_id, carrier.player_id, contest)
 		events.append(_create_event(
 			MatchEvent.Type.BALL_POSSESSION_GAINED, tackler.player_id
 		))
 
 
+## Records both probability outcomes with immutable samples and before/after ownership.
+func _append_tackle_contest_event(events: Array[MatchEvent], tackler_id: String,
+		carrier_id: String, contest: TackleContestResult) -> void:
+	events.append(MatchEvent.new(MatchEvent.Type.TACKLE_SUCCEEDED if contest.succeeded
+		else MatchEvent.Type.TACKLE_FAILED, _state.elapsed_seconds, _state.simulation_step,
+		tackler_id, MatchEvent.ResetReason.NONE, MatchBoundaryResult.Side.NONE,
+		_ball_runtime_system.state.position_m, "", 0, false, null,
+		carrier_id, carrier_id, tackler_id if contest.succeeded else carrier_id,
+		null, null, null, contest))
+
+
 ## Applies geometry and ownership rules without sampling player attributes.
-func _is_legal_tackle_contact(tackler: PlayerRuntime, carrier: PlayerRuntime) -> bool:
+func _is_legal_tackle_contact(tackler: PlayerRuntime, carrier: PlayerRuntime,
+		start_range_m: float = -1.0) -> bool:
 	if tackler == null or carrier == null or tackler.player_id == carrier.player_id:
 		return false
 	if tackler.team_id == carrier.team_id:
@@ -823,7 +863,8 @@ func _is_legal_tackle_contact(tackler: PlayerRuntime, carrier: PlayerRuntime) ->
 	if tackler.state.action_state == PlayerMatchState.ActionState.KNOCKED_DOWN:
 		return false
 	var toward_carrier := carrier.state.position_m - tackler.state.position_m
-	if toward_carrier.length() > _match_config.tackle_range_m:
+	var allowed_range := _match_config.tackle_range_m if start_range_m < 0.0 else start_range_m
+	if toward_carrier.length() > allowed_range:
 		return false
 	if toward_carrier.is_zero_approx():
 		return true

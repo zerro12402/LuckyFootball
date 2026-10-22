@@ -87,6 +87,16 @@ func _test_outcome(lane: int, sample: float) -> void:
 			simulation.advance_fixed_step(0.01, [])
 		_check(simulation.create_snapshot().ball.owner_player_id == "keeper", "ownership survives action end")
 		_check(simulation.create_snapshot().get_player("keeper").action_state == PlayerMatchState.ActionState.IDLE, "save finishes")
+		var standing := simulation.create_snapshot()
+		var keeper := standing.get_player("keeper")
+		var expected_foot := (keeper.position_m
+			+ keeper.facing_direction * simulation._ball_runtime_system._dribble_offset_m)
+		_check(standing.ball.control_attachment == BallMatchState.ControlAttachment.FOOT,
+			"finished save changes hand attachment to ordinary dribbling")
+		_check(standing.ball.position_m.is_equal_approx(expected_foot),
+			"standing keeper uses the ordinary dribble offset")
+		_check(is_equal_approx(standing.ball.height_m, keeper.height_m),
+			"standing catch puts the ball at foot height")
 	else:
 		_check(snapshot.ball.owner_player_id.is_empty(), "miss has no owner")
 		_check(snapshot.ball.velocity_mps.x > 0.0, "miss never rebounds")

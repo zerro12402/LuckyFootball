@@ -8,7 +8,8 @@ const KEEPER_HOLD_ANIMATION := &"keeper_hold"
 # Authored local hand points for the only nonempty frame in rows 12/13.
 const SAVE_UP_HAND := Vector2(-4.0, -14.0)
 const SAVE_DOWN_HAND := Vector2(4.0, 8.0)
-const KEEPER_HOLD_HAND := Vector2(5.0, 0.0)
+# The standing hold reuses idle frame (0, 0), whose visible hand is below-left of center.
+const KEEPER_HOLD_HAND := Vector2(-4.0, 6.0)
 
 const IDLE_ANIMATION := &"idle"
 const MOVE_ANIMATION := &"move"

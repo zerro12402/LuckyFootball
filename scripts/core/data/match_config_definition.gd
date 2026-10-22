@@ -2,6 +2,24 @@
 class_name MatchConfigDefinition
 extends RefCounted
 
+var player_speed_at_100_mps: float:
+	get: return _player_speed_at_100_mps
+var _player_speed_at_100_mps: float
+
+var tackle_probability_scale: float:
+	get: return _tackle_probability_scale
+var tackle_probability_min: float:
+	get: return _tackle_probability_min
+var tackle_probability_max: float:
+	get: return _tackle_probability_max
+var _tackle_probability_scale: float
+var _tackle_probability_min: float
+var _tackle_probability_max: float
+
+var tackle_start_range_m: float:
+	get: return _tackle_start_range_m
+var _tackle_start_range_m: float
+
 var shot_aim_width_fraction: float:
 	get: return _shot_aim_width_fraction
 var _shot_aim_width_fraction: float
@@ -441,7 +459,22 @@ func _init(
 	new_keeper_hand_height_m: float = 0.8,
 	new_keeper_contact_radius_m: float = 0.4,
 	new_keeper_contact_height_m: float = 2.4,
+	new_player_speed_at_100_mps: float = 5.0,
+	new_tackle_probability_scale: float = 18.0,
+	new_tackle_probability_min: float = 0.1,
+	new_tackle_probability_max: float = 0.9,
+	new_tackle_start_range_m: float = 1.8,
 ) -> void:
+	assert(is_finite(new_tackle_start_range_m) and new_tackle_start_range_m >= new_tackle_range_m)
+	_tackle_start_range_m = new_tackle_start_range_m
+	assert(is_finite(new_tackle_probability_scale) and new_tackle_probability_scale > 0.0)
+	assert(new_tackle_probability_min >= 0.0 and new_tackle_probability_max <= 1.0
+		and new_tackle_probability_min <= new_tackle_probability_max)
+	_tackle_probability_scale = new_tackle_probability_scale
+	_tackle_probability_min = new_tackle_probability_min
+	_tackle_probability_max = new_tackle_probability_max
+	assert(is_finite(new_player_speed_at_100_mps) and new_player_speed_at_100_mps > 0.0)
+	_player_speed_at_100_mps = new_player_speed_at_100_mps
 	_shot_aim_width_fraction = new_shot_aim_width_fraction
 	_shot_aim_goal_width_m = new_shot_aim_goal_width_m
 	_keeper_save_probability = new_keeper_save_probability

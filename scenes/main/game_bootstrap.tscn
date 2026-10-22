@@ -152,3 +152,52 @@ text = "按 K 射门；~ 重置"
 [node name="GoalkeeperControls" type="CanvasLayer" parent="."]
 layer = 10
 script = ExtResource("7_keeper_controls")
+
+[node name="TouchSpeedControls" type="CanvasLayer" parent="."]
+visible = false
+layer = 10
+
+[node name="TackleTestControls" type="CanvasLayer" parent="."]
+visible = false
+layer = 10
+
+[node name="Panel" type="PanelContainer" parent="TackleTestControls"]
+offset_left = 260.0
+offset_top = 12.0
+offset_right = 640.0
+offset_bottom = 120.0
+
+[node name="TackleTestStatus" type="Label" parent="TackleTestControls/Panel"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "双方 AI 自动带球与抢断"
+
+[node name="Panel" type="PanelContainer" parent="TouchSpeedControls"]
+offset_left = 260.0
+offset_top = 12.0
+offset_right = 590.0
+offset_bottom = 150.0
+
+[node name="Rows" type="VBoxContainer" parent="TouchSpeedControls/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="TouchSpeedControls/Panel/Rows"]
+layout_mode = 2
+text = "球员速度属性（75～100）"
+
+[node name="TouchSpeedInput" type="LineEdit" parent="TouchSpeedControls/Panel/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "输入速度属性"
+
+[node name="TouchSpeedApplyButton" type="Button" parent="TouchSpeedControls/Panel/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "应用并重置"
+
+[node name="TouchSpeedStatus" type="Label" parent="TouchSpeedControls/Panel/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = ""

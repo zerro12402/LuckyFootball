@@ -34,6 +34,7 @@ enum Type {
 	GOALKEEPER_CONTACT,
 	GOALKEEPER_SAVE_STARTED,
 	GOALKEEPER_SAVE_RESOLVED,
+	TACKLE_FAILED,
 }
 
 enum ResetReason {
@@ -122,6 +123,10 @@ var goalkeeper_save: GoalkeeperSaveResult:
 var _shot_aim: ShotAim
 var _goalkeeper_save: GoalkeeperSaveResult
 
+var tackle_contest: TackleContestResult:
+	get: return _tackle_contest
+var _tackle_contest: TackleContestResult
+
 var _ball_impact: BallImpactResult
 
 var _target_player_id: String = ""
@@ -162,7 +167,9 @@ func _init(
 	new_ball_impact: BallImpactResult = null,
 	new_shot_aim: ShotAim = null,
 	new_goalkeeper_save: GoalkeeperSaveResult = null,
+	new_tackle_contest: TackleContestResult = null,
 ) -> void:
+	_tackle_contest = new_tackle_contest
 	_shot_aim = new_shot_aim
 	_goalkeeper_save = new_goalkeeper_save
 	_event_type = new_event_type

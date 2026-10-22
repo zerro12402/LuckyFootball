@@ -1,5 +1,9 @@
 key,value,comment
 config_id,demo_match,配置预设的稳定标识
+player_speed_at_100_mps,5.0,F01速度属性100对应的基础跑速，单位米每秒；实际跑速按speed除以100等比缩放
+tackle_probability_scale,18.0,F02抢断与技巧差值的概率曲线尺度；越小属性差异越明显
+tackle_probability_min,0.1,F02抢断成功率下限
+tackle_probability_max,0.9,F02抢断成功率上限
 ball_impact_min_speed_mps,8.0,足球击倒需要达到的接触速度下限，单位米每秒
 ball_impact_body_radius_m,0.35,球员逻辑身体水平半径，与球半径相加检测接触，单位米
 ball_impact_body_height_m,1.6,球员当前位置高度以上的可接触身体高度，单位米
@@ -33,6 +37,7 @@ goal_net_tangent_retention,0.35,球网碰撞后切向速度的保留比例
 goal_net_stop_speed_mps,0.3,球网内球速低于此值时停止，单位米每秒
 goal_net_max_motion_seconds,1.2,球在球网内最多继续运动的时长，单位秒
 tackle_range_m,1.2,允许抢断的最大球员中心距离，单位米
+tackle_start_range_m,1.8,允许提前发起抢断的最大距离；实际判定仍使用tackle_range_m，单位米
 tackle_min_facing_dot,0.0,允许抢断的最低朝向点积
 tackle_windup_seconds,0.12,抢断触球前摇时长，单位秒
 tackle_recovery_seconds,0.25,抢断进入收招阶段的时间点，单位秒

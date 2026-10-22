@@ -1,4 +1,4 @@
 player_id,display_name,default_role,speed,shooting,strength,technique,stamina,tackling,goalkeeping,trait_1_id,trait_2_id,trait_3_id,trait_4_id,trait_5_id,visual_id
 swift_forward,疾风,forward,92,84,58,88,75,42,18,speedster,dribbler,risk_shooter,,,player_blue
-iron_guard,铁壁,defender,65,48,91,55,82,89,32,protector,aggressive,safe_passer,,,player_red
-steady_keeper,磐石,goalkeeper,52,45,86,61,88,50,94,calm_keeper,long_thrower,team_leader,,,player_green
+iron_guard,铁壁,defender,75,48,91,55,82,89,32,protector,aggressive,safe_passer,,,player_red
+steady_keeper,磐石,goalkeeper,75,45,86,61,88,50,94,calm_keeper,long_thrower,team_leader,,,player_green

@@ -10,6 +10,13 @@ var team_id: String:
 	get:
 		return _team_id
 
+var speed_attribute: int:
+	get:
+		return _speed_attribute
+
+var tackling_attribute: int:
+	get: return _tackling_attribute
+
 var shooting_attribute: int:
 	get:
 		return _shooting_attribute
@@ -36,6 +43,8 @@ var is_goalkeeper: bool:
 var _state_machine: PlayerStateMachine
 var _spawn_position_m: Vector2
 var _team_id: String
+var _speed_attribute: int
+var _tackling_attribute: int
 var _shooting_attribute: int
 var _strength_attribute: int
 var _technique_attribute: int
@@ -52,11 +61,15 @@ func _init(
 	new_strength_attribute: int = 50,
 	new_technique_attribute: int = 50,
 	new_is_goalkeeper: bool = false,
+	new_speed_attribute: int = 0,
+	new_tackling_attribute: int = 50,
 ) -> void:
 	assert(not new_team_id.is_empty(), "Player runtime requires a team ID")
 	assert(new_shooting_attribute >= 0 and new_shooting_attribute <= 100)
 	assert(new_strength_attribute >= 0 and new_strength_attribute <= 100)
 	assert(new_technique_attribute >= 0 and new_technique_attribute <= 100)
+	assert(new_speed_attribute >= 0 and new_speed_attribute <= 100)
+	assert(new_tackling_attribute >= 1 and new_tackling_attribute <= 100)
 	var initial_state := PlayerMatchState.new(new_player_id, initial_position_m)
 	_state_machine = PlayerStateMachine.new(initial_state, movement_speed_mps)
 	_spawn_position_m = initial_position_m
@@ -65,6 +78,15 @@ func _init(
 	_strength_attribute = new_strength_attribute
 	_technique_attribute = new_technique_attribute
 	_is_goalkeeper = new_is_goalkeeper
+	_speed_attribute = new_speed_attribute
+	_tackling_attribute = new_tackling_attribute
+
+
+## Maps a valid base speed proportionally; action-specific movement stays in the state machine.
+static func calculate_movement_speed_mps(speed: int, speed_at_100_mps: float) -> float:
+	assert(speed >= 1 and speed <= 100)
+	assert(is_finite(speed_at_100_mps) and speed_at_100_mps > 0.0)
+	return speed_at_100_mps * float(speed) / 100.0
 
 
 ## Returns the runtime to its registered spawn without changing static attributes.

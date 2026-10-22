@@ -60,6 +60,7 @@ func _run() -> void:
 					var left := actor.get_keeper_hand_world_position() - actor.global_position
 					_check(is_equal_approx(left.x, -right.x) and is_equal_approx(left.y, right.y), "hand anchors mirror on facing change")
 					_check(keeper.possession_state == PlayerMatchState.PossessionState.POSSESSING, "keeper owns ball")
+					_check_standing_hold(bootstrap, environment, actor)
 				else:
 					_check(snapshot.ball.owner_player_id.is_empty(), "miss has no hand ball")
 				var first := _trace(bootstrap)
@@ -85,6 +86,27 @@ func _run() -> void:
 		push_error(failure)
 	print("Goalkeeper shared mode failures: ", _failures.size())
 	quit(0 if _failures.is_empty() else 1)
+
+## Follows a catch past the dive and checks the ordinary foot attachment without rendering.
+func _check_standing_hold(
+	bootstrap: GameBootstrap,
+	environment: FieldEnvironment,
+	actor: PlayerActor,
+) -> void:
+	for step in range(90):
+		bootstrap._process(bootstrap.fixed_delta_seconds)
+	var snapshot := bootstrap._match_simulation.create_snapshot()
+	var keeper := snapshot.get_player(bootstrap.demo_opponent_id)
+	_check(keeper.action_state == PlayerMatchState.ActionState.IDLE, "catch returns to standing")
+	_check(snapshot.ball.owner_player_id == keeper.player_id, "standing keeps unique ownership")
+	var ball := environment.get_node("WorldActors/Players/Ball/BallSprite") as Sprite2D
+	_check(snapshot.ball.control_attachment == BallMatchState.ControlAttachment.FOOT,
+		"standing keeper uses the same attachment as ordinary players")
+	var ground := environment._projection.field_to_world(snapshot.ball.position_m)
+	_check(ball.global_position.is_equal_approx(ground),
+		"standing keeper ball uses the normal grounded ball sprite offset")
+	_check(not actor._is_hand_holder, "standing keeper no longer applies the hand display override")
+
 
 ## Stops at the actual contact outcome so assertions can inspect the active pose.
 func _until_save(bootstrap: GameBootstrap) -> MatchEvent:

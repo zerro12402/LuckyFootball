@@ -35,7 +35,6 @@ enum BallImpactPreset { SWEPT_DEFENDERS, BLOCK_REBOUND, KNOCKDOWN_CONTINUE, KNOC
 
 var ball_impact_preset: BallImpactPreset = BallImpactPreset.SWEPT_DEFENDERS
 
-const TEST_PLAYER_MOVEMENT_SPEED_MPS := 5.0
 const TEST_TEAMMATE_POSITION_M := Vector2(10.0, -2.0)
 const TEST_OPPONENT_POSITION_M := Vector2(6.0, 0.0)
 const TEST_KNOCKDOWN_OPPONENT_POSITION_M := Vector2(1.05, 0.0)
@@ -59,6 +58,8 @@ const TEST_TEAM_ID := "demo_team"
 @onready var _result_hud: MatchResultHud = (
 	get_node_or_null("MatchResultHud") as MatchResultHud
 )
+@onready var _touch_speed_input: LineEdit = get_node_or_null("%TouchSpeedInput") as LineEdit
+@onready var _touch_speed_status: Label = get_node_or_null("%TouchSpeedStatus") as Label
 
 var data_repository: DataRepository:
 	get:
@@ -89,6 +90,7 @@ var _lofted_receiver_jump_started: bool = false
 var _demo_player_id: String = ""
 var _demo_teammate_id: String = ""
 var _demo_opponent_id: String = ""
+var _touch_speed_override: int = 0
 
 
 ## Loads static data, wires demo controls, and starts a reproducible match.
@@ -174,6 +176,7 @@ func _ready() -> void:
 	if lofted_pass_hint != null:
 		lofted_pass_hint.visible = demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST
 
+	_configure_touch_speed_controls()
 	reset_demo()
 
 
@@ -217,6 +220,12 @@ func reset_demo() -> void:
 		_demo_teammate_id = (_data_repository.player_definitions[1].player_id
 			if keeper_source == KeeperShotSource.HEADER else "")
 	var demo_player := _data_repository.get_player_by_id(_demo_player_id)
+	if demo_mode == DemoMode.TOUCH_AND_DRIBBLE and _touch_speed_override > 0:
+		# Construct an explicit test definition; the repository's CSV definition remains unchanged.
+		demo_player = PlayerDefinition.new(demo_player.player_id, demo_player.display_name,
+			demo_player.default_role, _touch_speed_override, demo_player.shooting,
+			demo_player.strength, demo_player.technique, demo_player.stamina,
+			demo_player.tackling, demo_player.goalkeeping, demo_player.trait_ids, demo_player.visual_id)
 	var player_position_m := Vector2.ZERO
 	var shooting := demo_player.shooting
 	if demo_mode == DemoMode.BALL_IMPACT_TEST:
@@ -224,14 +233,12 @@ func reset_demo() -> void:
 		shooting = 80 # Explicit test context; CSV attribute integration is a separate feature.
 	if demo_mode == DemoMode.GOALKEEPER_TEST:
 		player_position_m = Vector2(11.0 if keeper_source == KeeperShotSource.HEADER else 15.0, 0.0)
-	var did_register_player := _match_simulation.register_player(
-		_demo_player_id,
+	var did_register_player := _match_simulation.register_player_from_definition(
+		demo_player,
 		player_position_m,
-		TEST_PLAYER_MOVEMENT_SPEED_MPS,
 		TEST_TEAM_ID,
+		false,
 		shooting,
-		demo_player.strength,
-		demo_player.technique,
 	)
 	assert(did_register_player, "Demo player must register before the match starts")
 	if not _demo_teammate_id.is_empty():
@@ -241,14 +248,10 @@ func reset_demo() -> void:
 			teammate_position_m = TEST_LOFTED_RECEIVER_POSITION_M
 		if demo_mode == DemoMode.GOALKEEPER_TEST:
 			teammate_position_m = Vector2(20.0, 0.0)
-		var did_register_teammate := _match_simulation.register_player(
-			_demo_teammate_id,
+		var did_register_teammate := _match_simulation.register_player_from_definition(
+			demo_teammate,
 			teammate_position_m,
-			TEST_PLAYER_MOVEMENT_SPEED_MPS,
 			TEST_TEAM_ID,
-			demo_teammate.shooting,
-			demo_teammate.strength,
-			demo_teammate.technique,
 		)
 		assert(did_register_teammate, "Demo teammate must register before the match starts")
 	if not _demo_opponent_id.is_empty():
@@ -268,11 +271,10 @@ func reset_demo() -> void:
 				opponent_strength = 90
 		if demo_mode == DemoMode.GOALKEEPER_TEST:
 			opponent_position_m = Vector2(23.0, 0.0)
-		assert(_match_simulation.register_player(
-			_demo_opponent_id, opponent_position_m,
-			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID,
-			opponent.shooting, opponent_strength, opponent.technique,
+		assert(_match_simulation.register_player_from_definition(
+			opponent, opponent_position_m, TEST_OPPONENT_TEAM_ID,
 			demo_mode == DemoMode.GOALKEEPER_TEST,
+			-1, opponent_strength,
 		))
 		if demo_mode == DemoMode.GOALKEEPER_TEST and keeper_starts_down:
 			_match_simulation._player_runtime_system.get_player(_demo_opponent_id).state_machine.start_knockdown(_match_config)
@@ -292,6 +294,7 @@ func reset_demo() -> void:
 	)
 	assert(did_register_ball, "Demo ball must register before the match starts")
 	var tackle_ai: TackleChaseAI
+	var additional_tackle_ais: Array[TackleChaseAI] = []
 	if not _demo_opponent_id.is_empty():
 		var defender_goal_center_m := Vector2(-_field_definition.length_m * 0.5, 0.0)
 		assert(_match_simulation.register_team_attacking_goal(
@@ -299,12 +302,16 @@ func reset_demo() -> void:
 		))
 		if demo_mode == DemoMode.TACKLE_TEST:
 			tackle_ai = TackleChaseAI.new(
-				_demo_opponent_id, _demo_player_id, _match_config, defender_goal_center_m
+				_demo_opponent_id, _demo_player_id, _match_config, defender_goal_center_m,
+				_match_simulation._player_runtime_system.get_player(_demo_player_id).state_machine.movement_speed_mps
 			)
+			additional_tackle_ais.append(TackleChaseAI.new(
+				_demo_player_id, _demo_opponent_id, _match_config, opponent_goal_center_m,
+				_match_simulation._player_runtime_system.get_player(_demo_opponent_id).state_machine.movement_speed_mps))
 	_game_loop = GameLoop.new(
 		_match_simulation, fixed_delta_seconds,
 		GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS,
-		GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, tackle_ai
+		GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, tackle_ai, additional_tackle_ais
 	)
 	if _keyboard_input != null:
 		_keyboard_input.configure(
@@ -314,6 +321,8 @@ func reset_demo() -> void:
 			demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
 			demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST],
 		)
+		if demo_mode == DemoMode.TACKLE_TEST:
+			_keyboard_input.set_process(false)
 
 	var did_start := _match_simulation.start_match()
 	assert(did_start, "A new match must start from the ready phase")
@@ -329,8 +338,59 @@ func reset_demo() -> void:
 			true, _demo_teammate_id)
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
+	_refresh_touch_speed_controls()
+	var tackle_controls := get_node_or_null("TackleTestControls") as CanvasLayer
+	if tackle_controls != null:
+		tackle_controls.visible = demo_mode == DemoMode.TACKLE_TEST
+		if tackle_controls.visible:
+			(get_node("%TackleTestStatus") as Label).text = "双方 AI 自动带球与抢断\n失败时持球者起跳保球；~ 重置，M 刻度"
 	_publish_frame(0.0)
 	set_process(true)
+
+
+## Wires temporary speed inputs only in the existing touch-and-dribble test mode.
+func _configure_touch_speed_controls() -> void:
+	var panel := get_node_or_null("TouchSpeedControls") as CanvasLayer
+	if panel == null:
+		return
+	panel.visible = demo_mode == DemoMode.TOUCH_AND_DRIBBLE
+	if not panel.visible:
+		return
+	var apply_button := get_node("%TouchSpeedApplyButton") as Button
+	apply_button.pressed.connect(_apply_touch_speed_input)
+	_touch_speed_input.text_submitted.connect(func(_text: String) -> void: _apply_touch_speed_input())
+
+
+## Sends the entered value through validation instead of editing live simulation state.
+func _apply_touch_speed_input() -> void:
+	apply_touch_speed_for_test(_touch_speed_input.text)
+
+
+## Validates an explicit test override and rebuilds the match while keeping CSV data read-only.
+func apply_touch_speed_for_test(raw_value: String) -> bool:
+	if demo_mode != DemoMode.TOUCH_AND_DRIBBLE or _data_repository == null:
+		return false
+	var value := raw_value.strip_edges()
+	if not value.is_valid_int() or value.to_int() < 75 or value.to_int() > 100:
+		if _touch_speed_status != null:
+			_touch_speed_status.text = "请输入 75～100 的整数；当前速度未改变"
+		return false
+	_touch_speed_override = value.to_int()
+	reset_demo()
+	if _touch_speed_input != null:
+		_touch_speed_input.release_focus()
+	return true
+
+
+## Keeps the editable value and displayed physical speed aligned after any test reset.
+func _refresh_touch_speed_controls() -> void:
+	if demo_mode != DemoMode.TOUCH_AND_DRIBBLE or _touch_speed_input == null:
+		return
+	var player := _match_simulation._player_runtime_system.get_player(_demo_player_id)
+	_touch_speed_input.text = str(player.speed_attribute)
+	_touch_speed_status.text = "速度 %d → 无球 %.2f m/s，带球 %.2f m/s" % [
+		player.speed_attribute, player.state_machine.movement_speed_mps,
+		player.state_machine.movement_speed_mps * PlayerStateMachine.POSSESSION_MOVEMENT_SPEED_MULTIPLIER]
 
 
 ## Builds the optional second target and reuses the existing four actor slots.
@@ -338,8 +398,11 @@ func _register_ball_impact_extra_defender(goal: Vector2) -> void:
 	var extra_id := ""
 	if ball_impact_preset == BallImpactPreset.SWEPT_DEFENDERS:
 		extra_id = _demo_opponent_id + "_second"
+		var definition := _data_repository.get_player_by_id(_demo_opponent_id)
 		assert(_match_simulation.register_player(extra_id, goal - Vector2(3.0, 0.0),
-			TEST_PLAYER_MOVEMENT_SPEED_MPS, TEST_OPPONENT_TEAM_ID, 1, 60, 50))
+			PlayerRuntime.calculate_movement_speed_mps(definition.speed,
+				_match_config.player_speed_at_100_mps), TEST_OPPONENT_TEAM_ID,
+			1, 60, 50, false, definition.speed))
 	if _field_environment != null:
 		_field_environment.set_presented_players(_demo_player_id, _demo_opponent_id,
 			true, extra_id)
@@ -368,6 +431,8 @@ func _process(delta: float) -> void:
 ## Buffers commands for the next fixed step and holds early aerial shots until airborne.
 func queue_action(action: MatchAction) -> void:
 	assert(action != null, "Cannot queue a null MatchAction")
+	if demo_mode == DemoMode.TACKLE_TEST and not action.player_id.is_empty():
+		return # AI commands enter through GameLoop; keyboard retains only round controls.
 	if (
 		action.action_type == MatchAction.Type.RESTART_TEST
 		and _match_simulation != null
@@ -515,6 +580,13 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 	var frame_result := _game_loop.advance_frame(frame_delta_seconds, frame_actions)
 	_finish_lofted_receiver_jump(frame_result.snapshot)
 	for event in frame_result.events:
+		if demo_mode == DemoMode.TACKLE_TEST and event.tackle_contest != null:
+			var status := get_node_or_null("%TackleTestStatus") as Label
+			if status != null:
+				status.text = "双方 AI 自动带球与抢断\n抢断 %d / 技巧 %d：成功率 %.1f%%\n%s；~ 重置，M 刻度" % [
+					event.tackle_contest.tackling, event.tackle_contest.technique,
+					event.tackle_contest.probability * 100.0,
+					"抢断成功，交换球权" if event.tackle_contest.succeeded else "抢断失败，持球者起跳保球"]
 		if (
 			demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST
 			and event.event_type == MatchEvent.Type.BALL_PASS_RECEIVED
@@ -522,6 +594,10 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 		):
 			queue_action(MatchAction.new(_demo_teammate_id, MatchAction.Type.SHOOT))
 		if event.event_type == MatchEvent.Type.RESET_COMPLETED:
+			if demo_mode == DemoMode.TACKLE_TEST:
+				var status := get_node_or_null("%TackleTestStatus") as Label
+				if status != null:
+					status.text = "双方 AI 自动带球与抢断\n新一轮；~ 重置，M 刻度"
 			_keeper_reaction_requested = false
 			_keeper_header_requested = false
 			_queued_actions.clear()
@@ -537,6 +613,8 @@ func _publish_frame(frame_delta_seconds: float) -> void:
 					demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST,
 					demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST],
 				)
+				if demo_mode == DemoMode.TACKLE_TEST:
+					_keyboard_input.set_process(false)
 			break
 	if _field_environment != null:
 		_field_environment.present(frame_result.snapshot)

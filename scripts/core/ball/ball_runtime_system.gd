@@ -850,8 +850,11 @@ func _follow_owner(players: PlayerRuntimeSystem) -> void:
 	_set_ball_at_control_point(owner)
 
 
-## Follows the owned ball at either its configured hand attachment or normal foot point.
+## Keeps a catch in the hands during SAVING, then uses the ordinary dribble attachment.
 func _set_ball_at_control_point(owner: PlayerRuntime) -> void:
+	if (_state.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS
+		and owner.state.action_state != PlayerMatchState.ActionState.SAVING):
+		_state._set_attachment(BallMatchState.ControlAttachment.FOOT)
 	if _state.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS:
 		var lateral := float(owner.state.save_lane - ShotAim.Lane.CENTER)
 		_state._set_position(owner.state.position_m

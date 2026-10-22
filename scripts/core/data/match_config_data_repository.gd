@@ -4,6 +4,11 @@ extends RefCounted
 
 const CSV_HEADERS: Array[String] = ["key", "value", "comment"]
 const OPTIONAL_DEFAULTS := {
+	"tackle_start_range_m": 1.8,
+	"tackle_probability_scale": 18.0,
+	"tackle_probability_min": 0.1,
+	"tackle_probability_max": 0.9,
+	"player_speed_at_100_mps": 5.0,
 	"shot_aim_width_fraction": 0.25,
 	"shot_aim_goal_width_m": 4.0,
 	"keeper_save_probability": 0.5,
@@ -240,6 +245,18 @@ func _parse_config(
 				return null
 			value = raw_header_value.to_float()
 		header_values[key] = value
+	if header_values["player_speed_at_100_mps"] <= 0.0:
+		result._add_error("Match config row %d has invalid player_speed_at_100_mps" % row_number)
+		return null
+	if header_values["tackle_start_range_m"] < values[17]:
+		result._add_error("Match config row %d has invalid tackle_start_range_m" % row_number)
+		return null
+	if (header_values["tackle_probability_scale"] <= 0.0
+		or header_values["tackle_probability_min"] < 0.0
+		or header_values["tackle_probability_max"] > 1.0
+		or header_values["tackle_probability_min"] > header_values["tackle_probability_max"]):
+		result._add_error("Match config row %d has invalid tackle probability parameters" % row_number)
+		return null
 	if (header_values["ball_impact_min_speed_mps"] <= 0.0
 		or header_values["ball_impact_knockback_distance_m"] < 0.0
 		or header_values["ball_impact_knockback_apex_height_m"] < 0.0
@@ -328,6 +345,11 @@ func _parse_config(
 		header_values["keeper_hand_height_m"],
 		header_values["keeper_contact_radius_m"],
 		header_values["keeper_contact_height_m"],
+		header_values["player_speed_at_100_mps"],
+		header_values["tackle_probability_scale"],
+		header_values["tackle_probability_min"],
+		header_values["tackle_probability_max"],
+		header_values["tackle_start_range_m"],
 	)
 
 
