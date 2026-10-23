@@ -4,6 +4,16 @@ extends RefCounted
 
 const CSV_HEADERS: Array[String] = ["key", "value", "comment"]
 const OPTIONAL_DEFAULTS := {
+	"shot_contest_free_distance_m": 5.0,
+	"shot_contest_distance_scale_m": 15.0,
+	"shot_contest_knockdown_retention": 0.85,
+	"keeper_contest_probability_scale": 5.0,
+	"keeper_contest_shot_win_min": 0.1,
+	"keeper_contest_shot_win_max": 0.9,
+	"shot_miss_probability_at_1": 0.45,
+	"shot_miss_probability_at_100": 0.05,
+	"shot_miss_margin_min_m": 0.2,
+	"shot_miss_margin_max_m": 1.0,
 	"tackle_start_range_m": 1.8,
 	"tackle_probability_scale": 18.0,
 	"tackle_probability_min": 0.1,
@@ -18,7 +28,7 @@ const OPTIONAL_DEFAULTS := {
 	"keeper_hand_lateral_m": 1.0,
 	"keeper_hand_forward_m": 0.45,
 	"keeper_hand_height_m": 0.8,
-	"keeper_contact_radius_m": 0.4,
+	"keeper_contact_radius_m": 2.0,
 	"keeper_contact_height_m": 2.4,
 
 	"ball_impact_knockback_distance_m": 1.0,
@@ -245,6 +255,23 @@ func _parse_config(
 				return null
 			value = raw_header_value.to_float()
 		header_values[key] = value
+	if (header_values["shot_contest_free_distance_m"] < 0.0
+		or header_values["shot_contest_distance_scale_m"] <= 0.0
+		or header_values["shot_contest_knockdown_retention"] <= 0.0
+		or header_values["shot_contest_knockdown_retention"] > 1.0
+		or header_values["keeper_contest_probability_scale"] <= 0.0
+		or header_values["keeper_contest_shot_win_min"] < 0.0
+		or header_values["keeper_contest_shot_win_max"] > 1.0
+		or header_values["keeper_contest_shot_win_min"] > header_values["keeper_contest_shot_win_max"]):
+		result._add_error("Match config row %d has invalid keeper contest parameters" % row_number)
+		return null
+	if (header_values["shot_miss_probability_at_100"] < 0.0
+		or header_values["shot_miss_probability_at_1"] > 1.0
+		or header_values["shot_miss_probability_at_100"] > header_values["shot_miss_probability_at_1"]
+		or header_values["shot_miss_margin_min_m"] <= 0.0
+		or header_values["shot_miss_margin_max_m"] < header_values["shot_miss_margin_min_m"]):
+		result._add_error("Match config row %d has invalid shot miss parameters" % row_number)
+		return null
 	if header_values["player_speed_at_100_mps"] <= 0.0:
 		result._add_error("Match config row %d has invalid player_speed_at_100_mps" % row_number)
 		return null
@@ -350,6 +377,16 @@ func _parse_config(
 		header_values["tackle_probability_min"],
 		header_values["tackle_probability_max"],
 		header_values["tackle_start_range_m"],
+		header_values["shot_miss_probability_at_1"],
+		header_values["shot_miss_probability_at_100"],
+		header_values["shot_miss_margin_min_m"],
+		header_values["shot_miss_margin_max_m"],
+		header_values["shot_contest_free_distance_m"],
+		header_values["shot_contest_distance_scale_m"],
+		header_values["shot_contest_knockdown_retention"],
+		header_values["keeper_contest_probability_scale"],
+		header_values["keeper_contest_shot_win_min"],
+		header_values["keeper_contest_shot_win_max"],
 	)
 
 

@@ -2,6 +2,12 @@
 class_name BallStateSnapshot
 extends RefCounted
 
+var shot_distance_m: float:
+	get: return _shot_distance_m
+var shot_knockdown_count: int:
+	get: return _shot_knockdown_count
+var _shot_distance_m: float
+var _shot_knockdown_count: int
 var flight_kind: int:
 	get: return _flight_kind
 var shot_aim: ShotAim:
@@ -45,8 +51,12 @@ var _target_player_id: String
 var _velocity_mps: Vector2
 
 
-func _init(ball_state: BallMatchState, aim: ShotAim = null) -> void:
+## Copies state and cumulative measurements so later motion or ownership cleanup cannot rewrite a frame.
+func _init(ball_state: BallMatchState, aim: ShotAim = null, distance_m: float = 0.0,
+		knockdowns: int = 0) -> void:
 	assert(ball_state != null, "Ball snapshot requires ball state")
+	_shot_distance_m = distance_m
+	_shot_knockdown_count = knockdowns
 	_flight_kind = ball_state.flight_kind
 	_shot_aim = aim
 	_control_attachment = ball_state.control_attachment

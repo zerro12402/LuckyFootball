@@ -7,7 +7,7 @@ var _field: FieldDefinition
 var _aim_draws: int = 0
 var _save_draws: int = 0
 var _lane: int = ShotAim.Lane.CENTER
-var _sample: float = 0.49
+var _sample: float = 0.0
 
 ## Exercises deterministic cases against the production fixed-step simulation.
 func _init() -> void:
@@ -16,7 +16,7 @@ func _init() -> void:
 	_config = repository.get_match_config_by_id("demo_match")
 	_field = repository.get_field_by_id("demo_field")
 	for lane in range(3):
-		for sample in [0.49, 0.50]:
+		for sample in [0.0, 0.999]:
 			_test_outcome(lane, sample)
 	_test_release_timing()
 	_test_invalid_opportunities()
@@ -48,6 +48,8 @@ func _match(keeper_x: float = 23.0) -> MatchSimulation:
 	var simulation := MatchSimulation.new(44, _config, _field,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, Callable(), Callable(),
 		_draw_aim, _draw_save)
+	# Isolate existing contact/shot behavior from the independent F11 accuracy branch.
+	simulation._shot_miss_override = 0
 	_check(simulation.register_player("shooter", Vector2(15, 0), 5.0, "attack", 80), "shooter")
 	_check(simulation.register_player("keeper", Vector2(keeper_x, 0), 5.0, "defend", 80, 50, 50, true), "keeper")
 	_check(simulation.register_team_attacking_goal("attack", Vector2(25, 0)), "goal")
@@ -77,7 +79,7 @@ func _test_outcome(lane: int, sample: float) -> void:
 	if resolved == null:
 		return
 	_check(_aim_draws == 1 and _save_draws == 1, "one release and one save sample")
-	_check(resolved.goalkeeper_save.did_catch == (sample < 0.5), "0.49 catches, 0.50 misses")
+	_check(resolved.goalkeeper_save.did_catch == (sample < 0.5), "0 catches, 0.999 misses at the configured attribute probability")
 	var snapshot := simulation.create_snapshot()
 	if sample < 0.5:
 		_check(snapshot.ball.owner_player_id == "keeper", "catch has unique keeper owner")
@@ -131,7 +133,7 @@ func _test_release_timing() -> void:
 ## No intent, post-line keeper and high passes cannot activate or bypass F04.
 func _test_invalid_opportunities() -> void:
 	_lane = 1
-	var simulation := _match(28.0)
+	var simulation := _match(30.0)
 	simulation.advance_fixed_step(0.01, [MatchAction.new("shooter", MatchAction.Type.SHOOT),
 		MatchAction.new("keeper", MatchAction.Type.SAVE, Vector2.LEFT)])
 	for step in range(90):
@@ -154,7 +156,7 @@ func _test_invalid_opportunities() -> void:
 ## Pausing freezes a prepared save and resets remove hand ownership and old intent.
 func _test_pause_reset_replay() -> void:
 	_lane = 0
-	_sample = 0.49
+	_sample = 0.0
 	var simulation := _match()
 	simulation.advance_fixed_step(0.01, [MatchAction.new("keeper", MatchAction.Type.SAVE, Vector2(-1, -1))])
 	var before := simulation.create_snapshot()
@@ -172,7 +174,7 @@ func _check(ok: bool, message: String) -> void:
 		_failures.append(message)
 
 
-## Opposite-lane saves and expired/early windows cannot produce F04 contact samples.
+## Widened range allows nearby opposite-lane contact; expired/early windows still reject F04.
 func _test_wrong_lane_and_window() -> void:
 	_lane = ShotAim.Lane.UPPER
 	var simulation := _match()
@@ -180,7 +182,7 @@ func _test_wrong_lane_and_window() -> void:
 		MatchAction.new("keeper", MatchAction.Type.SAVE, Vector2(-1, 1))])
 	for step in range(70):
 		simulation.advance_fixed_step(0.01, [])
-	_check(_save_draws == 0, "opposite lane has no physical save contact")
+	_check(_save_draws == 1, "widened range tolerates opposite-lane contact and still samples once")
 	_lane = 1
 	simulation = _match()
 	simulation.advance_fixed_step(0.01, [MatchAction.new("keeper", MatchAction.Type.SAVE, Vector2.LEFT)])
@@ -206,7 +208,7 @@ func _test_wrong_lane_and_window() -> void:
 ## A catch can legally release; misses finish their full pose before automatic settlement reset.
 func _test_catch_release_and_animation_duration() -> void:
 	_lane = 0
-	_sample = 0.49
+	_sample = 0.0
 	var simulation := _match()
 	simulation.advance_fixed_step(0.01, [MatchAction.new("shooter", MatchAction.Type.SHOOT),
 		MatchAction.new("keeper", MatchAction.Type.SAVE, Vector2(-1, -1))])
@@ -279,7 +281,7 @@ func _test_configuration_validation() -> void:
 ## Swept contact must win before a later goal even when both fit in one large step.
 func _test_large_step_contact_and_event_time() -> void:
 	_lane = 1
-	_sample = 0.49
+	_sample = 0.0
 	var simulation := _match()
 	simulation.advance_fixed_step(0.2, [MatchAction.new("shooter", MatchAction.Type.SHOOT),
 		MatchAction.new("keeper", MatchAction.Type.SAVE, Vector2.LEFT)])

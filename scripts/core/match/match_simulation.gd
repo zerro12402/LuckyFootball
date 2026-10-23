@@ -35,6 +35,10 @@ var _melee_outcome: MeleeOutcome
 var _ball_contact_latches: Dictionary[String, bool] = {}
 var _contact_shot_source: BallShotSource
 var _ball_route_sampler: Callable
+var _shot_miss_sampler: Callable
+var _shot_miss_side_sampler: Callable
+var _shot_miss_margin_sampler: Callable
+var _shot_miss_override: int
 var _shot_aim_sampler: Callable
 var _keeper_sampler: Callable
 var _tackle_sampler: Callable
@@ -54,6 +58,10 @@ func _init(
 	shot_aim_sampler: Callable = Callable(),
 	keeper_sampler: Callable = Callable(),
 	tackle_sampler: Callable = Callable(),
+	shot_miss_sampler: Callable = Callable(),
+	shot_miss_side_sampler: Callable = Callable(),
+	shot_miss_margin_sampler: Callable = Callable(),
+	shot_miss_override: int = -1,
 ) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
@@ -61,6 +69,11 @@ func _init(
 	_field_definition = field_definition
 	_melee_outcome = melee_outcome
 	_ball_route_sampler = ball_route_sampler if ball_route_sampler.is_valid() else _sample_ball_route
+	assert(shot_miss_override >= -1 and shot_miss_override <= 1)
+	_shot_miss_sampler = shot_miss_sampler
+	_shot_miss_side_sampler = shot_miss_side_sampler
+	_shot_miss_margin_sampler = shot_miss_margin_sampler
+	_shot_miss_override = shot_miss_override
 	_shot_aim_sampler = shot_aim_sampler
 	_keeper_sampler = keeper_sampler if keeper_sampler.is_valid() else _sample_ball_route
 	_tackle_sampler = tackle_sampler if tackle_sampler.is_valid() else _sample_ball_route
@@ -88,6 +101,7 @@ func register_player(
 	is_goalkeeper: bool = false,
 	speed_attribute: int = 0,
 	tackling_attribute: int = 50,
+	goalkeeping_attribute: int = 50,
 ) -> bool:
 	if _state.phase != MatchState.Phase.READY or not initial_position_m.is_finite():
 		return false
@@ -102,6 +116,7 @@ func register_player(
 		is_goalkeeper,
 		speed_attribute,
 		tackling_attribute,
+		goalkeeping_attribute,
 	)
 	if registered:
 		_orient_goalkeeper(_player_runtime_system.get_player(player_id))
@@ -126,7 +141,7 @@ func register_player_from_definition(
 	return register_player(definition.player_id, initial_position_m, speed_mps, team_id,
 		definition.shooting if shooting_override == -1 else shooting_override,
 		definition.strength if strength_override == -1 else strength_override,
-		definition.technique, is_goalkeeper, definition.speed, definition.tackling)
+		definition.technique, is_goalkeeper, definition.speed, definition.tackling, definition.goalkeeping)
 
 
 ## Associates a team with its opponent goal center before the match starts.
@@ -365,6 +380,7 @@ func _advance_shot_contacts(seconds: float, fixed_seconds: float,
 		start_positions: Dictionary[String, Vector2], start_heights: Dictionary[String, float],
 		events: Array[MatchEvent]) -> bool:
 	var source := _ball_runtime_system.shot_source
+	var context := _ball_runtime_system.shot_context
 	if source != _contact_shot_source:
 		_ball_contact_latches.clear()
 		_contact_shot_source = source
@@ -415,10 +431,10 @@ func _advance_shot_contacts(seconds: float, fixed_seconds: float,
 		_ball_contact_latches[contact.player_id] = true
 		if contact.kind == BallContactCandidate.Kind.GOALKEEPER:
 			_commit_keeper_save(contact, source, events,
-				_state.elapsed_seconds - fixed_seconds + elapsed)
+				_state.elapsed_seconds - fixed_seconds + elapsed, context, trajectory.direction)
 			continue
 		_commit_ball_impact(contact, source, events,
-			_state.elapsed_seconds - fixed_seconds + elapsed)
+			_state.elapsed_seconds - fixed_seconds + elapsed, context)
 	return false
 
 
@@ -466,7 +482,7 @@ func _shot_contact_bodies(source: BallShotSource, elapsed: float, duration: floa
 
 ## Commits separate contact, F07 outcome, F08 knockdown, and trajectory facts in order.
 func _commit_ball_impact(contact: BallContactCandidate, source: BallShotSource,
-		events: Array[MatchEvent], contact_time: float) -> void:
+		events: Array[MatchEvent], contact_time: float, context: ShotFlightContext) -> void:
 	var target := _player_runtime_system.get_player(contact.player_id)
 	# F07 is injected independently here; full attribute/probability binding is a later feature.
 	var dodged := (_ball_dodge_result.is_valid()
@@ -485,6 +501,7 @@ func _commit_ball_impact(contact: BallContactCandidate, source: BallShotSource,
 			_match_config.ball_impact_knockback_duration_seconds,
 			_match_config.ball_impact_knockback_apex_height_m)
 		assert(did_start_knockback, "A legal football knockdown requires a forced response")
+		context._record_knockdown(target.player_id)
 		_append_impact_event(MatchEvent.Type.PLAYER_KNOCKED_DOWN, result, contact_time, events)
 	_ball_runtime_system.apply_impact(result)
 	_append_impact_event(MatchEvent.Type.BALL_REBOUNDED
@@ -1159,6 +1176,7 @@ func _header_direction(candidate: HeaderContactCandidate, action: MatchAction) -
 	return (goal_center - candidate.contact_position_m).normalized()
 
 
+## Copies committed facts, including the locked aim for foot and headed shot releases.
 func _create_event(
 	event_type: int,
 	subject_id: String = "",
@@ -1182,21 +1200,36 @@ func _create_event(
 		goal_count,
 		is_corner,
 		net_contact, "", "", "", null,
-		_ball_runtime_system.current_shot_aim if event_type == MatchEvent.Type.BALL_SHOT else null,
+		_ball_runtime_system.current_shot_aim if (event_type == MatchEvent.Type.BALL_SHOT
+			or (event_type == MatchEvent.Type.BALL_HEADED
+				and _ball_runtime_system.state.flight_kind == BallMatchState.FlightKind.SHOT)) else null,
 	)
 
 
-## Chooses one planar goal lane at actual release; fixed samplers are test-only injections.
+## Samples F11 only at legal release, then independently selects the applicable target branch.
 func _select_shot_aim(player: PlayerRuntime, origin: Vector2) -> ShotAim:
-	var lane := int(_shot_aim_sampler.call()) if _shot_aim_sampler.is_valid() else _rng.randi_range(0, 2)
-	assert(lane >= ShotAim.Lane.UPPER and lane <= ShotAim.Lane.LOWER)
+	var probability := ShotAccuracyResolver.calculate_miss_probability(player.shooting_attribute, _match_config)
+	var sample := -1.0
+	var missed := _shot_miss_override == 1
+	if _shot_miss_override < 0:
+		sample = float(_shot_miss_sampler.call()) if _shot_miss_sampler.is_valid() else _sample_accuracy_unit()
+		assert(sample >= 0.0 and sample < 1.0)
+		missed = sample < probability
+	var lane := ShotAim.Lane.CENTER
+	var side := 0
+	var margin := 0.0
+	if missed:
+		side = int(_shot_miss_side_sampler.call()) if _shot_miss_side_sampler.is_valid() else (-1 if _sample_accuracy_unit() < 0.5 else 1)
+		margin = (float(_shot_miss_margin_sampler.call()) if _shot_miss_margin_sampler.is_valid()
+			else lerpf(_match_config.shot_miss_margin_min_m, _match_config.shot_miss_margin_max_m, _sample_accuracy_unit()))
+	else:
+		lane = int(_shot_aim_sampler.call()) if _shot_aim_sampler.is_valid() else _rng.randi_range(0, 2)
 	var goal: Vector2 = _attacking_goals_by_team[player.team_id]
 	var width := _field_definition.goal_width_m if _field_definition != null else _match_config.shot_aim_goal_width_m
-	var margin := minf(width * _match_config.shot_aim_width_fraction,
-		maxf(width * 0.5 - _match_config.ball_radius_m - MatchRules.LINE_EPSILON_M, 0.0))
-	var point := goal + Vector2(0.0, float(lane - ShotAim.Lane.CENTER) * margin)
-	assert(not point.is_equal_approx(origin))
-	return ShotAim.new(lane, point)
+	var aim := ShotAccuracyResolver.create_aim(player.shooting_attribute, _match_config,
+		goal, width, missed, sample, lane, side, margin)
+	assert(not aim.point_m.is_equal_approx(origin))
+	return aim
 
 
 ## Validates the keeper command before recording its fixed-time save window.
@@ -1217,11 +1250,13 @@ func _try_start_save(action: MatchAction, fixed_seconds: float) -> bool:
 
 ## Samples F04 once and commits either hand possession or an unchanged miss trajectory.
 func _commit_keeper_save(contact: BallContactCandidate, source: BallShotSource,
-		events: Array[MatchEvent], contact_time: float) -> void:
+		events: Array[MatchEvent], contact_time: float, context: ShotFlightContext,
+		incoming_direction: Vector2) -> void:
 	var keeper := _player_runtime_system.get_player(contact.player_id)
 	_keeper_resolved[keeper.player_id] = true
 	var result := GoalkeeperSaveResolver.resolve(keeper.player_id, source, keeper.state.save_lane,
-		contact.position_m, contact.height_m, _match_config.keeper_save_probability, _keeper_sampler)
+		contact.position_m, contact.height_m, keeper.goalkeeping_attribute, context, _match_config, _keeper_sampler,
+		contact.player_position_m, incoming_direction)
 	events.append(MatchEvent.new(MatchEvent.Type.GOALKEEPER_CONTACT, contact_time,
 		_state.simulation_step, source.player_id, MatchEvent.ResetReason.NONE,
 		MatchBoundaryResult.Side.NONE, contact.position_m, source.player_id, 0, false, null,
@@ -1256,3 +1291,8 @@ func _orient_goalkeeper(player: PlayerRuntime) -> void:
 	var horizontal := goal.x - player.state.position_m.x
 	if not is_zero_approx(horizontal):
 		player.state._set_facing_direction(Vector2.LEFT if horizontal < 0.0 else Vector2.RIGHT)
+
+
+## Maps one seeded integer draw to [0, 1), excluding the upper endpoint even at maximum RNG output.
+func _sample_accuracy_unit() -> float:
+	return float(_rng.randi()) / 4294967296.0

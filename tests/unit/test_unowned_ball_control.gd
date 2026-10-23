@@ -29,6 +29,8 @@ func _test_shooter_receives_rebound() -> void:
 	var simulation := MatchSimulation.new(1, _config, null,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, Callable(), Callable(),
 		func() -> int: return ShotAim.Lane.CENTER)
+	# This fixture isolates returning-shot control from F11 accuracy.
+	simulation._shot_miss_override = 0
 	simulation.register_player("shooter", Vector2.ZERO, 5.0, "blue", 80)
 	simulation.register_player("defender", Vector2(4.0, 0.0), 5.0, "red", 1, 80)
 	simulation.register_team_attacking_goal("blue", Vector2(25.0, 0.0))

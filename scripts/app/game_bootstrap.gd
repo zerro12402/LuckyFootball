@@ -24,10 +24,19 @@ enum DemoMode {
 }
 
 enum KeeperShotSource { GROUND, AERIAL, HEADER }
+enum KeeperContestPreset { STANDARD, NEAR, FAR, ONE_DEFENDER, TWO_DEFENDERS }
+var keeper_contest_preset: KeeperContestPreset = KeeperContestPreset.STANDARD
+var match_config: MatchConfigDefinition:
+	get: return _match_config
+var shot_miss_override: int = -1
+var shot_miss_side: int = 0
+var shot_miss_margin_m: float = 1.0
 var keeper_lane: int = -1
 var keeper_sample: float = -1.0
 var keeper_source: KeeperShotSource = KeeperShotSource.GROUND
 var keeper_starts_down: bool = false
+var _keeper_shooting_override: int = -1
+var _keeper_goalkeeping_override: int = -1
 var _keeper_reaction_requested: bool = false
 var _keeper_header_requested: bool = false
 
@@ -199,16 +208,31 @@ func reset_demo() -> void:
 		random_seed = 2 if ball_impact_preset == BallImpactPreset.KNOCKDOWN_REBOUND else 1
 	var aim_sampler := Callable()
 	var save_sampler := Callable()
+	var miss_side_sampler := Callable()
+	var miss_margin_sampler := Callable()
+	var miss_override := -1
+	var route_sampler := Callable()
 	if demo_mode == DemoMode.BALL_IMPACT_TEST:
+		# This preset isolates F08 body impacts, independently of the chosen lane.
+		miss_override = 0
 		aim_sampler = func() -> int: return ShotAim.Lane.CENTER
 	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		miss_override = shot_miss_override
+		if keeper_contest_preset in [KeeperContestPreset.ONE_DEFENDER, KeeperContestPreset.TWO_DEFENDERS]:
+			# Isolate F04 attenuation after real successful F08 hits; do not forge counters.
+			route_sampler = func() -> float: return 0.0
+		if shot_miss_side != 0:
+			miss_side_sampler = func() -> int: return shot_miss_side
+		if shot_miss_margin_m > 0.0:
+			miss_margin_sampler = func() -> float: return shot_miss_margin_m
 		if keeper_lane >= 0:
 			aim_sampler = func() -> int: return keeper_lane
 		if keeper_sample >= 0.0:
 			save_sampler = func() -> float: return keeper_sample
 	_match_simulation = MatchSimulation.new(
 		random_seed, _match_config, _field_definition, melee_outcome,
-		Callable(), Callable(), aim_sampler, save_sampler
+		route_sampler, Callable(), aim_sampler, save_sampler, Callable(),
+		Callable(), miss_side_sampler, miss_margin_sampler, miss_override
 	)
 	var opponent_goal_center_m := Vector2(_field_definition.length_m * 0.5, 0.0)
 	var did_register_goal := _match_simulation.register_team_attacking_goal(
@@ -226,6 +250,8 @@ func reset_demo() -> void:
 			demo_player.default_role, _touch_speed_override, demo_player.shooting,
 			demo_player.strength, demo_player.technique, demo_player.stamina,
 			demo_player.tackling, demo_player.goalkeeping, demo_player.trait_ids, demo_player.visual_id)
+	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		demo_player = _keeper_attribute_definition(demo_player, _keeper_shooting_override)
 	var player_position_m := Vector2.ZERO
 	var shooting := demo_player.shooting
 	if demo_mode == DemoMode.BALL_IMPACT_TEST:
@@ -233,6 +259,11 @@ func reset_demo() -> void:
 		shooting = 80 # Explicit test context; CSV attribute integration is a separate feature.
 	if demo_mode == DemoMode.GOALKEEPER_TEST:
 		player_position_m = Vector2(11.0 if keeper_source == KeeperShotSource.HEADER else 15.0, 0.0)
+		if keeper_contest_preset == KeeperContestPreset.NEAR and keeper_source != KeeperShotSource.HEADER:
+			player_position_m.x = 19.0
+		elif keeper_contest_preset == KeeperContestPreset.FAR:
+			# Header speed is fixed and has a shorter physical range, so use its reachable far setup.
+			player_position_m.x = 5.0 if keeper_source == KeeperShotSource.HEADER else 2.0
 	var did_register_player := _match_simulation.register_player_from_definition(
 		demo_player,
 		player_position_m,
@@ -243,11 +274,13 @@ func reset_demo() -> void:
 	assert(did_register_player, "Demo player must register before the match starts")
 	if not _demo_teammate_id.is_empty():
 		var demo_teammate := _data_repository.get_player_by_id(_demo_teammate_id)
+		if demo_mode == DemoMode.GOALKEEPER_TEST:
+			demo_teammate = _keeper_attribute_definition(demo_teammate, _keeper_shooting_override)
 		var teammate_position_m := TEST_TEAMMATE_POSITION_M
 		if demo_mode == DemoMode.LOFTED_RECEIVE_AERIAL_SHOT_TEST:
 			teammate_position_m = TEST_LOFTED_RECEIVER_POSITION_M
 		if demo_mode == DemoMode.GOALKEEPER_TEST:
-			teammate_position_m = Vector2(20.0, 0.0)
+			teammate_position_m = Vector2(14.0 if keeper_contest_preset == KeeperContestPreset.FAR else 20.0, 0.0)
 		var did_register_teammate := _match_simulation.register_player_from_definition(
 			demo_teammate,
 			teammate_position_m,
@@ -256,6 +289,8 @@ func reset_demo() -> void:
 		assert(did_register_teammate, "Demo teammate must register before the match starts")
 	if not _demo_opponent_id.is_empty():
 		var opponent := _data_repository.get_player_by_id(_demo_opponent_id)
+		if demo_mode == DemoMode.GOALKEEPER_TEST:
+			opponent = _keeper_attribute_definition(opponent, -1, _keeper_goalkeeping_override)
 		var opponent_position_m := TEST_OPPONENT_POSITION_M
 		var opponent_strength := opponent.strength
 		if demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
@@ -271,6 +306,9 @@ func reset_demo() -> void:
 				opponent_strength = 90
 		if demo_mode == DemoMode.GOALKEEPER_TEST:
 			opponent_position_m = Vector2(23.0, 0.0)
+			if keeper_contest_preset in [KeeperContestPreset.ONE_DEFENDER, KeeperContestPreset.TWO_DEFENDERS]:
+				# The wider keeper must remain downstream of both real F08 contacts in these layouts.
+				opponent_position_m.x = opponent_goal_center_m.x - 0.5
 		assert(_match_simulation.register_player_from_definition(
 			opponent, opponent_position_m, TEST_OPPONENT_TEAM_ID,
 			demo_mode == DemoMode.GOALKEEPER_TEST,
@@ -280,6 +318,8 @@ func reset_demo() -> void:
 			_match_simulation._player_runtime_system.get_player(_demo_opponent_id).state_machine.start_knockdown(_match_config)
 		if demo_mode == DemoMode.BALL_IMPACT_TEST:
 			_register_ball_impact_extra_defender(opponent_goal_center_m)
+	if demo_mode == DemoMode.GOALKEEPER_TEST:
+		_register_keeper_contest_defenders()
 	var initial_ball_position_m := TEST_BALL_INITIAL_POSITION_M
 	if demo_mode in [DemoMode.TACKLE_TEST, DemoMode.AERIAL_JUMP_SHOT_TEST]:
 		initial_ball_position_m = Vector2(0.5, 0.0)
@@ -334,8 +374,7 @@ func reset_demo() -> void:
 	if demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST]:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
 	if demo_mode == DemoMode.GOALKEEPER_TEST and _field_environment != null:
-		_field_environment.set_presented_players(_demo_player_id, _demo_opponent_id,
-			true, _demo_teammate_id)
+		_refresh_keeper_actors()
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_refresh_touch_speed_controls()
@@ -652,6 +691,7 @@ func _queue_keeper_test_actions(actions: Array[MatchAction], frame_seconds: floa
 	if ball.flight_kind == BallMatchState.FlightKind.PASS and not _keeper_header_requested:
 		actions.append(MatchAction.new(_demo_teammate_id, MatchAction.Type.HEADER_SHOT))
 		_keeper_header_requested = true
+		_refresh_keeper_actors()
 	if ball.flight_kind == BallMatchState.FlightKind.SHOT and not _keeper_reaction_requested:
 		var aim := ball.shot_aim
 		if aim != null and _is_keeper_contact_imminent(ball, aim, frame_seconds):
@@ -681,3 +721,57 @@ func _is_keeper_contact_imminent(ball: BallStateSnapshot, aim: ShotAim, frame_se
 		return false
 	var seconds := (speed - sqrt(discriminant)) / _match_config.shot_ground_deceleration_mps2
 	return seconds <= maxf(frame_seconds, fixed_delta_seconds)
+
+
+## Adds real opposing F08 candidates; their actual knockdown commits supply the F04 count.
+func _register_keeper_contest_defenders() -> void:
+	var count := _keeper_defender_count()
+	for index in range(count):
+		assert(_match_simulation.register_player("keeper_wall_%d" % index,
+			Vector2(20.0 + index * 1.2, 0.0), 5.0, TEST_OPPONENT_TEAM_ID, 1, 1, 50))
+
+## Maps only the explicit test layout to its number of physical defenders.
+func _keeper_defender_count() -> int:
+	if keeper_contest_preset == KeeperContestPreset.TWO_DEFENDERS:
+		return 2
+	return 1 if keeper_contest_preset == KeeperContestPreset.ONE_DEFENDER else 0
+
+## Reuses four actor slots; after a high pass, the passer yields its slot to the headed-shot setup.
+func _refresh_keeper_actors() -> void:
+	if _field_environment == null:
+		return
+	var count := _keeper_defender_count()
+	var wall_one := "keeper_wall_0" if count > 0 else ""
+	var wall_two := "keeper_wall_1" if count > 1 else ""
+	if keeper_source == KeeperShotSource.HEADER and count > 0:
+		if _keeper_header_requested:
+			_field_environment.set_presented_players(_demo_teammate_id, _demo_opponent_id, true, wall_one, wall_two)
+		else:
+			_field_environment.set_presented_players(_demo_player_id, _demo_opponent_id, true, _demo_teammate_id, wall_one)
+	else:
+		_field_environment.set_presented_players(_demo_player_id, _demo_opponent_id, true,
+			wall_one if count > 0 else _demo_teammate_id, wall_two)
+
+
+## Validates both manual values atomically; rebuilding applies them without mutating repository data.
+func set_keeper_test_attributes(shooting: int, goalkeeping: int) -> bool:
+	if demo_mode != DemoMode.GOALKEEPER_TEST or shooting < 1 or shooting > 100 or goalkeeping < 1 or goalkeeping > 100:
+		return false
+	_keeper_shooting_override = shooting
+	_keeper_goalkeeping_override = goalkeeping
+	return true
+
+## Supplies the actual current shot actor's attributes for initial input labels, including headed shots.
+func get_keeper_test_attributes() -> Vector2i:
+	var shooter_id := _demo_teammate_id if keeper_source == KeeperShotSource.HEADER else _demo_player_id
+	var shooter := _match_simulation._player_runtime_system.get_player(shooter_id)
+	var keeper := _match_simulation._player_runtime_system.get_player(_demo_opponent_id)
+	return Vector2i(shooter.shooting_attribute, keeper.goalkeeping_attribute)
+
+## Creates a temporary strong definition so all shot sources bind the entered values through one path.
+func _keeper_attribute_definition(definition: PlayerDefinition, shooting: int = -1,
+		goalkeeping: int = -1) -> PlayerDefinition:
+	return PlayerDefinition.new(definition.player_id, definition.display_name, definition.default_role,
+		definition.speed, definition.shooting if shooting < 0 else shooting, definition.strength,
+		definition.technique, definition.stamina, definition.tackling,
+		definition.goalkeeping if goalkeeping < 0 else goalkeeping, definition.trait_ids, definition.visual_id)

@@ -15,13 +15,14 @@ func _run() -> void:
 	_check(menu.current_mode == GameModeController.Mode.GOALKEEPER_TEST, "menu opens keeper mode")
 	var bootstrap := menu.get_node("ModeHost").get_child(0) as GameBootstrap
 	bootstrap.set_process(false)
+	bootstrap.shot_miss_override = 0 # This suite isolates F04.
 	_check((bootstrap.get_node("GoalkeeperControls") as CanvasLayer).visible, "shared controls visible")
 	for source in range(3):
 		for lane in range(3):
 			for success in [true, false]:
 				bootstrap.keeper_source = source as GameBootstrap.KeeperShotSource
 				bootstrap.keeper_lane = lane
-				bootstrap.keeper_sample = 0.49 if success else 0.50
+				bootstrap.keeper_sample = 0.0 if success else 0.999
 				bootstrap.select_keeper_preset()
 				bootstrap.set_process(false)
 				var resolved := _until_save(bootstrap)

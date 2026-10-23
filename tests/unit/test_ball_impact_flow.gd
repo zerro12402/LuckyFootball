@@ -130,6 +130,8 @@ func _test_chain_and_continuous_deduplication() -> void:
 	var chain := MatchSimulation.new(7, _config, _field,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, _draw, Callable(),
 		func() -> int: return ShotAim.Lane.CENTER)
+	# Isolate existing contact/shot behavior from the independent F11 accuracy branch.
+	chain._shot_miss_override = 0
 	chain.register_player("shooter", Vector2(half - 8.0, 0.0), 5.0, "attack", 80)
 	chain.register_player("a", Vector2(half - 5.0, 0.0), 5.0, "defense", 1, 60)
 	chain.register_player("b", Vector2(half - 2.0, 0.0), 5.0, "defense", 1, 60)
@@ -197,6 +199,8 @@ func _test_airborne_and_header_sources() -> void:
 	_check(hit_above_ground, "Airborne shots must enter the same height-aware impact path")
 	var header := MatchSimulation.new(47, _config, null,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, _draw)
+	# Isolate existing contact/shot behavior from the independent F11 accuracy branch.
+	header._shot_miss_override = 0
 	header.register_player("passer", Vector2.ZERO, 5.0, "blue", 50)
 	header.register_player("receiver", Vector2(10.0, 0.0), 5.0, "blue", 50)
 	header.register_player("header", Vector2(3.8, 0.0), 5.0, "red", 80)
@@ -286,7 +290,9 @@ func _match_with_defender(strength: int, sample: float = 0.1, dodge: bool = fals
 	var simulation := MatchSimulation.new(73, _config, _field,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, _draw,
 		func(_id: String) -> bool: return dodge,
-		func() -> int: return ShotAim.Lane.CENTER, func() -> float: return 0.1)
+		func() -> int: return ShotAim.Lane.CENTER, func() -> float: return 0.0)
+	# Isolate existing contact/shot behavior from the independent F11 accuracy branch.
+	simulation._shot_miss_override = 0
 	var half := _field.length_m * 0.5
 	simulation.register_player("shooter", Vector2(half - 6.0, 0.0), 5.0, "attack", 80)
 	simulation.register_player("defender", Vector2(half + x_from_goal, 0.0),

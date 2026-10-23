@@ -45,6 +45,9 @@ var _reacquire_delay_at_step_start_seconds: float = 0.0
 var shot_source: BallShotSource:
 	get: return _shot_source
 var _shot_source: BallShotSource
+var shot_context: ShotFlightContext:
+	get: return _shot_context
+var _shot_context: ShotFlightContext
 var _shot_sequence: int = 0
 var _shot_aim_selector: Callable
 var _current_shot_aim: ShotAim
@@ -194,6 +197,7 @@ func apply_impact(result: BallImpactResult) -> void:
 	var speed := result.velocity_after_mps.length()
 	if speed <= _shot_config.shot_stop_speed_mps:
 		_state._release(_state.position_m)
+		_clear_shot_context()
 		return
 	var range_m := (speed * speed - pow(_shot_config.shot_stop_speed_mps, 2.0)) / (
 		2.0 * _shot_config.shot_ground_deceleration_mps2)
@@ -207,6 +211,7 @@ func _record_shot_source(player: PlayerRuntime) -> void:
 	_shot_sequence += 1
 	_shot_source = BallShotSource.new(player.player_id, player.team_id,
 		player.shooting_attribute, _shot_sequence)
+	_shot_context = ShotFlightContext.new(_shot_source)
 
 
 ## Defers free-ball acquisition until boundary rules have had the first chance to settle.
@@ -396,7 +401,7 @@ func reset_ball(reset_position_m: Vector2) -> void:
 	_last_kicker_id = ""
 	_reacquire_delay_remaining_seconds = 0.0
 	_reacquire_delay_at_step_start_seconds = 0.0
-	_shot_source = null
+	_clear_shot_context()
 	_shot_sequence = 0
 	_current_shot_aim = null
 
@@ -410,6 +415,7 @@ func prepare_for_settlement(
 ) -> void:
 	assert(_state != null, "Settlement requires a registered ball")
 	assert(boundary_position_m.is_finite(), "Boundary position must be finite")
+	_clear_shot_context()
 	if _state.motion_state == BallMatchState.MotionState.OWNED:
 		var owner := players.get_player(_state.owner_player_id)
 		if owner != null:
@@ -528,7 +534,9 @@ func create_snapshot() -> BallStateSnapshot:
 	if _state == null:
 		return null
 	return BallStateSnapshot.new(_state, _current_shot_aim
-		if _state.flight_kind == BallMatchState.FlightKind.SHOT else null)
+		if _state.flight_kind == BallMatchState.FlightKind.SHOT else null,
+		_shot_context.distance_m if _shot_context != null else 0.0,
+		_shot_context.knockdown_count if _shot_context != null else 0)
 
 
 ## Follows the owner through windup, then releases the queued kick once.
@@ -559,7 +567,7 @@ func _advance_owned(
 
 ## Launches the existing teammate pass without changing its trajectory rules.
 func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResult) -> void:
-	_shot_source = null
+	_clear_shot_context()
 	var passer := players.get_player(_state.owner_player_id)
 	var receiver := players.get_player(_pending_pass_target_id)
 	_pending_pass_target_id = ""
@@ -748,6 +756,7 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 	var speed_mps := _state.velocity_mps.length()
 	if speed_mps <= _shot_config.shot_stop_speed_mps:
 		_state._release(_state.position_m)
+		_clear_shot_context()
 		return
 	var deceleration := _shot_config.shot_ground_deceleration_mps2
 	var seconds_until_stop := (speed_mps - _shot_config.shot_stop_speed_mps) / deceleration
@@ -758,8 +767,11 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 	)
 	var direction := _state.velocity_mps / speed_mps
 	var next_position_m := _state.position_m + direction * travel_distance_m
+	if _shot_context != null:
+		_shot_context._advance_distance(travel_distance_m)
 	if moving_seconds + DISTANCE_EPSILON >= seconds_until_stop:
 		_state._release(next_position_m)
+		_clear_shot_context()
 	else:
 		var next_speed_mps := speed_mps - deceleration * fixed_delta_seconds
 		_state._advance_shot(next_position_m, direction * next_speed_mps, travel_distance_m)
@@ -767,7 +779,7 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 
 ## Clears old trajectories and protection while assigning exactly one ball owner.
 func _claim_ball(receiver: PlayerRuntime, result: BallAdvanceResult) -> void:
-	_shot_source = null
+	_clear_shot_context()
 	_last_releaser_id = ""
 	_reacquire_delay_remaining_seconds = 0.0
 	_reacquire_delay_at_step_start_seconds = 0.0
@@ -889,3 +901,9 @@ func catch_by_keeper(keeper: PlayerRuntime) -> BallAdvanceResult:
 	_state._set_attachment(BallMatchState.ControlAttachment.KEEPER_HANDS)
 	_set_ball_at_control_point(keeper)
 	return result
+
+
+## Ends only the whole-shot accumulator; rebound segment creation must never call this.
+func _clear_shot_context() -> void:
+	_shot_source = null
+	_shot_context = null

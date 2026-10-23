@@ -2,6 +2,38 @@
 class_name MatchConfigDefinition
 extends RefCounted
 
+var shot_contest_free_distance_m: float:
+	get: return _shot_contest_free_distance_m
+var _shot_contest_free_distance_m: float
+var shot_contest_distance_scale_m: float:
+	get: return _shot_contest_distance_scale_m
+var _shot_contest_distance_scale_m: float
+var shot_contest_knockdown_retention: float:
+	get: return _shot_contest_knockdown_retention
+var _shot_contest_knockdown_retention: float
+var keeper_contest_probability_scale: float:
+	get: return _keeper_contest_probability_scale
+var _keeper_contest_probability_scale: float
+var keeper_contest_shot_win_min: float:
+	get: return _keeper_contest_shot_win_min
+var _keeper_contest_shot_win_min: float
+var keeper_contest_shot_win_max: float:
+	get: return _keeper_contest_shot_win_max
+var _keeper_contest_shot_win_max: float
+
+var shot_miss_probability_at_1: float:
+	get: return _shot_miss_probability_at_1
+var _shot_miss_probability_at_1: float
+var shot_miss_probability_at_100: float:
+	get: return _shot_miss_probability_at_100
+var _shot_miss_probability_at_100: float
+var shot_miss_margin_min_m: float:
+	get: return _shot_miss_margin_min_m
+var _shot_miss_margin_min_m: float
+var shot_miss_margin_max_m: float:
+	get: return _shot_miss_margin_max_m
+var _shot_miss_margin_max_m: float
+
 var player_speed_at_100_mps: float:
 	get: return _player_speed_at_100_mps
 var _player_speed_at_100_mps: float
@@ -457,14 +489,52 @@ func _init(
 	new_keeper_hand_lateral_m: float = 1.0,
 	new_keeper_hand_forward_m: float = 0.45,
 	new_keeper_hand_height_m: float = 0.8,
-	new_keeper_contact_radius_m: float = 0.4,
+	new_keeper_contact_radius_m: float = 2.0,
 	new_keeper_contact_height_m: float = 2.4,
 	new_player_speed_at_100_mps: float = 5.0,
 	new_tackle_probability_scale: float = 18.0,
 	new_tackle_probability_min: float = 0.1,
 	new_tackle_probability_max: float = 0.9,
 	new_tackle_start_range_m: float = 1.8,
+	new_shot_miss_probability_at_1: float = 0.45,
+	new_shot_miss_probability_at_100: float = 0.05,
+	new_shot_miss_margin_min_m: float = 0.2,
+	new_shot_miss_margin_max_m: float = 1.0,
+	new_shot_contest_free_distance_m: float = 5.0,
+	new_shot_contest_distance_scale_m: float = 15.0,
+	new_shot_contest_knockdown_retention: float = 0.85,
+	new_keeper_contest_probability_scale: float = 5.0,
+	new_keeper_contest_shot_win_min: float = 0.1,
+	new_keeper_contest_shot_win_max: float = 0.9,
 ) -> void:
+	assert(is_finite(new_shot_contest_free_distance_m))
+	assert(is_finite(new_shot_contest_distance_scale_m))
+	assert(is_finite(new_shot_contest_knockdown_retention))
+	assert(is_finite(new_keeper_contest_probability_scale))
+	assert(is_finite(new_keeper_contest_shot_win_min))
+	assert(is_finite(new_keeper_contest_shot_win_max))
+	assert(new_shot_contest_free_distance_m >= 0.0 and new_shot_contest_distance_scale_m > 0.0)
+	assert(new_shot_contest_knockdown_retention > 0.0 and new_shot_contest_knockdown_retention <= 1.0)
+	assert(new_keeper_contest_probability_scale > 0.0)
+	assert(new_keeper_contest_shot_win_min >= 0.0 and new_keeper_contest_shot_win_max <= 1.0
+		and new_keeper_contest_shot_win_min <= new_keeper_contest_shot_win_max)
+	_shot_contest_free_distance_m = new_shot_contest_free_distance_m
+	_shot_contest_distance_scale_m = new_shot_contest_distance_scale_m
+	_shot_contest_knockdown_retention = new_shot_contest_knockdown_retention
+	_keeper_contest_probability_scale = new_keeper_contest_probability_scale
+	_keeper_contest_shot_win_min = new_keeper_contest_shot_win_min
+	_keeper_contest_shot_win_max = new_keeper_contest_shot_win_max
+	assert(is_finite(new_shot_miss_probability_at_1) and is_finite(new_shot_miss_probability_at_100))
+	assert(new_shot_miss_probability_at_100 >= 0.0
+		and new_shot_miss_probability_at_100 <= new_shot_miss_probability_at_1
+		and new_shot_miss_probability_at_1 <= 1.0)
+	assert(is_finite(new_shot_miss_margin_min_m) and is_finite(new_shot_miss_margin_max_m)
+		and new_shot_miss_margin_min_m > 0.0
+		and new_shot_miss_margin_max_m >= new_shot_miss_margin_min_m)
+	_shot_miss_probability_at_1 = new_shot_miss_probability_at_1
+	_shot_miss_probability_at_100 = new_shot_miss_probability_at_100
+	_shot_miss_margin_min_m = new_shot_miss_margin_min_m
+	_shot_miss_margin_max_m = new_shot_miss_margin_max_m
 	assert(is_finite(new_tackle_start_range_m) and new_tackle_start_range_m >= new_tackle_range_m)
 	_tackle_start_range_m = new_tackle_start_range_m
 	assert(is_finite(new_tackle_probability_scale) and new_tackle_probability_scale > 0.0)

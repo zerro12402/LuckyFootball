@@ -76,12 +76,22 @@ header_second_frame_seconds,1.0,头球动作第二帧持续时长，单位秒
 
 shot_aim_width_fraction,0.25,Goalkeeper and planar shot aim rules
 shot_aim_goal_width_m,4.0,Goalkeeper and planar shot aim rules
-keeper_save_probability,0.5,Goalkeeper and planar shot aim rules
+keeper_save_probability,0.5,旧版固定扑救概率仅兼容读表；F04属性版不再使用
 keeper_action_duration_seconds,1.2,Goalkeeper and planar shot aim rules
 keeper_window_start_seconds,0.0,Goalkeeper and planar shot aim rules
 keeper_window_end_seconds,1.1,Goalkeeper and planar shot aim rules
 keeper_hand_lateral_m,1.0,Goalkeeper and planar shot aim rules
 keeper_hand_forward_m,0.45,Goalkeeper and planar shot aim rules
 keeper_hand_height_m,0.8,Goalkeeper and planar shot aim rules
-keeper_contact_radius_m,0.4,Goalkeeper and planar shot aim rules
+keeper_contact_radius_m,2.0,门将扑救接触半径（米）；与足球半径相加检测，接触后按属性判定
 keeper_contact_height_m,2.4,Goalkeeper and planar shot aim rules
+shot_miss_probability_at_1,0.45,射门基础值1时的射偏概率
+shot_miss_probability_at_100,0.05,射门基础值100时的射偏概率
+shot_miss_margin_min_m,0.2,射偏目标超出整球门柱的最小距离（米）
+shot_miss_margin_max_m,1.0,射偏目标超出整球门柱的最大距离（米）
+shot_contest_free_distance_m,5.0,F04射门免衰减平面路径长度（米）
+shot_contest_distance_scale_m,15.0,F04距离衰减尺度（米）
+shot_contest_knockdown_retention,0.85,F04每击飞一名不同防守者的射门能力保留率
+keeper_contest_probability_scale,5.0,F04射门与守门差值的概率尺度；默认位置84对94含射偏进球率约10.6%
+keeper_contest_shot_win_min,0.1,F04射门胜出概率下限；守住概率取其补数
+keeper_contest_shot_win_max,0.9,F04射门胜出概率上限；守住概率取其补数

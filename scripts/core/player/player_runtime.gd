@@ -14,6 +14,10 @@ var speed_attribute: int:
 	get:
 		return _speed_attribute
 
+var goalkeeping_attribute: int:
+	get: return _goalkeeping_attribute
+var _goalkeeping_attribute: int
+
 var tackling_attribute: int:
 	get: return _tackling_attribute
 
@@ -63,6 +67,7 @@ func _init(
 	new_is_goalkeeper: bool = false,
 	new_speed_attribute: int = 0,
 	new_tackling_attribute: int = 50,
+	new_goalkeeping_attribute: int = 50,
 ) -> void:
 	assert(not new_team_id.is_empty(), "Player runtime requires a team ID")
 	assert(new_shooting_attribute >= 0 and new_shooting_attribute <= 100)
@@ -70,6 +75,8 @@ func _init(
 	assert(new_technique_attribute >= 0 and new_technique_attribute <= 100)
 	assert(new_speed_attribute >= 0 and new_speed_attribute <= 100)
 	assert(new_tackling_attribute >= 1 and new_tackling_attribute <= 100)
+	assert(new_goalkeeping_attribute >= 1 and new_goalkeeping_attribute <= 100)
+	_goalkeeping_attribute = new_goalkeeping_attribute
 	var initial_state := PlayerMatchState.new(new_player_id, initial_position_m)
 	_state_machine = PlayerStateMachine.new(initial_state, movement_speed_mps)
 	_spawn_position_m = initial_position_m

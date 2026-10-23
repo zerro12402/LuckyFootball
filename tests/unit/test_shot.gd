@@ -71,6 +71,8 @@ func test_invalid_goal_registration_is_rejected() -> void:
 	var simulation := MatchSimulation.new(73, _config, null,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, Callable(), Callable(),
 		func() -> int: return ShotAim.Lane.CENTER)
+	# Isolate existing contact/shot behavior from the independent F11 accuracy branch.
+	simulation._shot_miss_override = 0
 	_expect(not simulation.register_team_attacking_goal("", _right_goal_center_m),
 		"Empty team ID accepted a goal")
 	_expect(not simulation.register_team_attacking_goal("team", Vector2.INF),
@@ -282,6 +284,8 @@ func _create_simulation(
 	var simulation := MatchSimulation.new(73, _config, null,
 		MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN, Callable(), Callable(),
 		func() -> int: return ShotAim.Lane.CENTER)
+	# Isolate existing contact/shot behavior from the independent F11 accuracy branch.
+	simulation._shot_miss_override = 0
 	_expect(simulation.register_player(SHOOTER_ID, player_position_m, 5.0, "team", shooting),
 		"Expected player registration")
 	if has_goal:

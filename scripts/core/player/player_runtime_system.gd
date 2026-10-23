@@ -17,10 +17,13 @@ func register_player(
 	is_goalkeeper: bool = false,
 	speed_attribute: int = 0,
 	tackling_attribute: int = 50,
+	goalkeeping_attribute: int = 50,
 ) -> bool:
 	if player_id.is_empty() or team_id.is_empty() or _players_by_id.has(player_id):
 		return false
 	if shooting_attribute < 0 or shooting_attribute > 100:
+		return false
+	if goalkeeping_attribute < 1 or goalkeeping_attribute > 100:
 		return false
 	if tackling_attribute < 1 or tackling_attribute > 100:
 		return false
@@ -37,6 +40,7 @@ func register_player(
 		is_goalkeeper,
 		speed_attribute,
 		tackling_attribute,
+		goalkeeping_attribute,
 	)
 	return true
 
