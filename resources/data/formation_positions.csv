@@ -1,0 +1,7 @@
+formation_id,position_id,x_m,y_m
+one_two_two_one,keeper,-23,0
+one_two_two_one,back_left,-15,-7
+one_two_two_one,back_right,-15,7
+one_two_two_one,mid_left,-7,-6
+one_two_two_one,mid_right,-7,6
+one_two_two_one,forward,-1,0

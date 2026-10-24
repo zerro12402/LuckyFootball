@@ -6,6 +6,13 @@ var save_lane: int:
 	get: return _save_lane
 var _save_lane: int = ShotAim.Lane.CENTER
 
+var team_id: String:
+	get: return _team_id
+var _team_id: String
+var is_goalkeeper: bool:
+	get: return _is_goalkeeper
+var _is_goalkeeper: bool
+
 var player_id: String:
 	get:
 		return _player_id
@@ -68,7 +75,9 @@ var _jump_phase: int
 var _height_m: float
 
 
-func _init(player_state: PlayerMatchState) -> void:
+func _init(player_state: PlayerMatchState, team: String = "", keeper: bool = false) -> void:
+	_team_id = team
+	_is_goalkeeper = keeper
 	_save_lane = player_state.save_lane
 	_player_id = player_state.player_id
 	_position_m = player_state.position_m

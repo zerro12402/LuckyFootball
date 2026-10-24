@@ -1,0 +1,3 @@
+team_id,display_name,default_formation,attacking_direction
+home,幸运蓝队,one_two_two_one,1
+away,幸运红队,one_two_two_one,-1

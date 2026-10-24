@@ -2,6 +2,8 @@
 class_name FieldEnvironment
 extends Node2D
 
+const PLAYER_SCENE := preload("res://scenes/actors/player_actor.tscn")
+
 const REQUIRED_VIEW_SIZE := Vector2(960.0, 540.0)
 
 @onready var _left_goal: Node2D = %LeftGoal
@@ -25,6 +27,7 @@ var _projection: FieldArtProjection
 var _keeper_save_duration: float = 1.2
 
 var _presented_player_ids: Array[String] = []
+var _roster_actors: Dictionary[String, PlayerActor] = {}
 var _left_net_tween: Tween
 var _right_net_tween: Tween
 
@@ -147,6 +150,10 @@ func present(snapshot: MatchStateSnapshot) -> void:
 	var player_actors: Array[PlayerActor] = [
 		_demo_player, _demo_teammate, _demo_opponent, _demo_challenger,
 	]
+	if not _roster_actors.is_empty():
+		player_actors.clear()
+		for id in _presented_player_ids:
+			player_actors.append(_roster_actors[id])
 	var hand_carrier_actor: PlayerActor
 	var aerial_carrier_actor: PlayerActor
 	for player_index in range(_presented_player_ids.size()):
@@ -212,3 +219,29 @@ func _fit_camera_to_viewport() -> void:
 ## Uses the configured simulation duration for read-only keeper animation playback.
 func configure_keeper_timing(duration_seconds: float) -> void:
 	_keeper_save_duration = duration_seconds
+
+
+## Binds an arbitrary stable-ID roster while retaining the four legacy demo actors for old modes.
+func configure_roster(snapshot: MatchStateSnapshot, config: MatchConfigDefinition) -> void:
+	for actor in [_demo_player, _demo_teammate, _demo_opponent, _demo_challenger]:
+		actor.visible = false
+	_presented_player_ids.clear()
+	for player in snapshot.players:
+		_presented_player_ids.append(player.player_id)
+		if not _roster_actors.has(player.player_id):
+			var actor := PLAYER_SCENE.instantiate() as PlayerActor
+			actor.name = "Roster_" + player.player_id
+			_demo_player.get_parent().add_child(actor)
+			_roster_actors[player.player_id] = actor
+		var actor := _roster_actors[player.player_id]
+		actor.modulate = Color(0.55, 0.8, 1.0) if player.team_id == snapshot.home_team_id else Color(1.0, 0.55, 0.55)
+		actor.configure_hit_stun(config.tackle_hit_stun_seconds)
+		actor.configure_tackle_duration(config.tackle_action_duration_seconds)
+		actor.configure_knockdown(config.knockdown_action_duration_seconds, config.knockdown_jump_height_m, config.knockdown_landing_animation_seconds)
+		actor.configure_header_timing(config.header_first_frame_seconds, config.header_second_frame_seconds)
+	configure_keeper_timing(config.keeper_action_duration_seconds)
+	_presented_player_ids.sort()
+
+## Exposes a copied ID list for nonvisual assembly checks without returning mutable actor collections.
+func get_presented_player_ids() -> PackedStringArray:
+	return PackedStringArray(_presented_player_ids)

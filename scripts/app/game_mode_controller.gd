@@ -14,6 +14,7 @@ enum Mode {
 	LOFTED_RECEIVE_AERIAL_SHOT_TEST,
 	BALL_IMPACT_TEST,
 	GOALKEEPER_TEST,
+	FORMAL_FLOW_TEST,
 }
 
 @export var formal_match_scene: PackedScene
@@ -51,6 +52,7 @@ func _ready() -> void:
 	_lofted_receive_aerial_shot_test_button.pressed.connect(_show_lofted_receive_aerial_shot_test)
 	_ball_impact_test_button.pressed.connect(_show_ball_impact_test)
 	_keeper_test_button.pressed.connect(_show_keeper_test)
+	%FormalFlowTestButton.pressed.connect(func() -> void: show_mode(Mode.FORMAL_FLOW_TEST))
 	show_mode(Mode.PASS_AND_SHOOT)
 
 
@@ -80,6 +82,7 @@ func show_mode(mode: Mode) -> void:
 		mode == Mode.LOFTED_RECEIVE_AERIAL_SHOT_TEST)
 	_ball_impact_test_button.set_pressed_no_signal(mode == Mode.BALL_IMPACT_TEST)
 	_keeper_test_button.set_pressed_no_signal(mode == Mode.GOALKEEPER_TEST)
+	%FormalFlowTestButton.set_pressed_no_signal(mode == Mode.FORMAL_FLOW_TEST)
 
 
 ## Keeps formal play separate while all interactive demos share one scene resource.
@@ -92,6 +95,8 @@ func _scene_for_mode(mode: Mode) -> PackedScene:
 ## Sets the requested demo preset before GameBootstrap starts its match.
 func _configure_demo_mode(mode: Mode, demo_bootstrap: GameBootstrap) -> void:
 	match mode:
+		Mode.FORMAL_FLOW_TEST:
+			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.FORMAL_FLOW_TEST
 		Mode.TOUCH_AND_DRIBBLE:
 			demo_bootstrap.demo_mode = GameBootstrap.DemoMode.TOUCH_AND_DRIBBLE
 		Mode.PASS_AND_SHOOT:

@@ -11,6 +11,8 @@
 
 [ext_resource type="Script" path="res://scripts/input/melee_test_controls.gd" id="8_melee_controls"]
 
+[ext_resource type="Script" path="res://scripts/input/formal_flow_test_controls.gd" id="9_flow_controls"]
+
 [node name="GameBootstrap" type="Node" unique_id=1859715035]
 script = ExtResource("1_bootstrap")
 
@@ -207,3 +209,7 @@ text = ""
 [node name="MeleeControls" type="CanvasLayer" parent="."]
 layer = 10
 script = ExtResource("8_melee_controls")
+
+[node name="FormalFlowControls" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("9_flow_controls")

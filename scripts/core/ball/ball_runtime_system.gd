@@ -520,7 +520,8 @@ func advance_post_goal_motion(
 				velocity_mps.x * config.goal_net_tangent_retention,
 				-velocity_mps.y * config.goal_net_side_restitution
 			)
-		contacts.append(GoalNetContact.new(best_surface, net_position_m, velocity_before, velocity_mps))
+		contacts.append(GoalNetContact.new(best_surface, net_position_m, velocity_before, velocity_mps,
+			fixed_delta_seconds - remaining_seconds + remaining_seconds * best_fraction))
 		remaining_seconds *= 1.0 - best_fraction
 		if velocity_mps.length() < config.goal_net_stop_speed_mps:
 			velocity_mps = Vector2.ZERO
@@ -907,3 +908,16 @@ func catch_by_keeper(keeper: PlayerRuntime) -> BallAdvanceResult:
 func _clear_shot_context() -> void:
 	_shot_source = null
 	_shot_context = null
+
+
+## Cancels not-yet-released touches while preserving already flying balls and current ownership.
+func cancel_pending_actions() -> void:
+	_pending_pass_target_id = ""
+	_pending_pass_elapsed_seconds = 0.0
+	_clear_pending_shot()
+
+## Freezes the final observation without resetting position, ownership or animation pose.
+func freeze_for_terminal() -> void:
+	cancel_pending_actions()
+	if _state != null:
+		_state._freeze_motion()

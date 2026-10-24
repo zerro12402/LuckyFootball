@@ -100,3 +100,4 @@ melee_dodge_probability_scale,18.0,近身闪避概率曲线尺度
 melee_dodge_probability_min,0.1,近身闪避概率下限
 melee_dodge_probability_max,0.9,近身闪避概率上限
 melee_strength_auto_win_gap,20,近身强者必胜强壮差值（含等值）
+match_duration_seconds,180.0,正式比赛时长（秒），必须为正有限值

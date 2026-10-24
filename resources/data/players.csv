@@ -2,3 +2,12 @@ player_id,display_name,default_role,speed,shooting,strength,technique,stamina,ta
 swift_forward,疾风,forward,92,84,58,88,75,42,18,speedster,dribbler,risk_shooter,,,player_blue
 iron_guard,铁壁,defender,75,48,91,55,82,89,32,protector,aggressive,safe_passer,,,player_red
 steady_keeper,磐石,goalkeeper,75,45,86,61,88,50,94,calm_keeper,long_thrower,team_leader,,,player_green
+formal_player_01,正式球员1,forward,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_02,正式球员2,defender,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_03,正式球员3,defender,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_04,正式球员4,forward,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_05,正式球员5,defender,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_06,正式球员6,defender,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_07,正式球员7,forward,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_08,正式球员8,defender,80,75,75,75,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_09,正式球员9,goalkeeper,80,75,75,75,80,75,85,protector,aggressive,safe_passer,,,player_red

@@ -21,6 +21,7 @@ enum DemoMode {
 	LOFTED_RECEIVE_AERIAL_SHOT_TEST,
 	BALL_IMPACT_TEST,
 	GOALKEEPER_TEST,
+	FORMAL_FLOW_TEST,
 }
 
 enum MeleePreset { RANDOM, ATTACKER_WIN, TARGET_WIN, DRAW, DODGE }
@@ -115,6 +116,11 @@ var _touch_speed_override: int = 0
 ## Loads static data, wires demo controls, and starts a reproducible match.
 func _ready() -> void:
 	set_process(false)
+	if demo_mode == DemoMode.FORMAL_FLOW_TEST:
+		_field_environment.visible = false
+		_result_hud.visible = false
+		_keyboard_input.set_process(false)
+		return
 	_data_repository = DataRepository.new()
 	if not _data_repository.load_all():
 		startup_failed.emit(_data_repository.last_errors)

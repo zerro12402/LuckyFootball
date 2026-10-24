@@ -2,6 +2,10 @@
 class_name MatchConfigDefinition
 extends RefCounted
 
+var match_duration_seconds: float:
+	get: return _match_duration_seconds
+var _match_duration_seconds: float
+
 var melee_dodge_attack_advantage: float:
 	get: return _melee_dodge_attack_advantage
 var _melee_dodge_attack_advantage: float
@@ -528,7 +532,10 @@ func _init(
 	new_melee_dodge_probability_min: float = 0.1,
 	new_melee_dodge_probability_max: float = 0.9,
 	new_melee_strength_auto_win_gap: int = 20,
+	new_match_duration_seconds: float = 180.0,
 ) -> void:
+	assert(is_finite(new_match_duration_seconds) and new_match_duration_seconds > 0.0)
+	_match_duration_seconds = new_match_duration_seconds
 	assert(is_finite(new_melee_dodge_attack_advantage) and new_melee_dodge_attack_advantage >= 0.0)
 	assert(is_finite(new_melee_dodge_probability_scale) and new_melee_dodge_probability_scale > 0.0)
 	assert(is_finite(new_melee_dodge_probability_min) and is_finite(new_melee_dodge_probability_max))

@@ -4,6 +4,7 @@ extends RefCounted
 
 const CSV_HEADERS: Array[String] = ["key", "value", "comment"]
 const OPTIONAL_DEFAULTS := {
+	"match_duration_seconds": 180.0,
 	"melee_dodge_attack_advantage": 20.0,
 	"melee_dodge_probability_scale": 18.0,
 	"melee_dodge_probability_min": 0.1,
@@ -260,6 +261,9 @@ func _parse_config(
 				return null
 			value = raw_header_value.to_float()
 		header_values[key] = value
+	if header_values["match_duration_seconds"] <= 0.0:
+		result._add_error("Match duration must be positive and finite")
+		return null
 	if (header_values["melee_dodge_attack_advantage"] < 0.0
 		or header_values["melee_dodge_probability_scale"] <= 0.0
 		or header_values["melee_dodge_probability_min"] < 0.0
@@ -406,6 +410,7 @@ func _parse_config(
 		header_values["melee_dodge_probability_min"],
 		header_values["melee_dodge_probability_max"],
 		int(header_values["melee_strength_auto_win_gap"]),
+		header_values["match_duration_seconds"],
 	)
 
 

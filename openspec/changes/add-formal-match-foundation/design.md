@@ -10,9 +10,9 @@
 
 ## Context
 
-参见 [proposal.md](proposal.md)。本页为计划设计，不代表已实现。scenes/match/formal_match.tscn 当前只有空根节点；GameBootstrap 用于测试装配，GameLoop 驱动固定步，MatchSimulation 已有球权、比分与重置流程。FieldEnvironment 目前绑定四个测试角色，正式十二人表现不能只复用这组固定索引。原 autonomous-match 草案的基础需求迁至本特性，完整 AI 与词条分别另行验收。
+参见 [proposal.md](proposal.md)。正式基础已实现。scenes/match/formal_match.tscn 通过FormalMatchBootstrap独立装配；GameBootstrap 用于测试装配，GameLoop 驱动固定步，MatchSimulation 已有球权、比分与重置流程。FieldEnvironment已增加按稳定player_id管理的正式演员集合，保留四个旧测试演员用于兼容。原 autonomous-match 草案的基础需求迁至本特性，完整 AI 与词条分别另行验收。
 
-已核对 Notion《程序架构》《模块接口》《进球、出界与重置》。后者仍是单人阶段设计，界外球、开球权和正式计时只有后续标题。本次继续复用越线、球网和统一重置，补充正式生命周期与 AI 阶段权限。当前结算期仍推进球员运行系统，所以仅停止新命令不足以阻止旧移动输入继续生效。
+已核对 Notion《程序架构》《模块接口》《进球、出界与重置》。后者仍是单人阶段设计，界外球、开球权和正式计时只有后续标题。本次继续复用越线、球网和统一重置，补充正式生命周期与 AI 阶段权限。正式结算期现使用advance_settlement推进动作收尾并冻结平面位置，同时取消未释放触球与对抗意图。
 
 ## Goals / Non-Goals
 
@@ -68,19 +68,19 @@ GOAL_RESOLVED/RESETTING 可以是单步内瞬时状态，用有序事件记录�
 
 ### AI 调度和命令准入
 
-新增纯数据阶段权限查询，拟名 MatchControlPolicy，统一计算：
+新增纯数据阶段权限查询，已实现 MatchControlPolicy，统一计算：
 
 `can_decide_player_actions = phase == RUNNING && round_phase == PLAYING`
 
 这是全场准入，倒地、受击、前后摇、球权、距离与冷却等个人资格继续由既有系统验证；门将共用同一阶段权限。AI 只能提出意图，不能将非法动作变合法。
 
-通用动作来源拟提供 `propose_actions(snapshot) -> Array[MatchAction]`，GameLoop 负责调度。正式装配接后续 AI，单元测试可注入预设序列和带调用计数的假来源。没有 AI 时返回空动作并正常计时，不用专用测试追球 AI 冒充完整比赛。
+通用动作来源现提供 `propose_actions(snapshot) -> Array[MatchAction]`，GameLoop 负责调度。正式装配接后续 AI，单元测试可注入预设序列和带调用计数的假来源。没有 AI 时返回空动作并正常计时，不用专用测试追球 AI 冒充完整比赛。
 
 每固定步先检查权限，再让所有来源读取同一快照并按稳定来源/球员 ID 顺序提出意图；模拟提交前再次检查当前权限和个人资格。开始、暂停、恢复、取消是外层生命周期控制，不属于球员意图；正式入口拒绝测试重置命令。
 
 进入进球/出界结算、暂停、重置、终态时，清空待执行命令并中和持续移动输入。暂停保留动作进度，恢复重新决策，不重放旧 MOVE。停赛收尾仅推进已开始动作的必要时间，不执行新踢球、接触或伤害提交；不以“允许播完动画”为理由继续战术行为。
 
-快照拟增加 round_sequence 与 control_revision；动作批次由调度器附上生成时的比赛 ID、步号、控制修订号。阶段切换递增修订，旧批次失效；AI 缓存/决策计时器也据此重新评估，不在禁用阶段积攒补跑次数。本特性不引入异步 AI，但该规则也拦截未来迟到的旧结果。禁用阶段不调用来源，绕过来源直接提交也无副作用、无随机抽样。
+快照已增加 round_sequence 与 control_revision；动作批次由调度器附上生成时的比赛 ID、步号、控制修订号。阶段切换递增修订，旧批次失效；AI 缓存/决策计时器也据此重新评估，不在禁用阶段积攒补跑次数。本特性不引入异步 AI，但该规则也拦截未来迟到的旧结果。禁用阶段不调用来源，绕过来源直接提交也无副作用、无随机抽样。
 
 ### 重置、站位和正式比分
 
@@ -115,7 +115,7 @@ teams.csv 管身份，team_players.csv 用 team_id/player_id/slot/default_positi
 
 实现新模块前，在 Notion《设计文档》下建立“正式比赛状态与流程”，在《程序架构》下建立“正式比赛状态与 AI 调度 — 程序设计”。全局架构只核对职责；实际接口实现后再摘要同步《模块接口》，不提前登记为已完成。
 
-本特性拥有阶段权限与调度；add-player-ai 仅拥有 PLAYING 内的战术决策。其“十二名球员自主决策”应按本权限表限定，后续 AI 实现前同步其提案，不在本特性提前制作战术。当前未实现代码；专题设计已写入 Notion：[正式比赛状态与流程](https://app.notion.com/p/401f67bb9cfa81c192e2ebf6022b163a)、[正式比赛状态与 AI 调度 — 程序设计](https://app.notion.com/p/401f67bb9cfa8129a36ecfaebcbfb1eb)。
+本特性拥有阶段权限与调度；add-player-ai 仅拥有 PLAYING 内的战术决策。其“十二名球员自主决策”应按本权限表限定，后续 AI 实现前同步其提案，不在本特性提前制作战术。正式基础已实现，完整战术AI仍在后续特性；专题设计维护于 Notion：[正式比赛状态与流程](https://app.notion.com/p/401f67bb9cfa81c192e2ebf6022b163a)、[正式比赛状态与 AI 调度 — 程序设计](https://app.notion.com/p/401f67bb9cfa8129a36ecfaebcbfb1eb)。
 
 ## Risks / Trade-offs
 
@@ -128,3 +128,22 @@ teams.csv 管身份，team_players.csv 用 team_id/player_id/slot/default_positi
 ## Migration Plan
 
 依赖 complete-ai-match-demo 与 integrate-player-attributes-and-contests → Notion 专题文档与球队数据 → 生命周期/权限纯数据测试 → 回合结算与时钟 → 通用动作源/只读输出 → 正式十二人装配 → 预设整场验收。各组交付对应测试与专题文档，展示统一放现有测试模式，不单独新建模块测试场景。随后 add-player-ai 接入战术来源，add-player-traits 增加权重；下注对接只读接口。正式场景回退不影响已有测试入口。
+
+
+## 已实现契约与验收记录
+
+- 数据：DataRepository.load_formal_teams()调用TeamDataRepository读取teams.csv、team_players.csv、formation_positions.csv。后者把formation_id/default_position映射到米制X/Y，按进攻方向镜像X。生产players.csv共十二名唯一球员，原三人顺序保留。正式装配必须双队各六人且恰一门将、引用/站位合法、攻向相反；失败返回null并公开errors，不发布半成品。CSV均按keep原始数据导入。
+- FormalMatchAssembler.create_match()返回READY的MatchSimulation。FormalMatchBootstrap只依赖生产数据、通用GameLoop与表现层，正式资源无GameBootstrap、开发预设、键盘球员适配器或测试场景。空来源可正常计时；开始/暂停恢复/取消仅为观察者流程控制。每个新正式场景生成新比赛标识，正式不接受RESTART_TEST或RESET_ROUND。
+- MatchState与只读快照增加match_id、home_team_id、away_team_id、duration_seconds、remaining_seconds、round_sequence、control_revision、can_decide_player_actions、home_score、away_score、cancellation_reason与FormalMatchResult。球员快照增加team_id/is_goalkeeper。只读数组返回副本；快照不持有可变MatchState。正式结果只在FINISHED发布，取消result=null。
+- MatchControlPolicy.can_decide()统一判断RUNNING+PLAYING。MatchActionSource.propose_actions(snapshot)和invalidate_control(snapshot)构成可替换来源契约；GameLoop按注册来源顺序、来源内稳定球员ID收集，保留同一球员动作顺序，所有来源读同一快照。原TackleChaseAI继承契约保持兼容，正式不构造它。
+- MatchActionBatch以比赛ID、步号、控制修订、回合编号及私有实例令牌绑定输出；advance_action_batch提交前重验。即使外层错误复用了比赛标签，旧实例仍不能注入新实例。阶段修订使缓存/队列/持续MOVE失效，暂停保留动作计时，恢复不重放旧输入；禁用阶段不调用来源或积攒补跑。
+- MatchSimulation在有效步内推进，时钟钳制到CSV match_duration_seconds（初值180秒）。越线只在[0,duration)登记，终场优先同刻重置；较早进球保留，不等球网/扑救收尾。GoalNetContact.time_seconds记录本段精确接触时刻，正式事件复制真实子步时间。GOAL_RESOLVED/RESETTING通过ROUND_PHASE_CHANGED流可观测，重置完成后下一固定步再决策。
+- 停赛清理待触球/对抗意图并中和持续移动；advance_settlement仅让已有姿态/冷却收尾，冻结普通移动、突进和击退平面位置，无新控球/伤害。十二人原子复位，球回中点自由状态、清手持附件/球路来源/接触锁；保留比分、ID、属性、步号、时间与RNG进度，门将朝场内，round_sequence递增。
+- MatchEvent增加MATCH_CANCELLED、ROUND_PHASE_CHANGED及只读match_id/event_sequence/phase/round_phase/round_sequence/control_revision/result/cancellation_reason。瞬时阶段在创建时捕获，事件在唯一发布边界编号；进球前对抗不会被标为进球后阶段。物理左右门计数保留，正式队比分按进攻方向映射，与最后触球者无关。
+- 新增test_formal_data/lifecycle/control/deadline/rounds/scene六组测试，验证阵容拒绝、全阶段权限、旧批次、时间两侧、同刻优先、收尾、重置、真实控件与依赖隔离，并通过预设十二人整场重放。单项展示在原共用场景的“正式比赛流程测试”，不新增每模块独立测试场景；未执行截图或渲染测试。
+
+## 交接给 add-player-ai
+
+后续AI实现MatchActionSource，仅在snapshot.can_decide_player_actions为true时由GameLoop调用；invalidate_control必须清除缓存和决策计时器，不在停赛补跑。返回MatchAction，不持有比赛写入权，不控制生命周期。批次由调度器绑定当前快照，旧比赛/实例、步号、回合或修订结果会被拒绝；个人资格仍由模拟层验证。基础层拥有全部阶段权限、时间、复位、终场与取消；下注方只消费正式结果或取消事实。本次交接不创建尚缺的完整AI专题文档，也不替代其前置文档任务。
+
+最终验收：53项非渲染回归全部通过，六组正式测试与原有行为/模式共同验收。仅由正常MatchAction来源运行的十二人预设整场覆盖进球、暂停/恢复、出界、两次重置和唯一终场，两次固定种子事件流一致。两份OpenSpec严格校验及差异检查通过；Notion专题、全局实际接口与后续AI交接已同步，未实现战术AI或下注，也未执行画面测试。

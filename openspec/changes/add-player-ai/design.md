@@ -10,7 +10,7 @@
 
 ## Context
 
-参见 [proposal.md](proposal.md)。现有 TackleChaseAI 只针对一名对手，GameLoop 也仅接入该测试 AI。正式比赛基础由 add-formal-match-foundation 提供，真实属性与体力由 integrate-player-attributes-and-contests 提供。本特性迁入原 7.1、7.3 与状态动作限制，保留词条独立边界。
+参见 [proposal.md](proposal.md)。现有 TackleChaseAI 只针对一名对手，GameLoop现已接入通用MatchActionSource，兼容旧测试AI；正式基础提供阶段权限、批次失效与终态控制。正式比赛基础由 add-formal-match-foundation 提供，真实属性与体力由 integrate-player-attributes-and-contests 提供。本特性迁入原 7.1、7.3 与状态动作限制，保留词条独立边界。
 
 ## Goals / Non-Goals
 
@@ -36,3 +36,12 @@
 ## Migration Plan
 
 先用夹具快照完成候选与状态测试；正式基础和属性完成后接入十二人装配，并做无词条整场验收。之后 add-player-traits 接入权重扩展。可回退正式 AI 装配而保留基础比赛和原测试 AI。
+
+
+## 正式基础已交接的状态与调度契约
+
+实现MatchActionSource.propose_actions(snapshot)并返回Array[MatchAction]，由GameLoop在RUNNING+PLAYING调用；所有来源读取同一步同一只读快照，稳定来源/球员顺序由调度器保证。门将同样受阶段权限约束，个人动作锁/球权/冷却继续由规则检查。
+
+invalidate_control(snapshot)必须清除决策缓存/计时器；control_revision、round_sequence或实例变化后重新评估，不恢复旧MOVE，不在禁用阶段积累补跑。MatchActionBatch由调度器绑定比赛ID、步号、回合、修订及私有实例令牌，提交前重验。AI不能自行暂停、重置、终场或直接改球权/比分。
+
+正式生产场景目前使用空来源，仅证明完整生命周期和计时可运行，不代表十二人战术已实现。完整候选与战术策划/程序设计页仍须按1.1补齐；本交接不标记任何AI实施任务完成。筹码取消/退款由下注特性处理。

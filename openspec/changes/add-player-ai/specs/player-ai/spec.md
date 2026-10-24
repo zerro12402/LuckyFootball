@@ -7,7 +7,7 @@
 ## ADDED Requirements
 
 ### Requirement: 双方全部球员自主决策
-正式比赛 SHALL 由双方全部十二名球员的 AI 提出合法动作候选，覆盖持球、无球、进攻、防守与门将职责；玩家无需直接操控球员。
+正式比赛 SHALL 仅在RUNNING且回合为PLAYING、snapshot.can_decide_player_actions为true时，由双方全部十二名球员的AI提出合法动作候选，覆盖持球、无球、进攻、防守与门将职责；玩家无需直接操控球员。
 
 #### Scenario: 攻守转换
 - **WHEN** 球权在双方之间转移
@@ -44,3 +44,10 @@ AI SHALL 在中性行为权重下独立运行，并提供后续词条使用的�
 #### Scenario: 十二人完整比赛
 - **WHEN** 正式模式以有效阵容和固定种子开始，期间没有玩家球员命令
 - **THEN** 双方完成比赛并只触发一次终场，同输入重放得到相同结果
+
+### Requirement: 遵循正式基础的控制修订和动作来源契约
+AI SHALL 实现MatchActionSource并仅由GameLoop在获准阶段调度；暂停、结算、重置和终态不决策或积累补跑。invalidate_control(snapshot) SHALL 清除缓存/计时器，恢复后按最新快照重新评估，旧实例、回合、步号或control_revision结果不得重新提交。生命周期、计时、复位与赛果由正式基础负责，AI MUST 不重复实现或绕过其规则。
+
+#### Scenario: 停赛后恢复或进入新回合
+- **WHEN** 正式基础发布新的控制修订或回合编号
+- **THEN** AI丢弃旧意图与计时缓存，不补跑停赛决策，仅下一获准固定步根据最新快照生成新动作；最终资格仍由MatchSimulation复核

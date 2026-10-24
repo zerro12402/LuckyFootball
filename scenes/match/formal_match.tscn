@@ -1,3 +1,10 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/app/formal_match_bootstrap.gd" id="1_bootstrap"]
+[ext_resource type="PackedScene" path="res://scenes/match/field_environment.tscn" id="2_field"]
+
 [node name="FormalMatch" type="Node2D"]
+script = ExtResource("1_bootstrap")
+
+[node name="FieldEnvironment" parent="." instance=ExtResource("2_field")]
+unique_name_in_owner = true

@@ -81,6 +81,7 @@ func _init(initial_position_m: Vector2) -> void:
 	_position_m = initial_position_m
 
 
+## Applies a finite logical position without inferring visual offsets.
 func _set_position(new_position_m: Vector2) -> void:
 	_position_m = new_position_m
 
@@ -250,3 +251,8 @@ func _clear_flight() -> void:
 ## Changes the owned-ball attachment without creating another ball.
 func _set_attachment(attachment: int) -> void:
 	_control_attachment = attachment
+
+
+## Stops velocity at a terminal match boundary without relocating the observed ball.
+func _freeze_motion() -> void:
+	_velocity_mps = Vector2.ZERO

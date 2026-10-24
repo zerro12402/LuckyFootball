@@ -103,3 +103,17 @@ func _clear_loaded_data() -> void:
 	_fields_by_id.clear()
 	_match_config_definitions.clear()
 	_match_configs_by_id.clear()
+
+
+## Loads formal-only tables after base definitions, without publishing partial rosters on validation failure.
+func load_formal_teams(directory: String = DEFAULT_DATA_DIRECTORY, field_id: String = "demo_field") -> TeamDataRepository:
+	var field := get_field_by_id(field_id)
+	if field == null:
+		_last_errors = PackedStringArray(["Load base field definitions before formal teams"])
+		return null
+	var repository := TeamDataRepository.new()
+	if not repository.load_all(directory, self, field):
+		_last_errors = repository.errors
+		return null
+	_last_errors.clear()
+	return repository

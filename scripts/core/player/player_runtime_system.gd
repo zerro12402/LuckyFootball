@@ -90,3 +90,11 @@ func apply_action(action: MatchAction) -> bool:
 func advance(fixed_delta_seconds: float) -> void:
 	for player_runtime in get_players():
 		player_runtime.advance(fixed_delta_seconds)
+
+
+## Advances existing poses/cooldowns only; settlement never advances tactical or forced planar motion.
+func advance_settlement(fixed_delta_seconds: float) -> void:
+	for player in get_players():
+		var point := player.state.position_m
+		player.advance(fixed_delta_seconds)
+		player.state._set_position(point)

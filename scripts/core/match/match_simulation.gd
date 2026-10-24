@@ -13,6 +13,12 @@ enum MeleeOutcome {
 	DODGED,
 }
 
+var _event_sequence: int = 0
+var _boundary_event_time: float = -1.0
+var _formal_step_start_seconds: float = 0.0
+var _formal_step_delta: float = 0.0
+var _formal_player_starts: Dictionary[String, Vector2] = {}
+
 var _state: MatchState
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _lifecycle_events: Array[MatchEvent] = []
@@ -114,7 +120,7 @@ func register_player(
 	tackling_attribute: int = 50,
 	goalkeeping_attribute: int = 50,
 ) -> bool:
-	if _state.phase != MatchState.Phase.READY or not initial_position_m.is_finite():
+	if _state.phase != MatchState.Phase.READY or is_formal() or not initial_position_m.is_finite():
 		return false
 	var registered := _player_runtime_system.register_player(
 		player_id,
@@ -157,7 +163,7 @@ func register_player_from_definition(
 
 ## Associates a team with its opponent goal center before the match starts.
 func register_team_attacking_goal(team_id: String, goal_center_m: Vector2) -> bool:
-	if _state.phase != MatchState.Phase.READY:
+	if _state.phase != MatchState.Phase.READY or is_formal():
 		return false
 	if team_id.is_empty() or not goal_center_m.is_finite():
 		return false
@@ -184,7 +190,7 @@ func start_match() -> bool:
 	if _state.phase != MatchState.Phase.READY:
 		return false
 	_state._set_phase(MatchState.Phase.RUNNING)
-	_lifecycle_events.append(_create_event(MatchEvent.Type.MATCH_STARTED))
+	_queue_lifecycle_event(_create_event(MatchEvent.Type.MATCH_STARTED))
 	return true
 
 
@@ -193,7 +199,9 @@ func pause_match() -> bool:
 	if _state.phase != MatchState.Phase.RUNNING:
 		return false
 	_state._set_phase(MatchState.Phase.PAUSED)
-	_lifecycle_events.append(_create_event(MatchEvent.Type.MATCH_PAUSED))
+	if is_formal():
+		_invalidate_formal_intents()
+	_queue_lifecycle_event(_create_event(MatchEvent.Type.MATCH_PAUSED))
 	return true
 
 
@@ -202,16 +210,18 @@ func resume_match() -> bool:
 	if _state.phase != MatchState.Phase.PAUSED:
 		return false
 	_state._set_phase(MatchState.Phase.RUNNING)
-	_lifecycle_events.append(_create_event(MatchEvent.Type.MATCH_RESUMED))
+	_queue_lifecycle_event(_create_event(MatchEvent.Type.MATCH_RESUMED))
 	return true
 
 
 ## Stops all future simulation steps after a match ends.
 func finish_match() -> bool:
+	if is_formal():
+		return false
 	if _state.phase != MatchState.Phase.RUNNING and _state.phase != MatchState.Phase.PAUSED:
 		return false
 	_state._set_phase(MatchState.Phase.FINISHED)
-	_lifecycle_events.append(_create_event(MatchEvent.Type.MATCH_FINISHED))
+	_queue_lifecycle_event(_create_event(MatchEvent.Type.MATCH_FINISHED))
 	return true
 
 
@@ -219,8 +229,136 @@ func is_running() -> bool:
 	return _state.phase == MatchState.Phase.RUNNING
 
 
+## Initializes a validated twelve-player formal match while keeping isolated demos backwards compatible.
+func configure_formal_match(id: String, home: String, away: String) -> bool:
+	if _state.phase != MatchState.Phase.READY or is_formal() or id.is_empty() or home.is_empty() or home == away:
+		return false
+	if _match_config == null or _field_definition == null or _ball_runtime_system.state == null:
+		return false
+	var players := _player_runtime_system.get_players()
+	if players.size() != 12 or not _attacking_goals_by_team.has(home) or not _attacking_goals_by_team.has(away):
+		return false
+	if not _attacking_goals_by_team[home].is_equal_approx(-_attacking_goals_by_team[away]):
+		return false
+	for team in [home, away]:
+		var count := 0
+		var keepers := 0
+		for player in players:
+			if player.team_id == team:
+				count += 1
+				keepers += int(player.is_goalkeeper)
+		if count != 6 or keepers != 1:
+			return false
+	_state._configure_formal(id, home, away, _match_config.match_duration_seconds)
+	return true
+
+func is_formal() -> bool:
+	return not _state.match_id.is_empty()
+
+func can_decide_player_actions() -> bool:
+	return MatchControlPolicy.can_decide(_state.phase, _state.round_phase)
+
+## Validates stamped batches immediately before mutation; stale payloads cannot regain authority.
+func advance_action_batch(delta: float, batch: MatchActionBatch) -> Array[MatchEvent]:
+	var actions: Array[MatchAction] = []
+	if batch != null and batch.matches(create_snapshot()) and can_decide_player_actions():
+		actions = batch.actions
+	return advance_fixed_step(delta, actions)
+
+## Clips formal time exactly at the deadline and commits one result after all earlier eligible facts.
+func advance_fixed_step(delta: float, actions: Array[MatchAction]) -> Array[MatchEvent]:
+	assert(is_finite(delta) and delta > 0.0)
+	if not is_formal():
+		return _advance_play_step(delta, actions)
+	if not is_running():
+		return []
+	var effective := minf(delta, maxf(_state.duration_seconds - _state.elapsed_seconds, 0.0))
+	_formal_step_start_seconds = _state.elapsed_seconds
+	_formal_step_delta = effective
+	_formal_player_starts.clear()
+	for player in _player_runtime_system.get_players():
+		_formal_player_starts[player.player_id] = player.state.position_m
+	var eligible: Array[MatchAction] = []
+	if can_decide_player_actions():
+		for action in actions:
+			if action != null and action.action_type not in [MatchAction.Type.RESET_ROUND, MatchAction.Type.RESTART_TEST]:
+				eligible.append(action)
+	var events: Array[MatchEvent] = []
+	if effective > 0.0:
+		events = _advance_play_step(effective, eligible)
+	if _state.elapsed_seconds >= _state.duration_seconds - MatchRules.TIME_EPSILON:
+		_state._clamp_elapsed(_state.duration_seconds)
+		_finish_formal(events)
+	return events
+
+## Cancels observation without manufacturing a normal win/draw/loss result.
+func cancel_match(reason: String = "cancelled") -> bool:
+	if _state.phase not in [MatchState.Phase.READY, MatchState.Phase.RUNNING, MatchState.Phase.PAUSED]:
+		return false
+	_state._set_cancellation_reason(reason)
+	_state._set_phase(MatchState.Phase.CANCELLED)
+	_invalidate_formal_intents()
+	_ball_runtime_system.freeze_for_terminal()
+	_pending_reset_reason = MatchEvent.ResetReason.NONE
+	_queue_lifecycle_event(_create_event(MatchEvent.Type.MATCH_CANCELLED))
+	return true
+
+## Drops cached intentions while retaining current actor action progress and random-source position.
+func _invalidate_formal_intents() -> void:
+	_player_runtime_system.stop_all_players_for_settlement(false)
+	_pending_tackle_targets.clear()
+	_pending_knockdown_targets.clear()
+	_pending_melee_sequences.clear()
+	_pending_header_actions.clear()
+	_keeper_intents.clear()
+	_ball_runtime_system.cancel_pending_actions()
+
+## Freezes official scores and publishes exactly one terminal result, preempting any pending reset.
+func _finish_formal(events: Array[MatchEvent]) -> void:
+	if _state.phase != MatchState.Phase.RUNNING:
+		return
+	_state._set_result(FormalMatchResult.new(_state.match_id, _state.home_team_id, _state.away_team_id,
+		_state.home_score, _state.away_score, _state.random_seed, _state.elapsed_seconds))
+	_state._set_phase(MatchState.Phase.FINISHED)
+	_invalidate_formal_intents()
+	_ball_runtime_system.freeze_for_terminal()
+	_pending_reset_reason = MatchEvent.ResetReason.NONE
+	_settlement_remaining_seconds = 0.0
+	var event := _create_event(MatchEvent.Type.MATCH_FINISHED)
+	_publish_event(event)
+	_event_history.append(event)
+	events.append(event)
+
+## Publishes lifecycle events immediately, including controls performed outside a fixed step.
+func _queue_lifecycle_event(event: MatchEvent) -> void:
+	_publish_event(event)
+	_lifecycle_events.append(event)
+	if is_formal():
+		_event_history.append(event)
+
+## Assigns monotonically increasing stream order only at the single publication boundary.
+func _publish_event(event: MatchEvent) -> void:
+	if event.event_sequence != 0:
+		return
+	if event.match_id.is_empty():
+		event._capture_context(_state)
+	_event_sequence += 1
+	event._set_sequence(_event_sequence)
+
+## Records instantaneous round transitions without requiring a separate rendered frame.
+func _transition_round(phase: int, events: Array[MatchEvent]) -> void:
+	if _state.round_phase == phase:
+		return
+	if is_formal():
+		for event in events:
+			if event.match_id.is_empty():
+				event._capture_context(_state)
+	_state._set_round_phase(phase)
+	if is_formal():
+		events.append(_create_event(MatchEvent.Type.ROUND_PHASE_CHANGED))
+
 ## Gives manual resets priority, then advances settlement or active play.
-func advance_fixed_step(
+func _advance_play_step(
 	fixed_delta_seconds: float,
 	actions: Array[MatchAction],
 ) -> Array[MatchEvent]:
@@ -237,6 +375,10 @@ func advance_fixed_step(
 		return step_events
 	if _pending_reset_reason != MatchEvent.ResetReason.NONE:
 		return _advance_settlement_step(fixed_delta_seconds, step_events)
+	if is_formal() and not can_decide_player_actions():
+		step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
+		_record_step_events(step_events)
+		return step_events
 
 	for action in actions:
 		if action == null:
@@ -533,8 +675,14 @@ func _append_impact_event(type: int, result: BallImpactResult, time: float,
 ## Settles the first whole-ball crossing and spends only the unused post-contact time.
 func _settle_shot_contact_boundary(contact: BallContactCandidate, remaining: float,
 		events: Array[MatchEvent]) -> void:
+	if is_formal():
+		_boundary_event_time = _state.elapsed_seconds - remaining
+		if _boundary_event_time >= _state.duration_seconds - MatchRules.TIME_EPSILON:
+			_boundary_event_time = -1.0
+			return
 	var velocity := _ball_runtime_system.state.velocity_mps
 	_settle_boundary(contact.boundary, events, false, velocity, Vector2.ZERO, Vector2.ZERO, 0.0)
+	_boundary_event_time = -1.0
 	if contact.boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
 		_ball_runtime_system.begin_post_goal_motion(contact.position_m, velocity)
 		_advance_goal_motion(remaining, events)
@@ -551,7 +699,7 @@ func _sample_ball_route() -> float:
 func create_snapshot() -> MatchStateSnapshot:
 	var player_snapshots: Array[PlayerStateSnapshot] = []
 	for player_runtime in _player_runtime_system.get_players():
-		player_snapshots.append(PlayerStateSnapshot.new(player_runtime.state))
+		player_snapshots.append(PlayerStateSnapshot.new(player_runtime.state, player_runtime.team_id, player_runtime.is_goalkeeper))
 	return MatchStateSnapshot.new(
 		_state.phase,
 		_state.elapsed_seconds,
@@ -562,6 +710,7 @@ func create_snapshot() -> MatchStateSnapshot:
 		_state.round_phase,
 		_state.left_goal_count,
 		_state.right_goal_count,
+		_state,
 	)
 
 
@@ -587,7 +736,14 @@ func _complete_boundary_step(
 	motion_end_m: Vector2 = Vector2.ZERO,
 	fixed_delta_seconds: float = 0.0,
 ) -> Array[MatchEvent]:
+	if is_formal():
+		_boundary_event_time = _formal_step_start_seconds + _formal_step_delta * boundary.crossing_fraction
+		if _boundary_event_time >= _state.duration_seconds - MatchRules.TIME_EPSILON:
+			_boundary_event_time = -1.0
+			_record_step_events(events)
+			return events
 	_settle_boundary(boundary, events, is_carried_boundary, exit_velocity_mps, motion_start_m, motion_end_m, fixed_delta_seconds)
+	_boundary_event_time = -1.0
 	events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	_record_step_events(events)
 	return events
@@ -601,12 +757,15 @@ func _advance_settlement_step(
 	var active_delta_seconds := minf(fixed_delta_seconds, _settlement_remaining_seconds)
 	if active_delta_seconds > 0.0:
 		if _pending_reset_reason == MatchEvent.ResetReason.GOAL:
-			_advance_goal_motion(active_delta_seconds, events)
+			_advance_goal_motion(active_delta_seconds, events, _state.elapsed_seconds - fixed_delta_seconds)
 		elif not _is_carried_settlement:
 			_ball_runtime_system.advance_out_of_play(
 				active_delta_seconds, _out_of_play_velocity_mps
 			)
-		_player_runtime_system.advance(active_delta_seconds)
+		if is_formal():
+			_player_runtime_system.advance_settlement(active_delta_seconds)
+		else:
+			_player_runtime_system.advance(active_delta_seconds)
 	_settlement_remaining_seconds = maxf(
 		_settlement_remaining_seconds - fixed_delta_seconds, 0.0
 	)
@@ -633,7 +792,7 @@ func _advance_settlement_step(
 
 
 ## Emits net contacts in sweep order without reopening scoring or player input.
-func _advance_goal_motion(delta_seconds: float, events: Array[MatchEvent]) -> void:
+func _advance_goal_motion(delta_seconds: float, events: Array[MatchEvent], start_time: float = -1.0) -> void:
 	if delta_seconds <= 0.0 or _ball_runtime_system.state.velocity_mps.is_zero_approx():
 		return
 	var contacts := _ball_runtime_system.advance_post_goal_motion(
@@ -641,15 +800,23 @@ func _advance_goal_motion(delta_seconds: float, events: Array[MatchEvent]) -> vo
 	)
 	_goal_motion_elapsed_seconds += delta_seconds
 	for contact in contacts:
+		var previous_time := _boundary_event_time
+		if is_formal():
+			_boundary_event_time = (_state.elapsed_seconds - delta_seconds if start_time < 0.0 else start_time) + contact.time_seconds
+			if _boundary_event_time >= _state.duration_seconds - MatchRules.TIME_EPSILON:
+				_boundary_event_time = previous_time
+				continue
 		events.append(_create_event(
 			MatchEvent.Type.GOAL_NET_CONTACT, "", MatchEvent.ResetReason.GOAL,
 			_pending_reset_side, contact.contact_position_m, "", 0, false, contact
 		))
+		_boundary_event_time = previous_time
 
 
 ## Records observable events while omitting the per-step clock tick.
 func _record_step_events(events: Array[MatchEvent]) -> void:
 	for event in events:
+		_publish_event(event)
 		if event.event_type != MatchEvent.Type.SIMULATION_ADVANCED:
 			_event_history.append(event)
 
@@ -710,6 +877,12 @@ func _settle_boundary(
 ) -> void:
 	assert(_pending_reset_reason == MatchEvent.ResetReason.NONE)
 	assert(_boundary_reset_delay_seconds > 0.0)
+	if is_formal():
+		var fraction := clampf((_boundary_event_time - _formal_step_start_seconds) / maxf(_formal_step_delta, MatchRules.TIME_EPSILON), 0.0, 1.0)
+		for player in _player_runtime_system.get_players():
+			if _formal_player_starts.has(player.player_id):
+				player.state._set_position(_formal_player_starts[player.player_id].lerp(player.state.position_m, fraction))
+		_invalidate_formal_intents()
 	var last_kicker_id := _ball_runtime_system.last_kicker_id
 	_pending_reset_side = boundary.side
 	_settlement_remaining_seconds = _boundary_reset_delay_seconds
@@ -731,8 +904,13 @@ func _settle_boundary(
 	if boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
 		_pending_reset_reason = MatchEvent.ResetReason.GOAL
 		_settlement_remaining_seconds = _match_config.goal_net_max_motion_seconds
-		_state._set_round_phase(MatchState.RoundPhase.POST_GOAL_MOTION)
+		_transition_round(MatchState.RoundPhase.GOAL_RESOLVED, events)
 		_state._record_goal(boundary.side)
+		if is_formal():
+			for team_id in _attacking_goals_by_team:
+				var goal: Vector2 = _attacking_goals_by_team[team_id]
+				if (goal.x < 0.0) == (boundary.side == MatchBoundaryResult.Side.LEFT):
+					_state._record_team_goal(team_id)
 		var goal_count := _state.left_goal_count
 		if boundary.side == MatchBoundaryResult.Side.RIGHT:
 			goal_count = _state.right_goal_count
@@ -745,6 +923,7 @@ func _settle_boundary(
 			last_kicker_id,
 			goal_count,
 		))
+		_transition_round(MatchState.RoundPhase.POST_GOAL_MOTION, events)
 		if fixed_delta_seconds > 0.0:
 			var crossing_x := _field_definition.length_m * 0.5 + _match_config.ball_radius_m
 			if boundary.side == MatchBoundaryResult.Side.LEFT:
@@ -758,7 +937,7 @@ func _settle_boundary(
 			_advance_goal_motion(fixed_delta_seconds * (1.0 - crossing_fraction), events)
 	else:
 		_pending_reset_reason = MatchEvent.ResetReason.OUT
-		_state._set_round_phase(MatchState.RoundPhase.OUT_RESOLVED)
+		_transition_round(MatchState.RoundPhase.OUT_RESOLVED, events)
 		events.append(_create_event(
 			MatchEvent.Type.BALL_OUT_OF_BOUNDS,
 			last_kicker_id,
@@ -778,7 +957,9 @@ func _reset_round(
 	events: Array[MatchEvent],
 	side: int = MatchBoundaryResult.Side.NONE,
 ) -> void:
-	_state._set_round_phase(MatchState.RoundPhase.RESETTING)
+	if is_formal() and _state.elapsed_seconds >= _state.duration_seconds - MatchRules.TIME_EPSILON:
+		return
+	_transition_round(MatchState.RoundPhase.RESETTING, events)
 	_ball_runtime_system.reset_ball(ball_reset_position_m)
 	_player_runtime_system.reset_all_players()
 	for player in _player_runtime_system.get_players():
@@ -802,7 +983,8 @@ func _reset_round(
 		_state._restart_test()
 		_lifecycle_events.clear()
 		_event_history.clear()
-	_state._set_round_phase(MatchState.RoundPhase.PLAYING)
+	if is_formal():
+		_state._next_round()
 	events.append(_create_event(
 		MatchEvent.Type.RESET_COMPLETED,
 		"",
@@ -810,6 +992,7 @@ func _reset_round(
 		side,
 		ball_reset_position_m,
 	))
+	_transition_round(MatchState.RoundPhase.PLAYING, events)
 
 
 ## Allows an early windup against a nearby carrier; actual contact keeps its smaller radius.
@@ -1215,9 +1398,9 @@ func _create_event(
 	is_corner: bool = false,
 	net_contact: GoalNetContact = null,
 ) -> MatchEvent:
-	return MatchEvent.new(
+	var event := MatchEvent.new(
 		event_type,
-		_state.elapsed_seconds,
+		_boundary_event_time if _boundary_event_time >= 0.0 else _state.elapsed_seconds,
 		_state.simulation_step,
 		subject_id,
 		reason,
@@ -1231,6 +1414,9 @@ func _create_event(
 			or (event_type == MatchEvent.Type.BALL_HEADED
 				and _ball_runtime_system.state.flight_kind == BallMatchState.FlightKind.SHOT)) else null,
 	)
+
+	event._capture_context(_state)
+	return event
 
 
 ## Samples F11 only at legal release, then independently selects the applicable target branch.

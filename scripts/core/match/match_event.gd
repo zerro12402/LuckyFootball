@@ -36,6 +36,8 @@ enum Type {
 	GOALKEEPER_SAVE_RESOLVED,
 	TACKLE_FAILED,
 	MELEE_CONTEST_RESOLVED,
+	MATCH_CANCELLED,
+	ROUND_PHASE_CHANGED,
 }
 
 enum ResetReason {
@@ -45,6 +47,31 @@ enum ResetReason {
 	MANUAL_ROUND,
 	RESTART_TEST,
 }
+
+var match_id: String:
+	get: return _match_id
+var _match_id: String = ""
+var event_sequence: int:
+	get: return _event_sequence
+var _event_sequence: int = 0
+var phase: int:
+	get: return _phase
+var _phase: int = 0
+var round_phase: int:
+	get: return _round_phase
+var _round_phase: int = 0
+var round_sequence: int:
+	get: return _round_sequence
+var _round_sequence: int = 0
+var control_revision: int:
+	get: return _control_revision
+var _control_revision: int = 0
+var result: FormalMatchResult:
+	get: return _result
+var _result: FormalMatchResult
+var cancellation_reason: String:
+	get: return _cancellation_reason
+var _cancellation_reason: String = ""
 
 var event_type: int:
 	get:
@@ -203,3 +230,17 @@ func _init(
 		_contact_position_m = new_net_contact.contact_position_m
 		_velocity_before_mps = new_net_contact.velocity_before_mps
 		_velocity_after_mps = new_net_contact.velocity_after_mps
+
+
+## Copies lifecycle metadata at creation so transient phases remain observable after the step commits.
+func _capture_context(state: MatchState) -> void:
+	_match_id = state.match_id
+	_phase = state.phase
+	_round_phase = state.round_phase
+	_round_sequence = state.round_sequence
+	_control_revision = state.control_revision
+	_result = state.result
+	_cancellation_reason = state.cancellation_reason
+
+func _set_sequence(sequence: int) -> void:
+	_event_sequence = sequence

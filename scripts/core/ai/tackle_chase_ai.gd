@@ -1,6 +1,6 @@
 ## Proposes chase, tackle and goal-directed dribble commands for either test player.
 class_name TackleChaseAI
-extends RefCounted
+extends MatchActionSource
 
 var _defender_id: String
 var _target_id: String

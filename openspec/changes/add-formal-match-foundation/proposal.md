@@ -28,4 +28,4 @@
 
 ## Impact
 
-依赖 `complete-ai-match-demo` 和 `integrate-player-attributes-and-contests`。影响球队/阵容数据、MatchState、MatchSimulation、GameLoop、正式场景与装配测试；FieldEnvironment 需从固定测试角色扩展到按 ID 管理十二名角色。只读接口由 AI 和下注挑战消费；本特性拥有 AI 调用与命令准入的阶段约束，不承担战术选择、词条或筹码规则。本次仅补充提案文档，不实现代码，不将规划接口写成已实现接口。
+依赖 `complete-ai-match-demo` 和 `integrate-player-attributes-and-contests`。影响球队/阵容数据、MatchState、MatchSimulation、GameLoop、正式场景与装配测试；FieldEnvironment 需从固定测试角色扩展到按 ID 管理十二名角色。只读接口由 AI 和下注挑战消费；本特性拥有 AI 调用与命令准入的阶段约束，不承担战术选择、词条或筹码规则。正式基础现已实现独立十二人装配、两层状态、时间与调度契约；生产入口使用空动作来源等待后续战术AI，本变更不宣称全AI比赛完成。

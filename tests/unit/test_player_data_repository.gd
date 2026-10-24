@@ -1,8 +1,10 @@
+## Validates typed player data, readonly traits and transactional CSV failure reporting.
 extends SceneTree
 
 var _failures: PackedStringArray = []
 
 
+## Runs all static-data contracts without scene or runtime dependencies.
 func _init() -> void:
 	test_valid_csv_when_loaded_returns_typed_players()
 	test_boundary_values_when_loaded_are_accepted()
@@ -23,14 +25,15 @@ func _init() -> void:
 	quit(1)
 
 
+## Verifies valid csv when loaded returns typed players using explicit CSV input.
 func test_valid_csv_when_loaded_returns_typed_players() -> void:
 	var result := PlayerDataRepository.new().load_from_csv(
 		"res://resources/data/players.csv"
 	)
 	_expect(result.is_success, "Expected valid players.csv to load")
 	_expect(result.errors.is_empty(), "Expected valid players.csv to have no errors")
-	_expect(result.players.size() == 3, "Expected three player definitions")
-	if result.players.size() != 3:
+	_expect(result.players.size() == 12, "Expected twelve roster player definitions")
+	if result.players.size() != 12:
 		return
 	var forward := result.players[0]
 	_expect(forward is PlayerDefinition, "Expected a typed PlayerDefinition")
@@ -42,6 +45,7 @@ func test_valid_csv_when_loaded_returns_typed_players() -> void:
 	_expect(forward.trait_ids[0] == "speedster", "Expected ordered trait columns")
 
 
+## Verifies boundary values when loaded are accepted using explicit CSV input.
 func test_boundary_values_when_loaded_are_accepted() -> void:
 	var result := PlayerDataRepository.new().load_from_csv(
 		"res://tests/fixtures/players_boundary_values.csv"
@@ -56,6 +60,7 @@ func test_boundary_values_when_loaded_are_accepted() -> void:
 	_expect(boundary_player.trait_ids.size() == 5, "Expected maximum trait count 5")
 
 
+## Verifies loaded traits when modified do not change definition using explicit CSV input.
 func test_loaded_traits_when_modified_do_not_change_definition() -> void:
 	var result := PlayerDataRepository.new().load_from_csv(
 		"res://resources/data/players.csv"
@@ -71,6 +76,7 @@ func test_loaded_traits_when_modified_do_not_change_definition() -> void:
 	)
 
 
+## Verifies missing csv when loaded returns failure using explicit CSV input.
 func test_missing_csv_when_loaded_returns_failure() -> void:
 	var result := PlayerDataRepository.new().load_from_csv(
 		"res://tests/fixtures/missing_players.csv"
@@ -79,6 +85,7 @@ func test_missing_csv_when_loaded_returns_failure() -> void:
 	_expect(result.players.is_empty(), "Expected no partial data for a missing CSV")
 
 
+## Verifies invalid header when loaded returns failure using explicit CSV input.
 func test_invalid_header_when_loaded_returns_failure() -> void:
 	_expect_fixture_failure(
 		"players_invalid_header.csv",
@@ -86,6 +93,7 @@ func test_invalid_header_when_loaded_returns_failure() -> void:
 	)
 
 
+## Verifies duplicate player id when loaded returns failure using explicit CSV input.
 func test_duplicate_player_id_when_loaded_returns_failure() -> void:
 	_expect_fixture_failure(
 		"players_duplicate_id.csv",
@@ -93,6 +101,7 @@ func test_duplicate_player_id_when_loaded_returns_failure() -> void:
 	)
 
 
+## Verifies out of range attribute when loaded returns failure using explicit CSV input.
 func test_out_of_range_attribute_when_loaded_returns_failure() -> void:
 	_expect_fixture_failure(
 		"players_invalid_stat.csv",
@@ -100,6 +109,7 @@ func test_out_of_range_attribute_when_loaded_returns_failure() -> void:
 	)
 
 
+## Verifies too few traits when loaded returns failure using explicit CSV input.
 func test_too_few_traits_when_loaded_returns_failure() -> void:
 	_expect_fixture_failure(
 		"players_invalid_traits.csv",
@@ -107,6 +117,7 @@ func test_too_few_traits_when_loaded_returns_failure() -> void:
 	)
 
 
+## Verifies duplicate traits when loaded returns failure using explicit CSV input.
 func test_duplicate_traits_when_loaded_returns_failure() -> void:
 	_expect_fixture_failure(
 		"players_duplicate_trait.csv",
@@ -114,12 +125,13 @@ func test_duplicate_traits_when_loaded_returns_failure() -> void:
 	)
 
 
+## Verifies data repository when loaded indexes players by id using explicit CSV input.
 func test_data_repository_when_loaded_indexes_players_by_id() -> void:
 	var data_repository := DataRepository.new()
 	_expect(data_repository.load_all(), "Expected DataRepository to load all tables")
 	_expect(
-		data_repository.player_definitions.size() == 3,
-		"Expected DataRepository to expose three players",
+		data_repository.player_definitions.size() == 12,
+		"Expected DataRepository to expose twelve players",
 	)
 	var goalkeeper := data_repository.get_player_by_id("steady_keeper")
 	_expect(goalkeeper != null, "Expected player lookup by stable ID")
@@ -140,6 +152,7 @@ func test_data_repository_when_loaded_indexes_players_by_id() -> void:
 		_expect(is_equal_approx(field.width_m, 30.0), "Expected field width")
 
 
+## Requires invalid data to fail without publishing partially parsed players.
 func _expect_fixture_failure(file_name: String, failure_message: String) -> void:
 	var result := PlayerDataRepository.new().load_from_csv(
 		"res://tests/fixtures".path_join(file_name)
@@ -149,6 +162,7 @@ func _expect_fixture_failure(file_name: String, failure_message: String) -> void
 	_expect(not result.errors.is_empty(), "Expected invalid CSV to report errors")
 
 
+## Collects independent failures rather than aborting on the first invalid CSV case.
 func _expect(condition: bool, failure_message: String) -> void:
 	if not condition:
 		_failures.append(failure_message)
