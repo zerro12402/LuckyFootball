@@ -35,6 +35,8 @@ func _run_test() -> void:
 	var bootstrap := menu.get_node("ModeHost").get_child(0) as GameBootstrap
 	_expect(menu.current_mode == GameModeController.Mode.ATTACK_RECOIL_TEST,
 		"Recoil button did not select its mode")
+	bootstrap.melee_override = MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
+	bootstrap.reset_demo()
 	bootstrap.presentation_frame_ready.connect(_record_frame)
 	bootstrap._process(bootstrap.fixed_delta_seconds)
 	var attacker_id: String = bootstrap.get("_demo_player_id")

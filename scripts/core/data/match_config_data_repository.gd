@@ -4,6 +4,11 @@ extends RefCounted
 
 const CSV_HEADERS: Array[String] = ["key", "value", "comment"]
 const OPTIONAL_DEFAULTS := {
+	"melee_dodge_attack_advantage": 20.0,
+	"melee_dodge_probability_scale": 18.0,
+	"melee_dodge_probability_min": 0.1,
+	"melee_dodge_probability_max": 0.9,
+	"melee_strength_auto_win_gap": 20,
 	"shot_contest_free_distance_m": 5.0,
 	"shot_contest_distance_scale_m": 15.0,
 	"shot_contest_knockdown_retention": 0.85,
@@ -255,6 +260,15 @@ func _parse_config(
 				return null
 			value = raw_header_value.to_float()
 		header_values[key] = value
+	if (header_values["melee_dodge_attack_advantage"] < 0.0
+		or header_values["melee_dodge_probability_scale"] <= 0.0
+		or header_values["melee_dodge_probability_min"] < 0.0
+		or header_values["melee_dodge_probability_max"] > 1.0
+		or header_values["melee_dodge_probability_min"] > header_values["melee_dodge_probability_max"]
+		or header_values["melee_strength_auto_win_gap"] <= 0.0
+		or header_values["melee_strength_auto_win_gap"] != floorf(header_values["melee_strength_auto_win_gap"])):
+		result._add_error("Match config row %d has invalid melee contest parameters" % row_number)
+		return null
 	if (header_values["shot_contest_free_distance_m"] < 0.0
 		or header_values["shot_contest_distance_scale_m"] <= 0.0
 		or header_values["shot_contest_knockdown_retention"] <= 0.0
@@ -387,6 +401,11 @@ func _parse_config(
 		header_values["keeper_contest_probability_scale"],
 		header_values["keeper_contest_shot_win_min"],
 		header_values["keeper_contest_shot_win_max"],
+		header_values["melee_dodge_attack_advantage"],
+		header_values["melee_dodge_probability_scale"],
+		header_values["melee_dodge_probability_min"],
+		header_values["melee_dodge_probability_max"],
+		int(header_values["melee_strength_auto_win_gap"]),
 	)
 
 

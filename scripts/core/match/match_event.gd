@@ -35,6 +35,7 @@ enum Type {
 	GOALKEEPER_SAVE_STARTED,
 	GOALKEEPER_SAVE_RESOLVED,
 	TACKLE_FAILED,
+	MELEE_CONTEST_RESOLVED,
 }
 
 enum ResetReason {
@@ -126,6 +127,9 @@ var _goalkeeper_save: GoalkeeperSaveResult
 var tackle_contest: TackleContestResult:
 	get: return _tackle_contest
 var _tackle_contest: TackleContestResult
+var melee_contest: MeleeContestResult:
+	get: return _melee_contest
+var _melee_contest: MeleeContestResult
 
 var _ball_impact: BallImpactResult
 
@@ -168,7 +172,9 @@ func _init(
 	new_shot_aim: ShotAim = null,
 	new_goalkeeper_save: GoalkeeperSaveResult = null,
 	new_tackle_contest: TackleContestResult = null,
+	new_melee_contest: MeleeContestResult = null,
 ) -> void:
+	_melee_contest = new_melee_contest
 	_tackle_contest = new_tackle_contest
 	_shot_aim = new_shot_aim
 	_goalkeeper_save = new_goalkeeper_save
@@ -186,6 +192,8 @@ func _init(
 	_previous_owner_id = new_previous_owner_id
 	_new_owner_id = new_new_owner_id
 	_ball_impact = new_ball_impact
+	if new_melee_contest != null:
+		_contact_position_m = new_melee_contest.contact_position_m
 	if new_ball_impact != null:
 		_contact_position_m = new_ball_impact.position_m
 		_velocity_before_mps = new_ball_impact.velocity_before_mps

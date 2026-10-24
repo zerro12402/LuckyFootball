@@ -31,6 +31,8 @@ func _run_test() -> void:
 	var bootstrap := menu.get_node("ModeHost").get_child(0) as GameBootstrap
 	_expect(menu.current_mode == GameModeController.Mode.KNOCKDOWN_TEST,
 		"Knockdown button did not select its mode")
+	bootstrap.melee_override = MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN
+	bootstrap.reset_demo()
 	bootstrap.presentation_frame_ready.connect(_record_frame)
 	_snapshot = bootstrap.get("_match_simulation").create_snapshot()
 	_expect(_snapshot != null, "Knockdown demo did not start")

@@ -8,6 +8,9 @@ const KNOCKDOWN_WINDOW_EPSILON := 0.000001
 enum MeleeOutcome {
 	TARGET_KNOCKED_DOWN,
 	ATTACKER_RECOILS,
+	FORMULA,
+	BOTH_KNOCKED_DOWN,
+	DODGED,
 }
 
 var _state: MatchState
@@ -32,6 +35,10 @@ var _pending_tackle_targets: Dictionary[String, String] = {}
 var _pending_knockdown_targets: Dictionary[String, String] = {}
 var _pending_header_actions: Dictionary[String, MatchAction] = {}
 var _melee_outcome: MeleeOutcome
+var _melee_dodge_sampler: Callable
+var _melee_strength_sampler: Callable
+var _melee_sequence: int = 0
+var _pending_melee_sequences: Dictionary[String, int] = {}
 var _ball_contact_latches: Dictionary[String, bool] = {}
 var _contact_shot_source: BallShotSource
 var _ball_route_sampler: Callable
@@ -52,7 +59,7 @@ func _init(
 	random_seed: int,
 	match_config: MatchConfigDefinition = null,
 	field_definition: FieldDefinition = null,
-	melee_outcome: MeleeOutcome = MeleeOutcome.TARGET_KNOCKED_DOWN,
+	melee_outcome: MeleeOutcome = MeleeOutcome.FORMULA,
 	ball_route_sampler: Callable = Callable(),
 	ball_dodge_result: Callable = Callable(),
 	shot_aim_sampler: Callable = Callable(),
@@ -62,12 +69,16 @@ func _init(
 	shot_miss_side_sampler: Callable = Callable(),
 	shot_miss_margin_sampler: Callable = Callable(),
 	shot_miss_override: int = -1,
+	melee_dodge_sampler: Callable = Callable(),
+	melee_strength_sampler: Callable = Callable(),
 ) -> void:
 	_state = MatchState.new(random_seed)
 	_rng.seed = random_seed
 	_match_config = match_config
 	_field_definition = field_definition
 	_melee_outcome = melee_outcome
+	_melee_dodge_sampler = melee_dodge_sampler if melee_dodge_sampler.is_valid() else _sample_ball_route
+	_melee_strength_sampler = melee_strength_sampler if melee_strength_sampler.is_valid() else _sample_ball_route
 	_ball_route_sampler = ball_route_sampler if ball_route_sampler.is_valid() else _sample_ball_route
 	assert(shot_miss_override >= -1 and shot_miss_override <= 1)
 	_shot_miss_sampler = shot_miss_sampler
@@ -715,6 +726,7 @@ func _settle_boundary(
 	_player_runtime_system.stop_all_players_for_settlement(is_carried_boundary)
 	_pending_tackle_targets.clear()
 	_pending_knockdown_targets.clear()
+	_pending_melee_sequences.clear()
 	_pending_header_actions.clear()
 	if boundary.outcome == MatchBoundaryResult.Outcome.GOAL:
 		_pending_reset_reason = MatchEvent.ResetReason.GOAL
@@ -773,6 +785,7 @@ func _reset_round(
 		_orient_goalkeeper(player)
 	_pending_tackle_targets.clear()
 	_pending_knockdown_targets.clear()
+	_pending_melee_sequences.clear()
 	_pending_header_actions.clear()
 	_ball_contact_latches.clear()
 	_contact_shot_source = null
@@ -898,9 +911,13 @@ func _try_start_knockdown(action: MatchAction) -> bool:
 	var target := _player_runtime_system.get_player(action.target_player_id)
 	if not _is_valid_knockdown_target(attacker, target):
 		return false
+	if attacker.strength_attribute < 1 or target.strength_attribute < 1 or target.technique_attribute < 1:
+		return false
 	if not attacker.state_machine.try_start_knockdown(_match_config):
 		return false
 	_ball_runtime_system.release_attacking_ball(attacker)
+	_melee_sequence += 1
+	_pending_melee_sequences[attacker.player_id] = _melee_sequence
 	_pending_knockdown_targets[attacker.player_id] = target.player_id
 	return true
 
@@ -918,6 +935,7 @@ func _resolve_pending_knockdowns(events: Array[MatchEvent]) -> bool:
 		)
 		if not is_attacking and not is_just_landed:
 			_pending_knockdown_targets.erase(attacker.player_id)
+			_pending_melee_sequences.erase(attacker.player_id)
 			continue
 		var elapsed_seconds := attacker.state.action_state_elapsed_seconds
 		if is_just_landed:
@@ -932,68 +950,77 @@ func _resolve_pending_knockdowns(events: Array[MatchEvent]) -> bool:
 		):
 			var target := _player_runtime_system.get_player(target_id)
 			if _is_legal_knockdown_contact(attacker, target):
-				var impact_direction := target.state.position_m - attacker.state.position_m
-				if impact_direction.is_zero_approx():
-					impact_direction = attacker.state_machine.knockdown_direction
-				if _melee_outcome == MeleeOutcome.ATTACKER_RECOILS:
-					if _apply_attack_recoil(attacker, target, impact_direction, events):
-						_pending_knockdown_targets.erase(attacker.player_id)
-						continue
-				if target.state_machine.start_knockdown(_match_config):
-					_pending_knockdown_targets.erase(attacker.player_id)
-					var previous_owner_id := _ball_runtime_system.state.owner_player_id
-					# Drop at the contact point before moving the target away from it.
-					if _ball_runtime_system.release_knocked_down_ball(target):
-						was_ball_released = true
-					assert(target.state_machine.start_knockback(impact_direction))
-					events.append(MatchEvent.new(
-						MatchEvent.Type.PLAYER_KNOCKED_DOWN,
-						_state.elapsed_seconds,
-						_state.simulation_step,
-						attacker.player_id,
-						MatchEvent.ResetReason.NONE,
-						MatchBoundaryResult.Side.NONE,
-						_ball_runtime_system.state.position_m,
-						"", 0, false, null,
-						target.player_id,
-						previous_owner_id,
-						_ball_runtime_system.state.owner_player_id,
-					))
-					continue
+				var direction := target.state.position_m - attacker.state.position_m
+				if direction.is_zero_approx():
+					direction = attacker.state_machine.knockdown_direction
+				var forced := _forced_melee_result()
+				var result := MeleeContestResolver.resolve(_pending_melee_sequences[attacker.player_id],
+					attacker.player_id, target.player_id, attacker.strength_attribute,
+					target.strength_attribute, target.technique_attribute, target.state.position_m,
+					direction.normalized(), _match_config, _melee_dodge_sampler, _melee_strength_sampler, forced)
+				_pending_knockdown_targets.erase(attacker.player_id)
+				_pending_melee_sequences.erase(attacker.player_id)
+				was_ball_released = _commit_melee_result(result, attacker, target, events) or was_ball_released
+				continue
 		if elapsed_seconds + KNOCKDOWN_WINDOW_EPSILON >= (
 			_match_config.knockdown_hit_window_end_seconds
 		):
 			_pending_knockdown_targets.erase(attacker.player_id)
+			_pending_melee_sequences.erase(attacker.player_id)
 			_append_knockdown_miss(events, attacker.player_id, target_id)
 	return was_ball_released
 
 
-## Applies the injected test outcome without comparing player attributes.
-func _apply_attack_recoil(
-	attacker: PlayerRuntime,
-	target: PlayerRuntime,
-	impact_direction: Vector2,
-	events: Array[MatchEvent],
-) -> bool:
-	if not attacker.state_machine.start_knockdown(_match_config):
-		return false
-	var did_start_knockback := attacker.state_machine.start_knockback(-impact_direction)
-	assert(did_start_knockback, "Recoil requires a valid opposite direction")
-	var owner_id := _ball_runtime_system.state.owner_player_id
-	events.append(MatchEvent.new(
-		MatchEvent.Type.ATTACK_RECOILED,
-		_state.elapsed_seconds,
-		_state.simulation_step,
-		attacker.player_id,
-		MatchEvent.ResetReason.NONE,
-		MatchBoundaryResult.Side.NONE,
-		_ball_runtime_system.state.position_m,
-		"", 0, false, null,
-		target.player_id,
-		owner_id,
-		owner_id,
-	))
-	return true
+## Keeps old outcomes available only when callers explicitly select a development override.
+func _forced_melee_result() -> int:
+	match _melee_outcome:
+		MeleeOutcome.TARGET_KNOCKED_DOWN: return MeleeContestResult.Outcome.ATTACKER_WIN
+		MeleeOutcome.ATTACKER_RECOILS: return MeleeContestResult.Outcome.TARGET_WIN
+		MeleeOutcome.BOTH_KNOCKED_DOWN: return MeleeContestResult.Outcome.DRAW
+		MeleeOutcome.DODGED: return MeleeContestResult.Outcome.DODGED
+	return -1
+
+## Commits both prevalidated actors without rechecking eligibility after mutating the first actor.
+func _commit_melee_result(result: MeleeContestResult, attacker: PlayerRuntime,
+		target: PlayerRuntime, events: Array[MatchEvent]) -> bool:
+	var target_falls := result.outcome in [MeleeContestResult.Outcome.ATTACKER_WIN, MeleeContestResult.Outcome.DRAW]
+	var attacker_falls := result.outcome in [MeleeContestResult.Outcome.TARGET_WIN, MeleeContestResult.Outcome.DRAW]
+	var previous_owner := _ball_runtime_system.state.owner_player_id
+	if result.outcome == MeleeContestResult.Outcome.DODGED:
+		# Reuse tackle-avoidance flips, also authorizing unowned targets without bypassing action locks.
+		target.state_machine.try_start_jump(_match_config, true)
+	# Drop at the captured contact point before either state machine can advance displacement.
+	var released := target_falls and _ball_runtime_system.release_knocked_down_ball(target)
+	if target_falls:
+		_commit_melee_knockback(target, result.direction)
+	if attacker_falls:
+		_commit_melee_knockback(attacker, -result.direction)
+	_append_melee_event(MatchEvent.Type.MELEE_CONTEST_RESOLVED, result, previous_owner, events)
+	if target_falls:
+		_append_melee_event(MatchEvent.Type.PLAYER_KNOCKED_DOWN, result, previous_owner, events)
+	if attacker_falls:
+		_append_melee_event(MatchEvent.Type.ATTACK_RECOILED, result, previous_owner, events)
+	return released
+
+## Cancels unfinished actor intents and applies one existing knockdown/knockback response.
+func _commit_melee_knockback(player: PlayerRuntime, direction: Vector2) -> void:
+	_pending_knockdown_targets.erase(player.player_id)
+	_pending_melee_sequences.erase(player.player_id)
+	_pending_tackle_targets.erase(player.player_id)
+	_pending_header_actions.erase(player.player_id)
+	_keeper_intents.erase(player.player_id)
+	var started := player.state_machine.start_knockdown(_match_config)
+	assert(started, "Both melee actors were validated before atomic commit")
+	var pushed := player.state_machine.start_knockback(direction)
+	assert(pushed, "A normalized melee direction must produce a single knockback")
+
+## Publishes copied contest and ownership facts; response events never re-run the contest.
+func _append_melee_event(kind: int, result: MeleeContestResult, previous_owner: String,
+		events: Array[MatchEvent]) -> void:
+	events.append(MatchEvent.new(kind, _state.elapsed_seconds, _state.simulation_step,
+		result.attacker_id, MatchEvent.ResetReason.NONE, MatchBoundaryResult.Side.NONE,
+		_ball_runtime_system.state.position_m, "", 0, false, null, result.target_id,
+		previous_owner, _ball_runtime_system.state.owner_player_id, null, null, null, null, result))
 
 
 ## Emits one missed-contact fact after a lunge's hit window expires.

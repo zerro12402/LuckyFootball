@@ -95,3 +95,8 @@ shot_contest_knockdown_retention,0.85,F04每击飞一名不同防守者的射门
 keeper_contest_probability_scale,5.0,F04射门与守门差值的概率尺度；默认位置84对94含射偏进球率约10.6%
 keeper_contest_shot_win_min,0.1,F04射门胜出概率下限；守住概率取其补数
 keeper_contest_shot_win_max,0.9,F04射门胜出概率上限；守住概率取其补数
+melee_dodge_attack_advantage,20.0,近身攻击命中优势（属性点）
+melee_dodge_probability_scale,18.0,近身闪避概率曲线尺度
+melee_dodge_probability_min,0.1,近身闪避概率下限
+melee_dodge_probability_max,0.9,近身闪避概率上限
+melee_strength_auto_win_gap,20,近身强者必胜强壮差值（含等值）

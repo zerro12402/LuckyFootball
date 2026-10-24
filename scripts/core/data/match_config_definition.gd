@@ -2,6 +2,23 @@
 class_name MatchConfigDefinition
 extends RefCounted
 
+var melee_dodge_attack_advantage: float:
+	get: return _melee_dodge_attack_advantage
+var _melee_dodge_attack_advantage: float
+var melee_dodge_probability_scale: float:
+	get: return _melee_dodge_probability_scale
+var _melee_dodge_probability_scale: float
+var melee_dodge_probability_min: float:
+	get: return _melee_dodge_probability_min
+var _melee_dodge_probability_min: float
+var melee_dodge_probability_max: float:
+	get: return _melee_dodge_probability_max
+var _melee_dodge_probability_max: float
+var melee_strength_auto_win_gap: int:
+	get: return _melee_strength_auto_win_gap
+var _melee_strength_auto_win_gap: int
+
+
 var shot_contest_free_distance_m: float:
 	get: return _shot_contest_free_distance_m
 var _shot_contest_free_distance_m: float
@@ -506,7 +523,23 @@ func _init(
 	new_keeper_contest_probability_scale: float = 5.0,
 	new_keeper_contest_shot_win_min: float = 0.1,
 	new_keeper_contest_shot_win_max: float = 0.9,
+	new_melee_dodge_attack_advantage: float = 20.0,
+	new_melee_dodge_probability_scale: float = 18.0,
+	new_melee_dodge_probability_min: float = 0.1,
+	new_melee_dodge_probability_max: float = 0.9,
+	new_melee_strength_auto_win_gap: int = 20,
 ) -> void:
+	assert(is_finite(new_melee_dodge_attack_advantage) and new_melee_dodge_attack_advantage >= 0.0)
+	assert(is_finite(new_melee_dodge_probability_scale) and new_melee_dodge_probability_scale > 0.0)
+	assert(is_finite(new_melee_dodge_probability_min) and is_finite(new_melee_dodge_probability_max))
+	assert(new_melee_dodge_probability_min >= 0.0 and new_melee_dodge_probability_max <= 1.0
+		and new_melee_dodge_probability_min <= new_melee_dodge_probability_max)
+	assert(new_melee_strength_auto_win_gap > 0)
+	_melee_dodge_attack_advantage = new_melee_dodge_attack_advantage
+	_melee_dodge_probability_scale = new_melee_dodge_probability_scale
+	_melee_dodge_probability_min = new_melee_dodge_probability_min
+	_melee_dodge_probability_max = new_melee_dodge_probability_max
+	_melee_strength_auto_win_gap = new_melee_strength_auto_win_gap
 	assert(is_finite(new_shot_contest_free_distance_m))
 	assert(is_finite(new_shot_contest_distance_scale_m))
 	assert(is_finite(new_shot_contest_knockdown_retention))

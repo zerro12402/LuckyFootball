@@ -23,6 +23,16 @@ enum DemoMode {
 	GOALKEEPER_TEST,
 }
 
+enum MeleePreset { RANDOM, ATTACKER_WIN, TARGET_WIN, DRAW, DODGE }
+var melee_dodge_sample: float = -1.0
+var melee_strength_sample: float = -1.0
+var melee_override: MatchSimulation.MeleeOutcome = MatchSimulation.MeleeOutcome.FORMULA
+var melee_target_has_ball: bool = true
+var melee_reverse_direction: bool = false
+var _melee_attack_strength: int = -1
+var _melee_target_strength: int = -1
+var _melee_target_technique: int = -1
+
 enum KeeperShotSource { GROUND, AERIAL, HEADER }
 enum KeeperContestPreset { STANDARD, NEAR, FAR, ONE_DEFENDER, TWO_DEFENDERS }
 var keeper_contest_preset: KeeperContestPreset = KeeperContestPreset.STANDARD
@@ -201,9 +211,13 @@ func reset_demo() -> void:
 	_pending_aerial_shot_jump_started = false
 	_lofted_receiver_jump_requested = false
 	_lofted_receiver_jump_started = false
-	var melee_outcome := MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN
-	if demo_mode == DemoMode.ATTACK_RECOIL_TEST:
-		melee_outcome = MatchSimulation.MeleeOutcome.ATTACKER_RECOILS
+	var melee_outcome := melee_override
+	var melee_dodge := Callable()
+	var melee_strength := Callable()
+	if melee_dodge_sample >= 0.0:
+		melee_dodge = func() -> float: return melee_dodge_sample
+	if melee_strength_sample >= 0.0:
+		melee_strength = func() -> float: return melee_strength_sample
 	if demo_mode == DemoMode.BALL_IMPACT_TEST:
 		random_seed = 2 if ball_impact_preset == BallImpactPreset.KNOCKDOWN_REBOUND else 1
 	var aim_sampler := Callable()
@@ -232,7 +246,7 @@ func reset_demo() -> void:
 	_match_simulation = MatchSimulation.new(
 		random_seed, _match_config, _field_definition, melee_outcome,
 		route_sampler, Callable(), aim_sampler, save_sampler, Callable(),
-		Callable(), miss_side_sampler, miss_margin_sampler, miss_override
+		Callable(), miss_side_sampler, miss_margin_sampler, miss_override, melee_dodge, melee_strength
 	)
 	var opponent_goal_center_m := Vector2(_field_definition.length_m * 0.5, 0.0)
 	var did_register_goal := _match_simulation.register_team_attacking_goal(
@@ -244,6 +258,8 @@ func reset_demo() -> void:
 		_demo_teammate_id = (_data_repository.player_definitions[1].player_id
 			if keeper_source == KeeperShotSource.HEADER else "")
 	var demo_player := _data_repository.get_player_by_id(_demo_player_id)
+	if _is_melee_test():
+		demo_player = _melee_attribute_definition(demo_player, _melee_attack_strength, -1)
 	if demo_mode == DemoMode.TOUCH_AND_DRIBBLE and _touch_speed_override > 0:
 		# Construct an explicit test definition; the repository's CSV definition remains unchanged.
 		demo_player = PlayerDefinition.new(demo_player.player_id, demo_player.display_name,
@@ -289,12 +305,14 @@ func reset_demo() -> void:
 		assert(did_register_teammate, "Demo teammate must register before the match starts")
 	if not _demo_opponent_id.is_empty():
 		var opponent := _data_repository.get_player_by_id(_demo_opponent_id)
+		if _is_melee_test():
+			opponent = _melee_attribute_definition(opponent, _melee_target_strength, _melee_target_technique)
 		if demo_mode == DemoMode.GOALKEEPER_TEST:
 			opponent = _keeper_attribute_definition(opponent, -1, _keeper_goalkeeping_override)
 		var opponent_position_m := TEST_OPPONENT_POSITION_M
 		var opponent_strength := opponent.strength
 		if demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
-			opponent_position_m = TEST_KNOCKDOWN_OPPONENT_POSITION_M
+			opponent_position_m = TEST_KNOCKDOWN_OPPONENT_POSITION_M * (-1.0 if melee_reverse_direction else 1.0)
 		elif demo_mode == DemoMode.AERIAL_JUMP_SHOT_TEST:
 			opponent_position_m = TEST_AERIAL_OPPONENT_POSITION_M
 		elif demo_mode == DemoMode.BALL_IMPACT_TEST:
@@ -328,7 +346,8 @@ func reset_demo() -> void:
 	elif demo_mode in [DemoMode.BALL_IMPACT_TEST, DemoMode.GOALKEEPER_TEST]:
 		initial_ball_position_m = player_position_m + Vector2(0.55, 0.0)
 	elif demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]:
-		initial_ball_position_m = Vector2(1.6, 0.0)
+		initial_ball_position_m = (TEST_KNOCKDOWN_OPPONENT_POSITION_M * (-1.0 if melee_reverse_direction else 1.0)
+			if melee_target_has_ball else Vector2(15.0, 8.0))
 	var did_register_ball := _match_simulation.register_ball(
 		initial_ball_position_m,
 	)
@@ -375,6 +394,10 @@ func reset_demo() -> void:
 		_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
 	if demo_mode == DemoMode.GOALKEEPER_TEST and _field_environment != null:
 		_refresh_keeper_actors()
+	if _is_melee_test() and melee_reverse_direction:
+		_match_simulation.advance_fixed_step(fixed_delta_seconds, [
+			MatchAction.new(_demo_player_id, MatchAction.Type.MOVE, Vector2.LEFT),
+			MatchAction.new(_demo_player_id, MatchAction.Type.MOVE, Vector2.ZERO)])
 	var initial_snapshot := _match_simulation.create_snapshot()
 	game_started.emit(initial_snapshot)
 	_refresh_touch_speed_controls()
@@ -775,3 +798,62 @@ func _keeper_attribute_definition(definition: PlayerDefinition, shooting: int = 
 		definition.speed, definition.shooting if shooting < 0 else shooting, definition.strength,
 		definition.technique, definition.stamina, definition.tackling,
 		definition.goalkeeping if goalkeeping < 0 else goalkeeping, definition.trait_ids, definition.visual_id)
+
+
+## Identifies the existing shared modes that expose near-body contest inputs.
+func _is_melee_test() -> bool:
+	return demo_mode in [DemoMode.KNOCKDOWN_TEST, DemoMode.ATTACK_RECOIL_TEST]
+
+## Makes an explicit test definition without mutating CSV or the repository's readonly definitions.
+func _melee_attribute_definition(base: PlayerDefinition, strength: int, technique: int) -> PlayerDefinition:
+	return PlayerDefinition.new(base.player_id, base.display_name, base.default_role,
+		base.speed, base.shooting, base.strength if strength < 0 else strength,
+		base.technique if technique < 0 else technique, base.stamina,
+		base.tackling, base.goalkeeping, base.trait_ids, base.visual_id)
+
+## Validates all test inputs atomically before storing an override or rebuilding a match.
+func set_melee_test_inputs(attack: int, defense: int, technique: int,
+		dodge_sample: float = -1.0, strength_sample: float = -1.0,
+		forced: MatchSimulation.MeleeOutcome = MatchSimulation.MeleeOutcome.FORMULA) -> bool:
+	if not _is_melee_test() or attack < 1 or attack > 100 or defense < 1 or defense > 100 or technique < 1 or technique > 100:
+		return false
+	for sample in [dodge_sample, strength_sample]:
+		if not is_finite(sample) or (sample != -1.0 and (sample < 0.0 or sample >= 1.0)):
+			return false
+	if forced < 0 or forced >= MatchSimulation.MeleeOutcome.size():
+		return false
+	_melee_attack_strength = attack
+	_melee_target_strength = defense
+	_melee_target_technique = technique
+	melee_dodge_sample = dodge_sample
+	melee_strength_sample = strength_sample
+	melee_override = forced
+	return true
+
+## Reads the actual bound attributes for UI initialization, never inventing displayed CSV values.
+func get_melee_test_attributes() -> PackedInt32Array:
+	var attacker := _match_simulation._player_runtime_system.get_player(_demo_player_id)
+	var target := _match_simulation._player_runtime_system.get_player(_demo_opponent_id)
+	return PackedInt32Array([attacker.strength_attribute, target.strength_attribute, target.technique_attribute])
+
+## Rebuilds the chosen inputs and sends a normal attack command when automatic play is requested.
+func replay_melee_test(start_attack: bool = true) -> void:
+	assert(_is_melee_test())
+	reset_demo()
+	# Let the normal acquisition rules assign the initial carrier before any attack.
+	_match_simulation.advance_fixed_step(fixed_delta_seconds, [])
+	if start_attack:
+		queue_action(MatchAction.new(_demo_player_id, MatchAction.Type.ATTACK,
+			Vector2.ZERO, _demo_opponent_id))
+
+## Presets isolate formula branches through attributes and independent samples, not forged outcomes.
+func select_melee_preset(preset: MeleePreset, start_attack: bool = true) -> void:
+	match preset:
+		MeleePreset.RANDOM:
+			var values := get_melee_test_attributes()
+			set_melee_test_inputs(values[0], values[1], values[2])
+		MeleePreset.ATTACKER_WIN: set_melee_test_inputs(80, 60, 60, 0.99)
+		MeleePreset.TARGET_WIN: set_melee_test_inputs(60, 80, 60, 0.99)
+		MeleePreset.DRAW: set_melee_test_inputs(80, 80, 60, 0.99)
+		MeleePreset.DODGE: set_melee_test_inputs(60, 80, 80, 0.0)
+	replay_melee_test(start_attack)

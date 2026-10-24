@@ -501,7 +501,7 @@ func test_reset_clears_knockdown() -> void:
 
 ## Starts a match with the attacker already carrying the ball.
 func _create_carrier_match(target_position_m: Vector2, target_team_id: String) -> MatchSimulation:
-	var simulation := MatchSimulation.new(91, _config, _field)
+	var simulation := MatchSimulation.new(91, _config, _field, MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN)
 	_expect(simulation.register_player(ATTACKER_ID, Vector2.ZERO, 5.0, "home"),
 		"Attacker registration failed")
 	_expect(simulation.register_player(TARGET_ID, target_position_m, 5.0, target_team_id),
@@ -523,7 +523,7 @@ func _create_match(
 	config_override: MatchConfigDefinition = null,
 ) -> MatchSimulation:
 	var match_config: MatchConfigDefinition = config_override if config_override != null else _config
-	var simulation := MatchSimulation.new(91, match_config, _field)
+	var simulation := MatchSimulation.new(91, match_config, _field, MatchSimulation.MeleeOutcome.TARGET_KNOCKED_DOWN)
 	_expect(simulation.register_player(ATTACKER_ID, Vector2.ZERO, 5.0, "home"),
 		"Attacker registration failed")
 	_expect(simulation.register_player(TARGET_ID, target_position_m, target_speed_mps, target_team_id),
