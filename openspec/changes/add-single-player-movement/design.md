@@ -1,5 +1,12 @@
 # Design
 
+## Notion 设计依据
+
+- [球员基本行为1 — 单人与足球交互行为](https://app.notion.com/p/3e4f67bb9cfa805386d0dde63636f1c1)
+- 后续属性接入：[F01 移动速度与追逐](https://app.notion.com/p/403f67bb9cfa812aac51ebeb876e9718)、[F01 速度属性与等比移动 — 程序设计](https://app.notion.com/p/401f67bb9cfa81e9919cc3e8b160abf7)
+
+专题设计及现行公式以对应 Notion 页面为维护入口；下文保留本阶段基线，不将后续属性接入追记为本阶段完成内容。
+
 ## Context
 
 补录第 3 阶段。根据现有状态机与测试登记完成基线，而非把早期建议中的加减速、八方向朝向和速度属性映射一并宣称完成。

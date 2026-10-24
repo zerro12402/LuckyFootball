@@ -1,5 +1,12 @@
 # Design
 
+## Notion 设计依据
+
+- [静态数据层：球员 CSV 读取](https://app.notion.com/p/3e6f67bb9cfa81f69c0cd54264392704)
+- [球员属性](https://app.notion.com/p/3e4f67bb9cfa8030be6bff06ef2a0ccc)、[资源规范](https://app.notion.com/p/3e1f67bb9cfa811bbe09e84d31665668)
+
+专题设计及参数以对应 Notion 页面为维护入口；下文保留本变更范围、实现决策与验收记录。
+
 ## Context
 
 补录 Notion 第 1 阶段，完成状态由用户确认，并核对现有源码与测试。全局边界见[程序架构](https://app.notion.com/p/3e6f67bb9cfa819ba789f46ac01e629d)和[模块接口](https://app.notion.com/p/3fdf67bb9cfa81fda193e99f0a78e2e6)。

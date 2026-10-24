@@ -1,5 +1,13 @@
 # Design
 
+## Notion 设计依据
+
+- [正式比赛状态与流程](https://app.notion.com/p/401f67bb9cfa81c192e2ebf6022b163a)
+- [正式比赛状态与 AI 调度 — 程序设计](https://app.notion.com/p/401f67bb9cfa8129a36ecfaebcbfb1eb)
+- [进球、出界与重置](https://app.notion.com/p/3edf67bb9cfa809d98fad6eb2305d2aa)
+
+专题设计以对应 Notion 页面为维护入口；下文保留本变更范围、实现决策与验收计划。
+
 ## Context
 
 参见 [proposal.md](proposal.md)。本页为计划设计，不代表已实现。scenes/match/formal_match.tscn 当前只有空根节点；GameBootstrap 用于测试装配，GameLoop 驱动固定步，MatchSimulation 已有球权、比分与重置流程。FieldEnvironment 目前绑定四个测试角色，正式十二人表现不能只复用这组固定索引。原 autonomous-match 草案的基础需求迁至本特性，完整 AI 与词条分别另行验收。

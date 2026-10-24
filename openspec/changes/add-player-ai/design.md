@@ -1,5 +1,13 @@
 # Design
 
+## Notion 设计依据
+
+- 行为依据：[球员基本行为2 — 多人交互行为](https://app.notion.com/p/3edf67bb9cfa809c8064c0049e0b4f1e)
+- 阶段权限：[正式比赛状态与流程](https://app.notion.com/p/401f67bb9cfa81c192e2ebf6022b163a)、[正式比赛状态与 AI 调度 — 程序设计](https://app.notion.com/p/401f67bb9cfa8129a36ecfaebcbfb1eb)
+- 规则索引：[对抗判定公式总览](https://app.notion.com/p/3fdf67bb9cfa8119904ce87c51051c13)
+
+这些是现有行为与调度依据，不代替尚待补齐的完整球员 AI 专题策划及程序设计。开始该模块实现前，须在 [设计文档](https://app.notion.com/p/3e4f67bb9cfa80248154cb4f8936ee72) 与 [程序架构](https://app.notion.com/p/3e6f67bb9cfa819ba789f46ac01e629d) 下补齐对应专题页；不将本地计划视为文档前置条件已完成。
+
 ## Context
 
 参见 [proposal.md](proposal.md)。现有 TackleChaseAI 只针对一名对手，GameLoop 也仅接入该测试 AI。正式比赛基础由 add-formal-match-foundation 提供，真实属性与体力由 integrate-player-attributes-and-contests 提供。本特性迁入原 7.1、7.3 与状态动作限制，保留词条独立边界。

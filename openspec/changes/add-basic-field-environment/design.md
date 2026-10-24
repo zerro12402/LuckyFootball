@@ -1,5 +1,12 @@
 # Design
 
+## Notion 设计依据
+
+- [球场环境](https://app.notion.com/p/3e6f67bb9cfa800ab09af6c732728e4d)
+- [球场环境：Field 脚本说明](https://app.notion.com/p/3e6f67bb9cfa81308867ebb0545e6550)
+
+专题设计以对应 Notion 页面为维护入口；下文保留本变更范围、实现决策与验收记录。
+
 ## Context
 
 补录第 2 阶段。遵循[程序架构](https://app.notion.com/p/3e6f67bb9cfa819ba789f46ac01e629d)的表现只读边界。早期“简单图形”已经演进为贴图环境。

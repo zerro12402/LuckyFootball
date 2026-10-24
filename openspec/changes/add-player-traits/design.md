@@ -1,5 +1,12 @@
 # Design
 
+## Notion 设计依据
+
+- 球员数据与词条基础：[球员属性](https://app.notion.com/p/3e4f67bb9cfa8030be6bff06ef2a0ccc)、[资源规范](https://app.notion.com/p/3e1f67bb9cfa811bbe09e84d31665668)
+- 行为依据：[球员基本行为2 — 多人交互行为](https://app.notion.com/p/3edf67bb9cfa809c8064c0049e0b4f1e)
+
+这些是现有数据与行为依据，不代替尚待补齐的词条专题策划及程序设计。开始该模块实现前，须在 [设计文档](https://app.notion.com/p/3e4f67bb9cfa80248154cb4f8936ee72) 与 [程序架构](https://app.notion.com/p/3e6f67bb9cfa819ba789f46ac01e629d) 下补齐对应专题页。
+
 ## Context
 
 参见 [proposal.md](proposal.md)。players.csv 和 PlayerDefinition 已支持 3–5 个词条 ID 以及数量/重复校验，但 DataRepository 尚未加载词条定义，AI 行为也尚未消费其效果。add-player-ai 提供中性权重扩展点；五场挑战提案已有总种子及随机词条生成计划。

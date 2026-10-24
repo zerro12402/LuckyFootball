@@ -1,5 +1,12 @@
 # Design
 
+## Notion 设计依据
+
+- [进球、出界与重置](https://app.notion.com/p/3edf67bb9cfa809d98fad6eb2305d2aa)
+- 后续正式比赛：[正式比赛状态与流程](https://app.notion.com/p/401f67bb9cfa81c192e2ebf6022b163a)
+
+专题设计以对应 Notion 页面为维护入口；下文保留单人阶段的实现与验收记录，正式比赛生命周期仍由独立变更负责。
+
 ## Context
 
 补录第 6 阶段。以当前 `MatchSimulation` 和测试记录结算行为。Notion 专题页早期“出界立即停止”已演进为现行延迟结算：离脚球短暂继续移动，持球出界停止球员；本次不为追溯旧文字修改实现。

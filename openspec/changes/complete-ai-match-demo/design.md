@@ -1,5 +1,16 @@
 # Design
 
+## Notion 设计依据
+
+- 策划：[球员基本行为2 — 多人交互行为](https://app.notion.com/p/3edf67bb9cfa809c8064c0049e0b4f1e)
+- 起跳与空中射门：[程序设计](https://app.notion.com/p/3fef67bb9cfa81adb67df0bb3b3b4545)
+- 争顶：[F09 高空球争顶与头球结果](https://app.notion.com/p/403f67bb9cfa8138b0f9dc1d9c67cafb)
+- 足球接触：[F07／F08 足球接触、击倒与反弹](https://app.notion.com/p/403f67bb9cfa81ae93aed3e6e9f4be99)、[足球击倒与球路 — 程序设计](https://app.notion.com/p/400f67bb9cfa8124bc4ed86a39a8931c)
+- 扑救：[F04／F10 射门衰减、门将扑救与结果](https://app.notion.com/p/403f67bb9cfa81999a8ce9f821128e3d)、[门将扑救与射门三点 — 程序设计](https://app.notion.com/p/401f67bb9cfa81339425fe33588786b3)
+- 后续准确性：[F11 射门准确性与门内外选靶](https://app.notion.com/p/403f67bb9cfa81f59c69c8d04b340ec5)
+
+现行公式、参数和状态在对应子页集中维护；下文保留本动作特性的阶段记录。历史固定50%扑救及长期手持描述不是后续属性版的现行规则，当前口径见 F04／F10 子页；后续属性与选靶仍归独立属性变更。
+
 ## Context
 
 参见 [proposal.md](proposal.md)。现有 MatchSimulation、GameLoop 和 BallRuntimeSystem 提供固定步与基础球路，测试输入和 TackleChaseAI 通过统一命令驱动。起跳/空中射门、争顶/头球及足球击倒已完成；门将4.1文档及4.2–4.4实现已完成，全部40项非渲染测试通过，状态见 tasks.md。formal_match.tscn 仍为空入口，但不属于本变更拆分后的实现范围。

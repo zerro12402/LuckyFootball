@@ -1,5 +1,13 @@
 # Design
 
+## Notion 设计依据
+
+- Demo 范围：[Demo入口](https://app.notion.com/p/3e1f67bb9cfa810ca84ec25a5b6f485e)
+- 比赛只读状态与结算依据：[正式比赛状态与流程](https://app.notion.com/p/401f67bb9cfa81c192e2ebf6022b163a)、[正式比赛状态与 AI 调度 — 程序设计](https://app.notion.com/p/401f67bb9cfa8129a36ecfaebcbfb1eb)
+- 静态数据约束：[资源规范](https://app.notion.com/p/3e1f67bb9cfa811bbe09e84d31665668)
+
+上述页面不包含完整下注与五场挑战设计。本模块的专题策划和程序设计仍待补齐：实现前须分别写入 [设计文档](https://app.notion.com/p/3e4f67bb9cfa80248154cb4f8936ee72) 与 [程序架构](https://app.notion.com/p/3e6f67bb9cfa819ba789f46ac01e629d) 下的独立子页；本地计划不代表该前置条件已完成。
+
 ## Context
 
 参见 [proposal.md](proposal.md)。项目目前只有单场测试模式和空的正式比赛入口；`players.csv` 为每名球员保存七项基础属性和正式版静态词条，`resources/data/` 尚无完整球队、阵容和词条表，也没有筹码、赔率、注单或跨场存档。拆分后，add-formal-match-foundation 提供球队/阵容和只读比赛结果，add-player-ai 提供整场自主比赛，add-player-traits 提供词条定义、效果和覆盖接口；complete-ai-match-demo 只提供前置动作规则。

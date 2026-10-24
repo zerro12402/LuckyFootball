@@ -1,5 +1,13 @@
 # Design
 
+## Notion 设计依据
+
+- [球员基本行为1 — 单人与足球交互行为](https://app.notion.com/p/3e4f67bb9cfa805386d0dde63636f1c1)
+- 后续选靶：[F11 射门准确性与门内外选靶](https://app.notion.com/p/403f67bb9cfa81f59c69c8d04b340ec5)
+- 后续扑救：[F04／F10 射门衰减、门将扑救与结果](https://app.notion.com/p/403f67bb9cfa81999a8ce9f821128e3d)
+
+专题设计及现行公式以对应 Notion 页面为维护入口；下文保留基础射门阶段记录，后续选靶和扑救由各自变更承接。
+
 ## Context
 
 补录第 5 阶段。早期单人行为页建议“指定方向踢球”，当前实现和 `test_shot_aims_at_opponent_goal_ignoring_command_direction()` 已明确自动朝对方球门；本规格以现有行为为准。

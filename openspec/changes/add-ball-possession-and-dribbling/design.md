@@ -1,5 +1,12 @@
 # Design
 
+## Notion 设计依据
+
+- [球员基本行为1 — 单人与足球交互行为](https://app.notion.com/p/3e4f67bb9cfa805386d0dde63636f1c1)
+- 相关接球规则：[F02／F03 抢断与确定性传球拦截](https://app.notion.com/p/403f67bb9cfa81068c13e453251a8b08)
+
+专题设计以对应 Notion 页面为维护入口；下文保留本变更范围、实现决策与验收记录，关联公式页不扩大本阶段范围。
+
 ## Context
 
 补录第 4 阶段，采用当前统一控球资格。[球员基本行为1](https://app.notion.com/p/3e4f67bb9cfa805386d0dde63636f1c1)中的 ACTIVE 是设计概念，对应 `ActionState.IDLE`，并不要求移动状态也为 IDLE。
