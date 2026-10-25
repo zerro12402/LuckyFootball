@@ -24,6 +24,8 @@ var last_kicker_id: String:
 
 var _state: BallMatchState
 var _last_kicker_id: String = ""
+var _ai_flight_sequence: int = 0
+var _defensive_touched: bool = false
 var _possession_radius_m: float
 var _dribble_offset_m: float
 var _pass_speed_mps: float
@@ -208,6 +210,8 @@ func apply_impact(result: BallImpactResult) -> void:
 ## Locks immutable source data only when a new legal kick actually releases the ball.
 func _record_shot_source(player: PlayerRuntime) -> void:
 	assert(player != null)
+	_ai_flight_sequence += 1
+	_defensive_touched = false
 	_shot_sequence += 1
 	_shot_source = BallShotSource.new(player.player_id, player.team_id,
 		player.shooting_attribute, _shot_sequence)
@@ -537,7 +541,12 @@ func create_snapshot() -> BallStateSnapshot:
 	return BallStateSnapshot.new(_state, _current_shot_aim
 		if _state.flight_kind == BallMatchState.FlightKind.SHOT else null,
 		_shot_context.distance_m if _shot_context != null else 0.0,
-		_shot_context.knockdown_count if _shot_context != null else 0)
+		_shot_context.knockdown_count if _shot_context != null else 0,
+		_last_kicker_id, _ai_flight_sequence, _defensive_touched)
+
+## Records a committed defensive touch independently of whether the shot rebounds.
+func record_defensive_touch() -> void:
+	_defensive_touched = true
 
 
 ## Follows the owner through windup, then releases the queued kick once.
@@ -593,6 +602,8 @@ func _launch_pending_pass(players: PlayerRuntimeSystem, result: BallAdvanceResul
 	)
 	_protect_releaser(passer.player_id)
 	_last_kicker_id = passer.player_id
+	_ai_flight_sequence += 1
+	_defensive_touched = false
 	result.passed_by_player_id = passer.player_id
 
 

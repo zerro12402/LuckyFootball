@@ -95,7 +95,7 @@ focus_mode = 0
 toggle_mode = true
 text = "守门员扑救测试"
 
-[node name="FormalFlowTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="FormalFlowTestButton" type="Button" parent="ModeUi/ModePanel/ModeButtons" unique_id=673048036]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0

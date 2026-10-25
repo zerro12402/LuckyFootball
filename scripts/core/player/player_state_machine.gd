@@ -25,6 +25,10 @@ var knockdown_direction: Vector2:
 		return _knockdown_direction
 
 var _state: PlayerMatchState
+var tackle_cooldown_seconds: float:
+	get: return _tackle_cooldown_remaining_seconds
+var attack_cooldown_seconds: float:
+	get: return _knockdown_cooldown_remaining_seconds
 var _movement_speed_mps: float
 var _save_config: MatchConfigDefinition
 var _shot_config: MatchConfigDefinition
@@ -216,6 +220,8 @@ func try_start_header(config: MatchConfigDefinition, direction: Vector2) -> bool
 
 ## Captures shot timing and facing at command acceptance, before the kick frame.
 func try_start_shot(config: MatchConfigDefinition, direction: Vector2) -> bool:
+	if not _allows_action(MatchAction.Type.SHOOT):
+		return false
 	if config == null or not direction.is_finite() or direction.is_zero_approx():
 		return false
 	if _state.jump_phase in [
@@ -232,6 +238,8 @@ func try_start_shot(config: MatchConfigDefinition, direction: Vector2) -> bool:
 
 ## Starts a jump after simulation has authorized either possession or an incoming pass.
 func try_start_jump(config: MatchConfigDefinition, allow_without_ball: bool = false) -> bool:
+	if not _allows_action(MatchAction.Type.JUMP):
+		return false
 	if config == null or _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
 		return false
 	if _state.action_state != PlayerMatchState.ActionState.IDLE:
@@ -248,6 +256,8 @@ func try_start_jump(config: MatchConfigDefinition, allow_without_ball: bool = fa
 
 ## Starts a timed tackle only for an idle defender whose cooldown has ended.
 func try_start_tackle(config: MatchConfigDefinition) -> bool:
+	if not _allows_action(MatchAction.Type.TACKLE):
+		return false
 	if config == null or _tackle_cooldown_remaining_seconds > 0.0:
 		return false
 	if _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
@@ -270,6 +280,8 @@ func try_start_tackle(config: MatchConfigDefinition) -> bool:
 
 ## Starts a timed melee lunge and locks its initial direction for deterministic motion.
 func try_start_knockdown(config: MatchConfigDefinition) -> bool:
+	if not _allows_action(MatchAction.Type.ATTACK):
+		return false
 	if config == null or _knockdown_cooldown_remaining_seconds > 0.0:
 		return false
 	if _state.jump_phase != PlayerMatchState.JumpPhase.NONE:
@@ -702,6 +714,8 @@ func _advance_getting_up() -> void:
 
 ## Starts a command-driven save; only a later physical contact can award possession.
 func try_start_save(config: MatchConfigDefinition, lane: int, facing: Vector2) -> bool:
+	if not _allows_action(MatchAction.Type.SAVE):
+		return false
 	if config == null or lane < ShotAim.Lane.UPPER or lane > ShotAim.Lane.LOWER:
 		return false
 	if _state.possession_state != PlayerMatchState.PossessionState.NO_BALL:
@@ -718,3 +732,8 @@ func try_start_save(config: MatchConfigDefinition, lane: int, facing: Vector2) -
 	_state._set_movement_input(Vector2.ZERO)
 	_state._set_movement_state(PlayerMatchState.MovementState.IDLE)
 	return true
+
+## Reuses the same pure personal-state query exposed to snapshot consumers.
+func _allows_action(kind: int) -> bool:
+	return PlayerActionAvailability.allows(kind, _state.action_state, _state.jump_phase,
+		_state.possession_state, _tackle_cooldown_remaining_seconds, _knockdown_cooldown_remaining_seconds)

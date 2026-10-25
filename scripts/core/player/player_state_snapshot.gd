@@ -12,6 +12,21 @@ var _team_id: String
 var is_goalkeeper: bool:
 	get: return _is_goalkeeper
 var _is_goalkeeper: bool
+var movement_speed_mps: float:
+	get: return _movement_speed_mps
+var tackle_cooldown_seconds: float:
+	get: return _tackle_cooldown_seconds
+var attack_cooldown_seconds: float:
+	get: return _attack_cooldown_seconds
+var shooting_attribute: int:
+	get: return _shooting_attribute
+var jump_elapsed_seconds: float:
+	get: return _jump_elapsed_seconds
+var _movement_speed_mps: float = PlayerStateMachine.DEFAULT_MOVEMENT_SPEED_MPS
+var _tackle_cooldown_seconds: float = 0.0
+var _attack_cooldown_seconds: float = 0.0
+var _shooting_attribute: int = 0
+var _jump_elapsed_seconds: float = 0.0
 
 var player_id: String:
 	get:
@@ -75,7 +90,15 @@ var _jump_phase: int
 var _height_m: float
 
 
-func _init(player_state: PlayerMatchState, team: String = "", keeper: bool = false) -> void:
+## Copies personal availability without exposing the supplied runtime or its mutable state machine.
+func _init(player_state: PlayerMatchState, team: String = "", keeper: bool = false,
+		runtime: PlayerRuntime = null) -> void:
+	_jump_elapsed_seconds = player_state.jump_elapsed_seconds
+	if runtime != null:
+		_movement_speed_mps = runtime.state_machine.movement_speed_mps
+		_tackle_cooldown_seconds = runtime.state_machine.tackle_cooldown_seconds
+		_attack_cooldown_seconds = runtime.state_machine.attack_cooldown_seconds
+		_shooting_attribute = runtime.shooting_attribute
 	_team_id = team
 	_is_goalkeeper = keeper
 	_save_lane = player_state.save_lane

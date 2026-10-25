@@ -18,6 +18,27 @@ var _shot_aim: ShotAim
 var control_attachment: int:
 	get: return _control_attachment
 var _control_attachment: int
+var flight_apex_height_m: float:
+	get: return _flight_apex_height_m
+var flight_start_height_m: float:
+	get: return _flight_start_height_m
+var flight_distance_m: float:
+	get: return _flight_distance_m
+var flight_range_m: float:
+	get: return _flight_range_m
+var _flight_apex_height_m: float
+var _flight_start_height_m: float
+var _flight_distance_m: float
+var _flight_range_m: float
+var last_kicker_id: String:
+	get: return _last_kicker_id
+var flight_sequence: int:
+	get: return _flight_sequence
+var defensive_touched: bool:
+	get: return _defensive_touched
+var _last_kicker_id: String
+var _flight_sequence: int
+var _defensive_touched: bool
 
 var position_m: Vector2:
 	get:
@@ -53,9 +74,17 @@ var _velocity_mps: Vector2
 
 ## Copies state and cumulative measurements so later motion or ownership cleanup cannot rewrite a frame.
 func _init(ball_state: BallMatchState, aim: ShotAim = null, distance_m: float = 0.0,
-		knockdowns: int = 0) -> void:
+		knockdowns: int = 0, kicker_id: String = "", sequence: int = 0,
+		was_defensively_touched: bool = false) -> void:
 	assert(ball_state != null, "Ball snapshot requires ball state")
 	_shot_distance_m = distance_m
+	_last_kicker_id = kicker_id
+	_flight_sequence = sequence
+	_defensive_touched = was_defensively_touched
+	_flight_apex_height_m = ball_state.flight_apex_height_m
+	_flight_start_height_m = ball_state.flight_start_height_m
+	_flight_distance_m = ball_state.flight_distance_m
+	_flight_range_m = ball_state.flight_range_m
 	_shot_knockdown_count = knockdowns
 	_flight_kind = ball_state.flight_kind
 	_shot_aim = aim

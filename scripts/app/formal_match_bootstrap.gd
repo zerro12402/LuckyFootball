@@ -1,4 +1,4 @@
-## Production-only assembly and observation; no keyboard, development preset or tactical AI dependency.
+## Assembles production AI and observer controls without keyboard or developer-preset dependencies.
 class_name FormalMatchBootstrap
 extends Node2D
 
@@ -9,6 +9,7 @@ signal presentation_frame_ready(snapshot: MatchStateSnapshot, events: Array[Matc
 @export var away_team_id: String = "away"
 @export var match_id: String = ""
 @export var random_seed: int = 1
+@export var autonomous_players: bool = true
 @onready var _field: FieldEnvironment = %FieldEnvironment
 
 static var _instance_sequence: int = 0
@@ -41,6 +42,16 @@ func _ready() -> void:
 	if _simulation == null:
 		_fail(assembler.errors)
 		return
+	if autonomous_players and _sources.is_empty():
+		var tuning := _data.load_ai_config()
+		if tuning == null:
+			_fail(_data.last_errors)
+			return
+		var source := MatchPlayerAISource.new(_teams, _data.get_field_by_id("demo_field"), _config, tuning)
+		if not source.errors.is_empty():
+			_fail(source.errors)
+			return
+		_sources.append(source)
 	_loop = GameLoop.new(_simulation, GameLoop.DEFAULT_FIXED_DELTA_SECONDS,
 		GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS, GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, null, [], _sources)
 	_field.configure(_data.get_field_by_id("demo_field"))

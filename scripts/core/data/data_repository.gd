@@ -62,6 +62,13 @@ func load_all(data_directory: String = DEFAULT_DATA_DIRECTORY) -> bool:
 func get_player_by_id(player_id: String) -> PlayerDefinition:
 	return _players_by_id.get(player_id) as PlayerDefinition
 
+## Loads AI tuning explicitly so isolated legacy table fixtures keep their existing contract.
+func load_ai_config(directory: String = DEFAULT_DATA_DIRECTORY) -> AIBehaviorConfig:
+	var repository := AIConfigDataRepository.new()
+	var config := repository.load_from_csv(directory.path_join("ai_configs.csv"))
+	_last_errors = repository.errors
+	return config
+
 
 func get_field_by_id(field_id: String) -> FieldDefinition:
 	return _fields_by_id.get(field_id) as FieldDefinition

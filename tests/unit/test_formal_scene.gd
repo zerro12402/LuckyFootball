@@ -20,7 +20,7 @@ func _run() -> void:
 	var snapshot := formal.get_snapshot()
 	var field := formal.get_node("FieldEnvironment") as FieldEnvironment
 	_check(snapshot.phase == MatchState.Phase.READY and field.get_presented_player_ids().size() == 12, "formal READY binds twelve stable actors")
-	_check(formal._sources.is_empty() and not _has_keyboard(formal), "production formal scene has no keyboard or fake tactical source")
+	_check(formal._sources.size() == 1 and formal._sources[0] is MatchPlayerAISource and not _has_keyboard(formal), "production formal scene uses real AI without keyboard")
 	var ids := field.get_presented_player_ids()
 	var actor_ids: Dictionary[String, int] = {}
 	for id in ids:

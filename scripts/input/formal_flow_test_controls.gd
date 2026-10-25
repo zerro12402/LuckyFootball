@@ -38,6 +38,7 @@ func select_preset(preset: int) -> void:
 		get_parent().remove_child(_session)
 		_session.queue_free()
 	_session = SESSION_SCENE.instantiate() as FormalMatchBootstrap
+	_session.autonomous_players = false
 	_session.name = "FormalSession"
 	get_parent().add_child(_session)
 	_session.presentation_frame_ready.connect(_present)

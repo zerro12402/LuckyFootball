@@ -647,6 +647,8 @@ func _commit_ball_impact(contact: BallContactCandidate, source: BallShotSource,
 		_append_impact_event(MatchEvent.Type.BALL_DODGED, result, contact_time, events)
 		return
 	_append_impact_event(MatchEvent.Type.BALL_HIT, result, contact_time, events)
+	if target.team_id != source.team_id:
+		_ball_runtime_system.record_defensive_touch()
 	if result.was_knocked_down and target.state_machine.start_knockdown(_match_config):
 		target.state._set_position(contact.player_position_m)
 		var did_start_knockback := target.state_machine.start_knockback(
@@ -699,7 +701,7 @@ func _sample_ball_route() -> float:
 func create_snapshot() -> MatchStateSnapshot:
 	var player_snapshots: Array[PlayerStateSnapshot] = []
 	for player_runtime in _player_runtime_system.get_players():
-		player_snapshots.append(PlayerStateSnapshot.new(player_runtime.state, player_runtime.team_id, player_runtime.is_goalkeeper))
+		player_snapshots.append(PlayerStateSnapshot.new(player_runtime.state, player_runtime.team_id, player_runtime.is_goalkeeper, player_runtime))
 	return MatchStateSnapshot.new(
 		_state.phase,
 		_state.elapsed_seconds,
@@ -1467,6 +1469,8 @@ func _commit_keeper_save(contact: BallContactCandidate, source: BallShotSource,
 		incoming_direction: Vector2) -> void:
 	var keeper := _player_runtime_system.get_player(contact.player_id)
 	_keeper_resolved[keeper.player_id] = true
+	if keeper.team_id != source.team_id:
+		_ball_runtime_system.record_defensive_touch()
 	var result := GoalkeeperSaveResolver.resolve(keeper.player_id, source, keeper.state.save_lane,
 		contact.position_m, contact.height_m, keeper.goalkeeping_attribute, context, _match_config, _keeper_sampler,
 		contact.player_position_m, incoming_direction)
