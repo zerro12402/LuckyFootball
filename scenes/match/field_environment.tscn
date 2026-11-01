@@ -82,12 +82,12 @@ unique_name_in_owner = true
 unique_name_in_owner = true
 modulate = Color(0.55, 0.9, 1, 1)
 
-[node name="DemoOpponent" parent="WorldActors/Players" instance=ExtResource("8_player")]
+[node name="DemoOpponent" parent="WorldActors/Players" unique_id=56303131 instance=ExtResource("8_player")]
 unique_name_in_owner = true
 visible = false
 modulate = Color(1, 0.55, 0.55, 1)
 
-[node name="DemoChallenger" parent="WorldActors/Players" instance=ExtResource("8_player")]
+[node name="DemoChallenger" parent="WorldActors/Players" unique_id=341966972 instance=ExtResource("8_player")]
 unique_name_in_owner = true
 visible = false
 modulate = Color(1, 0.8, 0.35, 1)

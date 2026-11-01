@@ -38,7 +38,7 @@ func _ready() -> void:
 	if match_id.is_empty():
 		match_id = "formal_%d" % _instance_sequence
 	var assembler := FormalMatchAssembler.new()
-	_simulation = assembler.create_match(_data, _teams, _data.get_field_by_id("demo_field"), _config, match_id, random_seed, home_team_id, away_team_id)
+	_simulation = assembler.create_match(_data, _teams, _data.get_field_by_id("demo_field"), _config, match_id, random_seed, home_team_id, away_team_id, autonomous_players)
 	if _simulation == null:
 		_fail(assembler.errors)
 		return
@@ -47,7 +47,12 @@ func _ready() -> void:
 		if tuning == null:
 			_fail(_data.last_errors)
 			return
-		var source := MatchPlayerAISource.new(_teams, _data.get_field_by_id("demo_field"), _config, tuning)
+		var regions := _data.load_activity_regions()
+		if regions == null:
+			_fail(_data.last_errors)
+			return
+		var source := MatchPlayerAISource.new(_teams, _data.get_field_by_id("demo_field"), _config,
+			tuning, null, null, GameLoop.DEFAULT_FIXED_DELTA_SECONDS, regions)
 		if not source.errors.is_empty():
 			_fail(source.errors)
 			return

@@ -34,8 +34,8 @@ func _init() -> void:
 	# Identical physical right-goal fact belongs to the other team when its attacking direction flips.
 	var teams := TeamDataRepository.new()
 	teams.load_all("res://resources/data", fixture.data, fixture.field)
-	teams._teams = [TeamDefinition.new("home", "home", "one_two_two_one", -1), TeamDefinition.new("away", "away", "one_two_two_one", 1)]
-	var swapped := FormalMatchAssembler.new().create_match(fixture.data, teams, fixture.field, fixture.config(0.1), "swapped", 42, "home", "away")
+	teams._teams = [TeamDefinition.new("home", "home", "two_one_two", -1), TeamDefinition.new("away", "away", "two_one_two", 1)]
+	var swapped := FormalMatchAssembler.new().create_match(fixture.data, teams, fixture.field, fixture.config(0.1), "swapped", 42, "home", "away", false)
 	swapped.start_match()
 	fixture.launch_boundary(swapped, 0.05)
 	swapped.advance_fixed_step(0.2, [])

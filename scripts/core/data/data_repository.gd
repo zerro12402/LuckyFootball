@@ -69,6 +69,15 @@ func load_ai_config(directory: String = DEFAULT_DATA_DIRECTORY) -> AIBehaviorCon
 	_last_errors = repository.errors
 	return config
 
+## Loads complete positional responsibility definitions without extending legacy base-table fixtures.
+func load_activity_regions(directory: String = DEFAULT_DATA_DIRECTORY) -> PlayerActivityRegionRepository:
+	var repository := PlayerActivityRegionRepository.new()
+	if not repository.load_from_csv(directory.path_join("player_activity_regions.csv")):
+		_last_errors = repository.errors
+		return null
+	_last_errors.clear()
+	return repository
+
 
 func get_field_by_id(field_id: String) -> FieldDefinition:
 	return _fields_by_id.get(field_id) as FieldDefinition

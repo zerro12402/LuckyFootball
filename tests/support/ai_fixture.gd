@@ -25,5 +25,6 @@ func player(id: String, point: Vector2 = Vector2.ZERO, team: String = "home",
 	return PlayerRuntime.new(id, point, 5.0, team, 84, 80, 80, keeper)
 
 ## Collects source proposals through the production loop, not by directly writing player positions.
-func source() -> MatchPlayerAISource:
-	return MatchPlayerAISource.new(formal.teams, formal.field, rules, tuning)
+func source(with_regions: bool = false) -> MatchPlayerAISource:
+	return MatchPlayerAISource.new(formal.teams, formal.field, rules, tuning, null, null,
+		1.0 / 60.0, formal.data.load_activity_regions() if with_regions else null)

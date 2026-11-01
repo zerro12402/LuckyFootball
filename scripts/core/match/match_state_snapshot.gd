@@ -5,6 +5,15 @@ extends RefCounted
 var match_id: String:
 	get: return _match_id
 var _match_id: String
+var kickoff_team_id: String:
+	get: return _kickoff_team_id
+var kickoff_player_id: String:
+	get: return _kickoff_player_id
+var kickoff_pending: bool:
+	get: return _kickoff_pending
+var _kickoff_team_id: String = ""
+var _kickoff_player_id: String = ""
+var _kickoff_pending: bool = false
 var home_team_id: String:
 	get: return _home_team_id
 var _home_team_id: String
@@ -107,6 +116,9 @@ func _init(
 	_left_goal_count = new_left_goal_count
 	_right_goal_count = new_right_goal_count
 	if formal_state != null:
+		_kickoff_team_id = formal_state.kickoff_team_id
+		_kickoff_player_id = formal_state.kickoff_player_id
+		_kickoff_pending = formal_state.kickoff_pending
 		_control_owner_token = formal_state.get_instance_id()
 		_match_id = formal_state.match_id
 		_home_team_id = formal_state.home_team_id

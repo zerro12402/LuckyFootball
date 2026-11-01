@@ -14,8 +14,12 @@ class ScriptedSource extends MatchActionSource:
 				commands.append(MatchAction.new(player.player_id, MatchAction.Type.MOVE, Vector2.ZERO))
 		var shooter := snapshot.get_player("swift_forward")
 		if snapshot.round_sequence == 1:
-			if shooter.position_m.x < 20.0:
-				commands.append(MatchAction.new(shooter.player_id, MatchAction.Type.MOVE, Vector2.RIGHT))
+			if snapshot.ball.owner_player_id != shooter.player_id:
+				commands.append(MatchAction.new(shooter.player_id, MatchAction.Type.MOVE,
+					(snapshot.ball.position_m - shooter.position_m).normalized()))
+			elif shooter.position_m.distance_to(Vector2(20, 0)) > 0.2:
+				commands.append(MatchAction.new(shooter.player_id, MatchAction.Type.MOVE,
+					(Vector2(20, 0) - shooter.position_m).normalized()))
 			elif snapshot.ball.owner_player_id == shooter.player_id:
 				commands.append(MatchAction.new(shooter.player_id, MatchAction.Type.MOVE, Vector2.ZERO))
 				commands.append(MatchAction.new(shooter.player_id, MatchAction.Type.SHOOT))

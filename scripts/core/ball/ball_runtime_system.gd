@@ -1,4 +1,4 @@
-## Advances ball ownership, shots, and deterministic post-goal net motion.
+## Advances ball ownership, real-touch history, shots, and deterministic post-goal net motion.
 class_name BallRuntimeSystem
 extends RefCounted
 
@@ -24,6 +24,9 @@ var last_kicker_id: String:
 
 var _state: BallMatchState
 var _last_kicker_id: String = ""
+var last_touch_player_id: String:
+	get: return _last_touch_player_id
+var _last_touch_player_id: String = ""
 var _ai_flight_sequence: int = 0
 var _defensive_touched: bool = false
 var _possession_radius_m: float
@@ -364,6 +367,7 @@ func transfer_tackled_ball(carrier: PlayerRuntime, tackler: PlayerRuntime) -> bo
 	_pending_pass_elapsed_seconds = 0.0
 	_clear_pending_shot()
 	_state._set_owner(tackler.player_id)
+	_last_touch_player_id = tackler.player_id
 	tackler.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
 	_set_ball_at_control_point(tackler)
 	return true
@@ -403,6 +407,7 @@ func reset_ball(reset_position_m: Vector2) -> void:
 	_clear_pending_shot()
 	_last_releaser_id = ""
 	_last_kicker_id = ""
+	_last_touch_player_id = ""
 	_reacquire_delay_remaining_seconds = 0.0
 	_reacquire_delay_at_step_start_seconds = 0.0
 	_clear_shot_context()
@@ -544,9 +549,11 @@ func create_snapshot() -> BallStateSnapshot:
 		_shot_context.knockdown_count if _shot_context != null else 0,
 		_last_kicker_id, _ai_flight_sequence, _defensive_touched)
 
-## Records a committed defensive touch independently of whether the shot rebounds.
-func record_defensive_touch() -> void:
+## Records a real defender's touch independently of shot origin and rebound; omitted IDs preserve old isolated fixtures.
+func record_defensive_touch(player_id: String = "") -> void:
 	_defensive_touched = true
+	if not player_id.is_empty():
+		_last_touch_player_id = player_id
 
 
 ## Follows the owner through windup, then releases the queued kick once.
@@ -791,6 +798,7 @@ func _advance_shot(fixed_delta_seconds: float) -> void:
 
 ## Clears old trajectories and protection while assigning exactly one ball owner.
 func _claim_ball(receiver: PlayerRuntime, result: BallAdvanceResult) -> void:
+	_last_touch_player_id = receiver.player_id
 	_clear_shot_context()
 	_last_releaser_id = ""
 	_reacquire_delay_remaining_seconds = 0.0
@@ -803,6 +811,7 @@ func _claim_ball(receiver: PlayerRuntime, result: BallAdvanceResult) -> void:
 
 ## Protects only the latest releasing player for the same configured interval after any kick.
 func _protect_releaser(player_id: String) -> void:
+	_last_touch_player_id = player_id
 	_last_releaser_id = player_id
 	_reacquire_delay_remaining_seconds = (
 		_shot_config.shot_reacquire_delay_seconds if _shot_config != null else 0.0)

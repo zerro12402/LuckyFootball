@@ -27,8 +27,9 @@ func config(duration: float = 180.0) -> MatchConfigDefinition:
 	return parsed.configs[0] if parsed.is_success else null
 
 ## Every scenario receives a new instance/RNG and passes through complete production validation.
-func create(duration: float = 180.0, id: String = "fixture_match", seed_value: int = 42) -> MatchSimulation:
-	return FormalMatchAssembler.new().create_match(data, teams, field, config(duration), id, seed_value, "home", "away")
+func create(duration: float = 180.0, id: String = "fixture_match", seed_value: int = 42,
+		use_kickoff: bool = false) -> MatchSimulation:
+	return FormalMatchAssembler.new().create_match(data, teams, field, config(duration), id, seed_value, "home", "away", use_kickoff)
 
 
 ## Places a genuinely moving ball whose first whole-ball crossing is at an analytically known time.

@@ -18,6 +18,9 @@ var _boundary_event_time: float = -1.0
 var _formal_step_start_seconds: float = 0.0
 var _formal_step_delta: float = 0.0
 var _formal_player_starts: Dictionary[String, Vector2] = {}
+var _kickoff_players: Dictionary[String, String] = {}
+var _pending_sideline_position_m: Vector2 = Vector2.INF
+var _pending_sideline_team_id: String = ""
 
 var _state: MatchState
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -191,6 +194,8 @@ func start_match() -> bool:
 		return false
 	_state._set_phase(MatchState.Phase.RUNNING)
 	_queue_lifecycle_event(_create_event(MatchEvent.Type.MATCH_STARTED))
+	if _state.kickoff_pending:
+		_queue_lifecycle_event(_create_event(MatchEvent.Type.BALL_POSSESSION_GAINED, _state.kickoff_player_id))
 	return true
 
 
@@ -254,6 +259,39 @@ func configure_formal_match(id: String, home: String, away: String) -> bool:
 
 func is_formal() -> bool:
 	return not _state.match_id.is_empty()
+
+## Enables production kickoff only after both complete formal rosters are validated.
+func configure_kickoff(kickers: Dictionary[String, String]) -> bool:
+	if not is_formal() or _state.phase != MatchState.Phase.READY or not _kickoff_players.is_empty():
+		return false
+	if _field_definition.center_circle_radius_m + _match_config.ball_radius_m >= _field_definition.length_m * 0.5:
+		return false
+	for team in [_state.home_team_id, _state.away_team_id]:
+		var player := _player_runtime_system.get_player(kickers.get(team, ""))
+		if player == null or player.team_id != team or player.is_goalkeeper:
+			return false
+	_kickoff_players = kickers.duplicate()
+	_prepare_kickoff(MatchKickoffRules.select_team(_state.random_seed, _state.home_team_id, _state.away_team_id))
+	return true
+
+## Commits layout and sole possession through existing state machines and ordinary pickup rules.
+func _prepare_kickoff(team: String) -> void:
+	var kicker_id: String = _kickoff_players[team]
+	_ball_runtime_system.reset_ball(Vector2.ZERO)
+	for player in _player_runtime_system.get_players():
+		var direction := signf(_attacking_goals_by_team[player.team_id].x)
+		var point := MatchKickoffRules.position(player.spawn_position_m, direction,
+			player.player_id == kicker_id, player.team_id != team, _field_definition, _match_config)
+		player.state_machine.reset_to_spawn(point)
+		player.state._set_facing_direction(Vector2(direction, 0))
+	var acquired := _ball_runtime_system.acquire_loose_ball(_player_runtime_system)
+	assert(acquired.new_owner_player_id == kicker_id, "Validated kickoff must assign the sole center-ball owner")
+	_state._set_kickoff(team, kicker_id, true)
+
+## Closes only the kickoff restriction; ordinary phase and per-action eligibility remain unchanged.
+func _complete_kickoff() -> void:
+	if _state.kickoff_pending:
+		_state._set_kickoff(_state.kickoff_team_id, _state.kickoff_player_id, false)
 
 func can_decide_player_actions() -> bool:
 	return MatchControlPolicy.can_decide(_state.phase, _state.round_phase)
@@ -380,8 +418,12 @@ func _advance_play_step(
 		_record_step_events(step_events)
 		return step_events
 
+	var kickoff_player := _state.kickoff_player_id if _state.kickoff_pending else ""
 	for action in actions:
 		if action == null:
+			continue
+		if not kickoff_player.is_empty() and (action.player_id != kickoff_player
+			or action.action_type not in [MatchAction.Type.MOVE, MatchAction.Type.PASS, MatchAction.Type.SHOOT]):
 			continue
 		var was_accepted := false
 		if action.action_type == MatchAction.Type.PASS:
@@ -403,6 +445,8 @@ func _advance_play_step(
 		else:
 			was_accepted = _player_runtime_system.apply_action(action)
 		if was_accepted:
+			if action.action_type == MatchAction.Type.MOVE and not action.direction.is_zero_approx():
+				_complete_kickoff()
 			step_events.append(_create_event(MatchEvent.Type.ACTION_ACCEPTED, action.player_id))
 	# Check frame-start contact before movement can carry the attacker past a nearby target.
 	var was_ball_released_by_knockdown := _resolve_pending_knockdowns(step_events)
@@ -648,7 +692,7 @@ func _commit_ball_impact(contact: BallContactCandidate, source: BallShotSource,
 		return
 	_append_impact_event(MatchEvent.Type.BALL_HIT, result, contact_time, events)
 	if target.team_id != source.team_id:
-		_ball_runtime_system.record_defensive_touch()
+		_ball_runtime_system.record_defensive_touch(target.player_id)
 	if result.was_knocked_down and target.state_machine.start_knockdown(_match_config):
 		target.state._set_position(contact.player_position_m)
 		var did_start_knockback := target.state_machine.start_knockback(
@@ -838,6 +882,8 @@ func _find_reset_reason(actions: Array[MatchAction]) -> int:
 
 ## Emits the kick itself before its trajectory can reach a boundary.
 func _append_kick_events(result: BallAdvanceResult, events: Array[MatchEvent]) -> void:
+	if not result.passed_by_player_id.is_empty() or not result.shot_by_player_id.is_empty():
+		_complete_kickoff()
 	if not result.passed_by_player_id.is_empty():
 		events.append(_create_event(MatchEvent.Type.BALL_PASSED, result.passed_by_player_id))
 	if not result.shot_by_player_id.is_empty():
@@ -886,6 +932,20 @@ func _settle_boundary(
 				player.state._set_position(_formal_player_starts[player.player_id].lerp(player.state.position_m, fraction))
 		_invalidate_formal_intents()
 	var last_kicker_id := _ball_runtime_system.last_kicker_id
+	_pending_sideline_position_m = Vector2.INF
+	_pending_sideline_team_id = ""
+	if is_formal() and not _kickoff_players.is_empty() \
+			and boundary.outcome == MatchBoundaryResult.Outcome.OUT \
+			and boundary.side in [MatchBoundaryResult.Side.TOP, MatchBoundaryResult.Side.BOTTOM]:
+		var touch_id := _ball_runtime_system.state.owner_player_id
+		if touch_id.is_empty():
+			touch_id = _ball_runtime_system.last_touch_player_id
+		var toucher := _player_runtime_system.get_player(touch_id)
+		_pending_sideline_team_id = SidelineRestartRules.restart_team(
+			toucher.team_id if toucher != null else "", _state.home_team_id, _state.away_team_id,
+			_state.kickoff_team_id)
+		_pending_sideline_position_m = SidelineRestartRules.ball_position(
+			boundary.ball_position_m, boundary.side, _field_definition, _match_config.ball_radius_m)
 	_pending_reset_side = boundary.side
 	_settlement_remaining_seconds = _boundary_reset_delay_seconds
 	_is_carried_settlement = is_carried_boundary
@@ -962,8 +1022,20 @@ func _reset_round(
 	if is_formal() and _state.elapsed_seconds >= _state.duration_seconds - MatchRules.TIME_EPSILON:
 		return
 	_transition_round(MatchState.RoundPhase.RESETTING, events)
+	var is_sideline := reason == MatchEvent.ResetReason.OUT and _pending_sideline_position_m.is_finite()
+	var restart_team := _pending_sideline_team_id
+	var restart_player := ""
+	if is_sideline:
+		ball_reset_position_m = _pending_sideline_position_m
+		restart_player = SidelineRestartRules.select_taker(create_snapshot().players, restart_team, ball_reset_position_m)
 	_ball_runtime_system.reset_ball(ball_reset_position_m)
-	_player_runtime_system.reset_all_players()
+	if is_sideline:
+		for player in _player_runtime_system.get_players():
+			var facing := player.state.facing_direction
+			player.state_machine.reset_to_spawn(player.state.position_m)
+			player.state._set_facing_direction(facing)
+	else:
+		_player_runtime_system.reset_all_players()
 	for player in _player_runtime_system.get_players():
 		_orient_goalkeeper(player)
 	_pending_tackle_targets.clear()
@@ -980,6 +1052,8 @@ func _reset_round(
 	_is_carried_settlement = false
 	_out_of_play_velocity_mps = Vector2.ZERO
 	_goal_motion_elapsed_seconds = 0.0
+	_pending_sideline_position_m = Vector2.INF
+	_pending_sideline_team_id = ""
 	if reason == MatchEvent.ResetReason.RESTART_TEST:
 		_rng.seed = _state.random_seed
 		_state._restart_test()
@@ -987,6 +1061,18 @@ func _reset_round(
 		_event_history.clear()
 	if is_formal():
 		_state._next_round()
+		if is_sideline:
+			_prepare_sideline_restart(restart_team, restart_player, ball_reset_position_m, side)
+			events.append(_create_event(MatchEvent.Type.BALL_POSSESSION_GAINED, restart_player,
+				reason, side, ball_reset_position_m))
+		elif not _kickoff_players.is_empty():
+			var next_team := _state.away_team_id if _state.kickoff_team_id == _state.home_team_id else _state.home_team_id
+			if reason == MatchEvent.ResetReason.GOAL:
+				var goal_x := -1.0 if side == MatchBoundaryResult.Side.LEFT else 1.0
+				for team in _kickoff_players:
+					if signf(_attacking_goals_by_team[team].x) == -goal_x:
+						next_team = team
+			_prepare_kickoff(next_team)
 	events.append(_create_event(
 		MatchEvent.Type.RESET_COMPLETED,
 		"",
@@ -995,6 +1081,20 @@ func _reset_round(
 		ball_reset_position_m,
 	))
 	_transition_round(MatchState.RoundPhase.PLAYING, events)
+
+
+## Places only the nominated taker inside the line, using the existing atomic ownership path.
+func _prepare_sideline_restart(team: String, player_id: String, point: Vector2, side: int) -> void:
+	var player := _player_runtime_system.get_player(player_id)
+	assert(player != null and not player.is_goalkeeper, "A validated formal roster needs a sideline taker")
+	var inward := Vector2.DOWN if side == MatchBoundaryResult.Side.TOP else Vector2.UP
+	player.state._set_position(point + inward * BallRuntimeSystem.DEFAULT_DRIBBLE_OFFSET_M)
+	player.state._set_facing_direction(-inward)
+	var contact := BallContactCandidate.new()
+	contact.player_id = player_id
+	var result := _ball_runtime_system.acquire_contact_ball(contact, _player_runtime_system)
+	assert(result.new_owner_player_id == player_id, "Sideline restart must assign its sole nominated owner")
+	_state._set_kickoff(team, player_id, true)
 
 
 ## Allows an early windup against a nearby carrier; actual contact keeps its smaller radius.
@@ -1470,7 +1570,7 @@ func _commit_keeper_save(contact: BallContactCandidate, source: BallShotSource,
 	var keeper := _player_runtime_system.get_player(contact.player_id)
 	_keeper_resolved[keeper.player_id] = true
 	if keeper.team_id != source.team_id:
-		_ball_runtime_system.record_defensive_touch()
+		_ball_runtime_system.record_defensive_touch(keeper.player_id)
 	var result := GoalkeeperSaveResolver.resolve(keeper.player_id, source, keeper.state.save_lane,
 		contact.position_m, contact.height_m, keeper.goalkeeping_attribute, context, _match_config, _keeper_sampler,
 		contact.player_position_m, incoming_direction)

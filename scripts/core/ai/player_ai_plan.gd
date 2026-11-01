@@ -11,6 +11,9 @@ var owner_id: String
 var tactical_phase: int
 var was_sent: bool = false
 var flight_sequence: int
+var behavior: int = AIActionCandidate.Behavior.HOLD
+var primary_player_id: String = ""
+var had_contest_opportunity: bool = false
 
 ## Anchors review and timeout deadlines to simulation time, not display frames or wall-clock time.
 func _init(intent: MatchAction, destination: Vector2, snapshot: MatchStateSnapshot,

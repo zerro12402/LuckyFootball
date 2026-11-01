@@ -7,11 +7,18 @@ pressure_m,4,受压进入距离（米）
 pressure_exit_m,5,受压退出距离（米）
 press_pass_multiplier,2,受压时传球权重倍率
 press_dribble_multiplier,0.5,受压时推进权重倍率
+pass_forward_weight,4,向前传球目标权重；按球队进攻方向计算
+pass_lateral_weight,1,横向传球目标权重
+pass_backward_weight,0.1,回传目标权重；保留低概率安全回传
+pass_direction_deadzone_m,0.5,区分前传横传回传的纵向距离容差（米）
+defense_standoff_m,3,非主防守者保护位置相对持球者向本方球门后撤距离（米）
+press_prediction_seconds,0.2,逼抢目标根据持球者已知移动输入预测的时间（秒）
 shot_distance_scale_m,10,射门倾向距离尺度（米）
 shot_min_multiplier,0.05,远射最低倾向倍率
+shot_max_distance_m,20,AI射门最大门距（米）；同时要求位于前场；地面及空中共用
 attack_start_m,3,攻击开始距离（米）
 role_forward_offset_m,5,进攻站位前移（米）
-support_spacing_m,3,接应点横向间隔（米）
+support_spacing_m,9,接应点相对持球者的横向偏移（米）；拉开边路宽度
 handoff_advantage_seconds,0.3,职责交接到达时间优势（秒）
 handoff_hold_seconds,0.6,主要争球者职责最短保持时间（秒）
 field_margin_m,1,普通目标距边界最小距离（米）
@@ -66,6 +73,6 @@ keeper_support,0,keeper位置support行为基础权重
 keeper_press,0,keeper位置press行为基础权重
 keeper_tackle,0,keeper位置tackle行为基础权重
 keeper_attack,0,keeper位置attack行为基础权重
-keeper_chase,0,keeper位置chase行为基础权重
+keeper_chase,80,门将在本方禁区内收取可控无主球的行为权重
 keeper_return,50,keeper位置return行为基础权重
 keeper_save,60,keeper位置save行为基础权重

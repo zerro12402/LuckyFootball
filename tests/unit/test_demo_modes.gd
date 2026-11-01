@@ -66,6 +66,13 @@ func test_mode_menu_when_selected_replaces_active_scene() -> void:
 		return
 	root.add_child(menu)
 	var mode_host := menu.get_node("ModeHost")
+	var mode_panel := menu.get_node_or_null("%ModePanel") as PanelContainer
+	var menu_toggle := menu.get_node_or_null("%TestUiToggleButton") as Button
+	_expect(mode_panel != null and menu_toggle != null, "Expected both unique test-menu nodes in the saved main scene")
+	if mode_panel == null or menu_toggle == null:
+		menu.queue_free()
+		return
+	_expect(mode_panel.visible and not menu_toggle.visible, "Expected expanded demo menu without a formal-only toggle")
 	_expect(menu.current_mode == GameModeController.Mode.PASS_AND_SHOOT, "Expected pass demo")
 	_expect(mode_host.get_child_count() == 1, "Expected one active mode scene")
 	var formal_button := menu.get_node(
@@ -81,7 +88,15 @@ func test_mode_menu_when_selected_replaces_active_scene() -> void:
 	_expect(menu.current_mode == GameModeController.Mode.FORMAL_MATCH, "Expected formal mode")
 	_expect(mode_host.get_child_count() == 1, "Expected one empty formal scene")
 	_expect(mode_host.get_child(0).name == "FormalMatch", "Expected formal scene root")
+	_expect(not mode_panel.visible and menu_toggle.visible, "Expected formal entry to collapse the test menu")
+	var formal_instance := mode_host.get_child(0)
+	menu_toggle.pressed.emit()
+	_expect(mode_panel.visible and menu_toggle.text == "收起测试面板", "Expected toggle to expand the test menu")
+	_expect(mode_host.get_child(0) == formal_instance, "Expected expansion to preserve the active match instance")
+	menu_toggle.pressed.emit()
+	_expect(not mode_panel.visible and menu_toggle.text == "展开测试面板", "Expected toggle to collapse again")
 	touch_button.pressed.emit()
+	_expect(mode_panel.visible and not menu_toggle.visible, "Expected returning to a demo to restore the full test menu")
 	_expect(
 		menu.current_mode == GameModeController.Mode.TOUCH_AND_DRIBBLE,
 		"Expected touch and dribble mode",

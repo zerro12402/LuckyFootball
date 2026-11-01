@@ -46,6 +46,8 @@ var is_goalkeeper: bool:
 
 var _state_machine: PlayerStateMachine
 var _spawn_position_m: Vector2
+var spawn_position_m: Vector2:
+	get: return _spawn_position_m
 var _team_id: String
 var _speed_attribute: int
 var _tackling_attribute: int

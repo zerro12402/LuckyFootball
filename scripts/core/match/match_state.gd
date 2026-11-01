@@ -48,6 +48,15 @@ var _cancellation_reason: String = ""
 var result: FormalMatchResult:
 	get: return _result
 var _result: FormalMatchResult
+var kickoff_team_id: String:
+	get: return _kickoff_team_id
+var kickoff_player_id: String:
+	get: return _kickoff_player_id
+var kickoff_pending: bool:
+	get: return _kickoff_pending
+var _kickoff_team_id: String = ""
+var _kickoff_player_id: String = ""
+var _kickoff_pending: bool = false
 
 var phase: int:
 	get:
@@ -88,6 +97,15 @@ var _random_seed: int
 
 func _init(new_random_seed: int) -> void:
 	_random_seed = new_random_seed
+
+
+## Revises authority whenever kickoff ownership or its restricted command phase changes.
+func _set_kickoff(team: String, player: String, pending: bool) -> void:
+	if _kickoff_team_id != team or _kickoff_player_id != player or _kickoff_pending != pending:
+		_control_revision += 1
+	_kickoff_team_id = team
+	_kickoff_player_id = player
+	_kickoff_pending = pending
 
 
 ## Invalidates control envelopes whenever lifecycle authority changes.

@@ -32,7 +32,7 @@ func _init() -> void:
 		var roster_text := original_roster
 		var position_text := original_positions
 		match kind:
-			0: roster_text = roster_text.replace("home,swift_forward,6,forward\n", "")
+			0: roster_text = roster_text.replace("home,swift_forward,6,forward_right\n", "")
 			1: roster_text = roster_text.replace("home,steady_keeper,1,keeper", "home,formal_player_08,1,keeper")
 			2: roster_text = roster_text.replace("home,iron_guard,2,back_left", "home,formal_player_09,2,back_left").replace("away,formal_player_09,1,keeper", "away,iron_guard,1,keeper")
 			3: roster_text = roster_text.replace("away,formal_player_04,2,back_left", "away,iron_guard,2,back_left")
@@ -47,7 +47,7 @@ func _init() -> void:
 		var repository := TeamDataRepository.new()
 		_check(not repository.load_all(dir, fixture.data, fixture.field), "invalid roster rejected: %d" % kind)
 		_check(repository.teams.is_empty() and repository.team_players.is_empty() and not repository.errors.is_empty(), "invalid tables publish no partial roster")
-	_write(dir.path_join("teams.csv"), original_teams.replace("one_two_two_one,-1", "one_two_two_one,1"))
+	_write(dir.path_join("teams.csv"), original_teams.replace("two_one_two,-1", "two_one_two,1"))
 	_write(dir.path_join("team_players.csv"), original_roster)
 	_write(dir.path_join("formation_positions.csv"), original_positions)
 	var same_direction := TeamDataRepository.new()

@@ -10,6 +10,9 @@ static func allows(snapshot: MatchStateSnapshot, intent: MatchAction,
 	var actor := snapshot.get_player(intent.player_id)
 	if actor == null or snapshot.ball == null or not intent.direction.is_finite():
 		return false
+	if snapshot.kickoff_pending and (intent.player_id != snapshot.kickoff_player_id
+		or intent.action_type not in [MatchAction.Type.MOVE, MatchAction.Type.PASS, MatchAction.Type.SHOOT]):
+		return false
 	if not PlayerActionAvailability.allows(intent.action_type, actor.action_state,
 			actor.jump_phase, actor.possession_state,
 			actor.tackle_cooldown_seconds, actor.attack_cooldown_seconds):

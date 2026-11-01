@@ -11,6 +11,9 @@ var _modifier: AIWeightModifier
 var selected_target: AITargetOption:
 	get: return _selected_target
 var _selected_target: AITargetOption
+var selected_behavior: int:
+	get: return _selected_behavior
+var _selected_behavior: int = AIActionCandidate.Behavior.HOLD
 
 ## Uses a versioned UTF-8 rolling hash, independent of process hash and contest RNG streams.
 func _init(seed_value: int, player_id: String, modifier: AIWeightModifier = null,
@@ -26,6 +29,7 @@ func _init(seed_value: int, player_id: String, modifier: AIWeightModifier = null
 func choose(snapshot: MatchStateSnapshot, player_id: String,
 		candidates: Array[AIActionCandidate], config: MatchConfigDefinition) -> MatchAction:
 	_selected_target = null
+	_selected_behavior = AIActionCandidate.Behavior.HOLD
 	if not snapshot.can_decide_player_actions:
 		return null
 	var sorted: Array[AIActionCandidate] = candidates.duplicate()
@@ -52,6 +56,7 @@ func choose(snapshot: MatchStateSnapshot, player_id: String,
 		var stop := MatchAction.new(player_id, MatchAction.Type.MOVE)
 		return stop if ActionEligibility.allows(snapshot, stop, config) else null
 	var options := legal[index].targets
+	_selected_behavior = legal[index].behavior
 	var target_weights: Array[float] = []
 	for option in options:
 		target_weights.append(option.weight)

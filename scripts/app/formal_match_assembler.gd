@@ -6,10 +6,10 @@ var errors: PackedStringArray:
 	get: return _errors.duplicate()
 var _errors: PackedStringArray = []
 
-## Builds all twelve actors transactionally, with a centered free ball and opposite configured goals.
+## Builds both complete rosters and production kickoff, with explicit opt-out for isolated flow fixtures.
 func create_match(data: DataRepository, teams: TeamDataRepository, field: FieldDefinition,
 		config: MatchConfigDefinition, id: String, seed_value: int,
-		home_id: String, away_id: String) -> MatchSimulation:
+		home_id: String, away_id: String, use_kickoff: bool = true) -> MatchSimulation:
 	_errors.clear()
 	if data == null or teams == null or field == null or config == null or id.is_empty():
 		_errors.append("Validated data, field, config and a match ID are required")
@@ -20,6 +20,7 @@ func create_match(data: DataRepository, teams: TeamDataRepository, field: FieldD
 		_errors.append("Two different teams with opposite attacking directions are required")
 		return null
 	var simulation := MatchSimulation.new(seed_value, config, field)
+	var kickers: Dictionary[String, String] = {}
 	for team in [home, away]:
 		var roster := teams.get_roster(team.team_id)
 		if roster.size() != 6:
@@ -30,6 +31,8 @@ func create_match(data: DataRepository, teams: TeamDataRepository, field: FieldD
 			_errors.append("Invalid attacking goal")
 			return null
 		for entry in roster:
+			if entry.default_position.begins_with("forward") and not kickers.has(team.team_id):
+				kickers[team.team_id] = entry.player_id
 			var definition := data.get_player_by_id(entry.player_id)
 			var point := teams.get_position(team.default_formation, entry.default_position)
 			if definition == null or point == null:
@@ -41,5 +44,8 @@ func create_match(data: DataRepository, teams: TeamDataRepository, field: FieldD
 				return null
 	if not simulation.register_ball(Vector2.ZERO) or not simulation.configure_formal_match(id, home_id, away_id):
 		_errors.append("Invalid complete formal roster, identity or configuration")
+		return null
+	if use_kickoff and not simulation.configure_kickoff(kickers):
+		_errors.append("Invalid kickoff players or field geometry")
 		return null
 	return simulation

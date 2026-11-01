@@ -46,7 +46,9 @@ func _init() -> void:
 	candidates = builder.build(snapshot, "opponent", "back", Vector2(15, 0), -goal, "opponent", false)
 	_check(_has_legal(candidates, MatchAction.Type.TACKLE, snapshot, f.rules), "near carrier produces tackle")
 	_check(_has_legal(candidates, MatchAction.Type.ATTACK, snapshot, f.rules), "near carrier produces melee")
-	_check(_weight(candidates, AIActionCandidate.Behavior.RETURN) > 0.0, "defender retains return candidate")
+	_check(_weight(candidates, AIActionCandidate.Behavior.RETURN) == 0.0
+		and _weight(candidates, AIActionCandidate.Behavior.HOLD) == 0.0,
+		"designated defender must pursue or challenge instead of returning or holding")
 	for lane in [-1, 0, 1]:
 		ball._launch_shot(Vector2(16, lane), Vector2(20, 0), 20, 0.65)
 		snapshot = f.snapshot([carrier, mate, opponent, keeper], ball, "carrier", lane + 2, true)

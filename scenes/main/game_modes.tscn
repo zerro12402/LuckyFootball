@@ -16,10 +16,21 @@ unique_name_in_owner = true
 layer = 10
 
 [node name="ModePanel" type="PanelContainer" parent="ModeUi" unique_id=480378047]
+unique_name_in_owner = true
 offset_left = 12.0
 offset_top = 12.0
 offset_right = 260.0
 offset_bottom = 240.0
+
+[node name="TestUiToggleButton" type="Button" parent="ModeUi"]
+unique_name_in_owner = true
+visible = false
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 260.0
+offset_bottom = 44.0
+focus_mode = 0
+text = "展开测试面板"
 
 [node name="ModeButtons" type="VBoxContainer" parent="ModeUi/ModePanel" unique_id=709390063]
 layout_mode = 2
