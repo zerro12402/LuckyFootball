@@ -1,16 +1,49 @@
-## Runs real high-pass receive/shoot and keeper catch/distribute sequences through the production AI source.
+## Runs grounded and aerial receptions, finishes and keeper distribution through the production AI source.
 extends SceneTree
 const Fixture = preload("res://tests/support/ai_fixture.gd")
 var _failures: PackedStringArray = []
 
 ## Uses setup-only state injection; all subsequent movement and touches are committed by the simulation.
 func _init() -> void:
+	_test_ground_receptions()
 	_test_aerial_sequence()
 	_test_keeper_sequence()
 	for failure in _failures:
 		printerr(failure)
 	print("AI sequences: ", "PASS" if _failures.is_empty() else "FAIL")
 	quit(0 if _failures.is_empty() else 1)
+
+## Safe low passes and high passes outside finishing range are actually collected without automatic jumping.
+func _test_ground_receptions() -> void:
+	for high: bool in [false, true]:
+		var f := Fixture.new()
+		var simulation := f.formal.create(4.0)
+		for runtime in simulation._player_runtime_system.get_players():
+			runtime.state_machine.reset_to_spawn(Vector2(-20, 12))
+		var receiver := simulation._player_runtime_system.get_player("formal_player_02")
+		var distance := 10.0 if high else 6.0
+		receiver.state_machine.reset_to_spawn(Vector2(distance, 0))
+		var ball := simulation._ball_runtime_system
+		ball.reset_ball(Vector2.ZERO)
+		ball.state._launch_pass(receiver.player_id, Vector2.RIGHT * 14, distance, 1.8 if high else 0.0)
+		ball._last_kicker_id = "swift_forward"
+		ball._ai_flight_sequence += 1
+		var source := f.source()
+		var loop := GameLoop.new(simulation, 1.0 / 60.0, 0.25, 8, null, [], [source])
+		simulation.start_match()
+		var received := false
+		var jumped := false
+		for step in range(100):
+			var frame := loop.advance_frame(1.0 / 60.0, [])
+			var player := frame.snapshot.get_player(receiver.player_id)
+			jumped = jumped or player.jump_phase != PlayerMatchState.JumpPhase.NONE
+			if frame.snapshot.ball.owner_player_id == receiver.player_id:
+				received = true
+				break
+		_check(received and not jumped, "safe " + ("high" if high else "ground") + " pass is received on the ground")
+		var following := loop.advance_frame(1.0 / 60.0, [])
+		_check(following.snapshot.get_player(receiver.player_id).jump_phase == PlayerMatchState.JumpPhase.NONE,
+			"safe receiver does not randomly jump just after obtaining possession")
 
 ## Repeats the same real high pass after landing to catch stale one-shot jump markers.
 func _test_aerial_sequence() -> void:
@@ -26,10 +59,10 @@ func _test_aerial_sequence() -> void:
 		for runtime in simulation._player_runtime_system.get_players():
 			runtime.state_machine.reset_to_spawn(Vector2(-20, 12))
 		var receiver := simulation._player_runtime_system.get_player(receiver_id)
-		receiver.state_machine.reset_to_spawn(Vector2(12, 0))
+		receiver.state_machine.reset_to_spawn(Vector2(14, 0))
 		var ball := simulation._ball_runtime_system
 		ball.reset_ball(Vector2.ZERO)
-		ball.state._launch_pass(receiver_id, Vector2(14, 0), 12, 1.8)
+		ball.state._launch_pass(receiver_id, Vector2(14, 0), 14, 1.8)
 		ball._last_kicker_id = "swift_forward"
 		ball._ai_flight_sequence += 1
 		source.invalidate_control(simulation.create_snapshot())

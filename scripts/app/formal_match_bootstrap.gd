@@ -19,6 +19,8 @@ var _data: DataRepository
 var _teams: TeamDataRepository
 var _config: MatchConfigDefinition
 var _status: Label
+var _controls_content: VBoxContainer
+var _controls_toggle: Button
 var _pause_button: Button
 var _sources: Array[MatchActionSource] = []
 var last_errors: PackedStringArray = []
@@ -91,9 +93,12 @@ func set_action_sources(sources: Array[MatchActionSource]) -> bool:
 func get_snapshot() -> MatchStateSnapshot:
 	return _simulation.create_snapshot() if _simulation != null else null
 
-## Starts only through the validated lifecycle controller; repeated requests have no effect.
+## Starts through the lifecycle controller and clears the viewing area after an accepted start.
 func start_match() -> bool:
-	return _simulation != null and _simulation.start_match()
+	if _simulation == null or not _simulation.start_match():
+		return false
+	_set_controls_collapsed(true)
+	return true
 
 ## Preserves the paused round, invalidates queued intent and refreshes observer control text.
 func toggle_pause() -> bool:
@@ -118,15 +123,32 @@ func _build_controls() -> void:
 	layer.add_child(panel)
 	var box := VBoxContainer.new()
 	panel.add_child(box)
+	box.minimum_size_changed.connect(panel.reset_size)
+	_controls_toggle = Button.new()
+	_controls_toggle.focus_mode = Control.FOCUS_NONE
+	_controls_toggle.pressed.connect(_toggle_controls)
+	box.add_child(_controls_toggle)
+	_controls_content = VBoxContainer.new()
+	box.add_child(_controls_content)
 	for entry in [["开始比赛", start_match], ["暂停 / 恢复", toggle_pause], ["取消比赛", cancel_match]]:
 		var button := Button.new()
 		button.text = entry[0]
 		button.focus_mode = Control.FOCUS_NONE
 		button.pressed.connect(entry[1])
-		box.add_child(button)
+		_controls_content.add_child(button)
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_status)
+	_controls_content.add_child(_status)
+	_set_controls_collapsed(true)
+
+## Changes only observer UI visibility; the match keeps its current lifecycle and simulation progress.
+func _toggle_controls() -> void:
+	_set_controls_collapsed(_controls_content.visible)
+
+## Keeps the toggle reachable while hiding the lifecycle buttons and verbose status together.
+func _set_controls_collapsed(collapsed: bool) -> void:
+	_controls_content.visible = not collapsed
+	_controls_toggle.text = "展开比赛控制" if collapsed else "收起比赛控制"
 
 ## Displays copied phase/time/team scores and immutable terminal facts without changing match state.
 func _present(frame: MatchFrameResult) -> void:

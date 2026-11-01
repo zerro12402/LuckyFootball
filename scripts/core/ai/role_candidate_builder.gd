@@ -29,6 +29,7 @@ func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 	var owns := ball.owner_player_id == player_id
 	var is_primary_defender := phase == TeamTacticalContext.Phase.DEFEND \
 		and not ball.owner_player_id.is_empty() and primary == player_id
+	var is_primary_collector := phase == TeamTacticalContext.Phase.LOOSE and primary == player_id
 	if requires_region_return(snapshot, player, primary, position_id, goal):
 		var bounds := activity_bounds(snapshot, player, position_id, goal)
 		return [_move(player, _clamp_to_rect(player.position_m, bounds), AIActionCandidate.Behavior.RETURN,
@@ -43,11 +44,12 @@ func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 		if can_attempt_shot(player, goal):
 			candidates.append(_one(player_id, AIActionCandidate.Behavior.SHOOT,
 				_tuning.weight(role, AIActionCandidate.Behavior.SHOOT) * shot_factor, MatchAction.Type.SHOOT))
-		candidates.append(_one(player_id, AIActionCandidate.Behavior.JUMP,
-			_tuning.weight(role, AIActionCandidate.Behavior.JUMP), MatchAction.Type.JUMP))
-	elif phase == TeamTacticalContext.Phase.LOOSE and primary == player_id:
-		var intercept := AIBallPrediction.point_at(ball, _tuning.number("heartbeat_seconds"), _rules)
-		candidates.append(_move(player, intercept, AIActionCandidate.Behavior.CHASE,
+		if is_pressured:
+			candidates.append(_one(player_id, AIActionCandidate.Behavior.JUMP,
+				_tuning.weight(role, AIActionCandidate.Behavior.JUMP), MatchAction.Type.JUMP))
+	elif is_primary_collector:
+		candidates.append(_move(player, movement_target(snapshot, player,
+			AIActionCandidate.Behavior.CHASE, role, anchor, goal, position_id), AIActionCandidate.Behavior.CHASE,
 			_tuning.weight(role, AIActionCandidate.Behavior.CHASE)))
 	elif phase == TeamTacticalContext.Phase.DEFEND:
 		if is_primary_defender:
@@ -65,7 +67,7 @@ func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 			_tuning.weight(role, AIActionCandidate.Behavior.SUPPORT)))
 	if not owns:
 		_add_contests(snapshot, player, role, candidates)
-	if not is_primary_defender:
+	if not owns and not is_primary_defender and not is_primary_collector:
 		candidates.append(_move(player, player.position_m, AIActionCandidate.Behavior.HOLD,
 			_tuning.weight(role, AIActionCandidate.Behavior.HOLD)))
 	if is_finite(stamina_ratio) and stamina_ratio >= 0.0:
@@ -107,6 +109,9 @@ func movement_target(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	var direction := signf(goal.x)
 	var point := anchor
 	match behavior:
+		AIActionCandidate.Behavior.CHASE:
+			# A live collection point must remain reachable even inside the ordinary field margin.
+			return AIBallPrediction.point_at(snapshot.ball, _tuning.number("heartbeat_seconds"), _rules)
 		AIActionCandidate.Behavior.PRESS:
 			if carrier != null:
 				point = carrier.position_m + carrier.movement_input * carrier.movement_speed_mps \
@@ -176,7 +181,7 @@ func _add_contests(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot, ro
 	candidates.append(AIActionCandidate.new(AIActionCandidate.Behavior.TACKLE,
 		_tuning.weight(role, AIActionCandidate.Behavior.TACKLE), tackles))
 
-## Predicts the first receive window and jumps only while the directed high pass can arrive airborne.
+## Predicts the receive window; automatic receiving jumps are reserved for an in-range aerial finish.
 func aerial_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		goal: Vector2 = Vector2.INF) -> MatchAction:
 	var ball := snapshot.ball
@@ -189,6 +194,8 @@ func aerial_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	if ball.flight_kind != BallMatchState.FlightKind.PASS or ball.target_player_id != player.player_id \
 			or ball.flight_apex_height_m <= BallRuntimeSystem.MAX_RECEIVE_HEIGHT_M \
 			or player.jump_phase != PlayerMatchState.JumpPhase.NONE:
+		return null
+	if goal.is_finite() and not can_attempt_shot(player, goal):
 		return null
 	var direction := ball.velocity_mps.normalized()
 	var along := (player.position_m - ball.position_m).dot(direction)
@@ -283,13 +290,13 @@ func save_candidate(snapshot: MatchStateSnapshot, keeper: PlayerStateSnapshot,
 	return AIActionCandidate.new(AIActionCandidate.Behavior.SAVE,
 		_tuning.weight("keeper", AIActionCandidate.Behavior.SAVE), targets)
 
-## Bounds field-player destinations; keeper targets are validated against the goal mouth or own penalty area.
+## Bounds ordinary positioning; live collection bypasses margins that could keep the ball outside pickup reach.
 func _move(player: PlayerStateSnapshot, destination: Vector2, behavior: int, weight: float) -> AIActionCandidate:
 	var point := _bound_field_point(destination)
-	if player.is_goalkeeper:
+	if player.is_goalkeeper or behavior == AIActionCandidate.Behavior.CHASE:
 		point = destination
 	var direction := (point - player.position_m).normalized()
-	if point.distance_to(player.position_m) <= _tuning.number("arrival_m"):
+	if behavior != AIActionCandidate.Behavior.CHASE and point.distance_to(player.position_m) <= _tuning.number("arrival_m"):
 		direction = Vector2.ZERO
 	return AIActionCandidate.new(behavior, weight,
 		[AITargetOption.new(MatchAction.new(player.player_id, MatchAction.Type.MOVE, direction), 1.0, point)])

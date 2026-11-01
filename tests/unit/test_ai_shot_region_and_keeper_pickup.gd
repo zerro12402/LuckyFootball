@@ -33,11 +33,12 @@ func _test_shot_regions() -> void:
 		snapshot = f.snapshot([player], ball)
 		_check(builder.aerial_action(snapshot, snapshot.get_player("carrier"), goal) == null,
 			"airborne possession cannot bypass rear-half restriction")
-		player.state_machine.reset_to_spawn(Vector2(5.0 * direction, 0))
+		var shot_limit := f.tuning.number("shot_max_distance_m")
+		player.state_machine.reset_to_spawn(Vector2((25.0 - shot_limit) * direction, 0))
 		player.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
 		_check(builder.can_attempt_shot(f.snapshot([player], ball).get_player("carrier"), goal),
-			"20m front-half boundary remains a valid random shooting opportunity")
-		player.state._set_position(Vector2(4.99 * direction, 0))
+			"configured front-half distance boundary remains a valid shooting opportunity")
+		player.state._set_position(Vector2((25.0 - shot_limit - 0.01) * direction, 0))
 		_check(not builder.can_attempt_shot(f.snapshot([player], ball).get_player("carrier"), goal),
 			"distance just beyond configured maximum excluded")
 	# An involuntary carrier flip has no AI-owned aerial finishing plan.

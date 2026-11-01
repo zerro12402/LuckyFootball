@@ -178,7 +178,8 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		_plans[id] = plan
 	plan.had_contest_opportunity = has_contest
 	if not player.is_goalkeeper and plan.behavior in [
-		AIActionCandidate.Behavior.PRESS, AIActionCandidate.Behavior.SUPPORT, AIActionCandidate.Behavior.RETURN]:
+		AIActionCandidate.Behavior.PRESS, AIActionCandidate.Behavior.SUPPORT, AIActionCandidate.Behavior.RETURN,
+		AIActionCandidate.Behavior.CHASE]:
 		plan.target_m = _builder.movement_target(snapshot, player, plan.behavior,
 			_roles[id], _anchors[id], _goals[id], _positions[id])
 	if plan.action.action_type == MatchAction.Type.MOVE:
@@ -186,7 +187,8 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		var direction := remaining.normalized()
 		var outside_region := plan.behavior == AIActionCandidate.Behavior.RETURN \
 			and _builder.requires_region_return(snapshot, player, primary, _positions[id], _goals[id])
-		if remaining.length() <= _tuning.number("arrival_m") and not outside_region:
+		if remaining.length() <= _tuning.number("arrival_m") and not outside_region \
+				and plan.behavior != AIActionCandidate.Behavior.CHASE:
 			direction = Vector2.ZERO
 		else:
 			# Clamp to destination within one fixed step; speed comes from actual copied runtime values.
@@ -255,9 +257,12 @@ func _update_pressure(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot)
 	var threshold := _tuning.number("pressure_exit_m") if _pressure.get(player.player_id, false) else _tuning.number("pressure_m")
 	_pressure[player.player_id] = distance <= threshold
 
-## Ends stale motion before passing/shooting; lunges first capture the intended target-facing direction.
+## Stops for kicks/receptions, preserves a carrier's moving jump, and captures lunge direction.
 func _emit_action(action: MatchAction, player: PlayerStateSnapshot) -> Array[MatchAction]:
 	var direction := Vector2.ZERO
 	if action.action_type in [MatchAction.Type.TACKLE, MatchAction.Type.ATTACK]:
 		direction = action.direction
+	elif action.action_type == MatchAction.Type.JUMP \
+			and player.possession_state == PlayerMatchState.PossessionState.POSSESSING:
+		direction = player.movement_input
 	return [MatchAction.new(player.player_id, MatchAction.Type.MOVE, direction), action]

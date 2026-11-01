@@ -15,7 +15,7 @@ defense_standoff_m,3,非主防守者保护位置相对持球者向本方球门�
 press_prediction_seconds,0.2,逼抢目标根据持球者已知移动输入预测的时间（秒）
 shot_distance_scale_m,10,射门倾向距离尺度（米）
 shot_min_multiplier,0.05,远射最低倾向倍率
-shot_max_distance_m,20,AI射门最大门距（米）；同时要求位于前场；地面及空中共用
+shot_max_distance_m,12,AI射门最大门距（米）；同时要求位于前场；地面及空中共用
 attack_start_m,3,攻击开始距离（米）
 role_forward_offset_m,5,进攻站位前移（米）
 support_spacing_m,9,接应点相对持球者的横向偏移（米）；拉开边路宽度
