@@ -266,6 +266,12 @@ _data = {
 &"tackle": SubResource("Animation_tackle")
 }
 
+[sub_resource type="StyleBoxEmpty" id="StyleBox_nameplate"]
+content_margin_left = 3.0
+content_margin_right = 3.0
+content_margin_top = 1.0
+content_margin_bottom = 1.0
+
 [node name="PlayerActor" type="Node2D" unique_id=1601495047]
 script = ExtResource("1_actor")
 
@@ -280,6 +286,23 @@ position = Vector2(0, -11)
 texture = ExtResource("3_player")
 hframes = 6
 vframes = 13
+
+[node name="Nameplate" type="Label" parent="."]
+unique_name_in_owner = true
+visible = false
+z_index = 10
+offset_left = -36.0
+offset_top = -46.0
+offset_right = 36.0
+offset_bottom = -30.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBox_nameplate")
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=229587343]
 unique_name_in_owner = true

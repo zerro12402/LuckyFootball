@@ -62,6 +62,7 @@ func _ready() -> void:
 	_loop = GameLoop.new(_simulation, GameLoop.DEFAULT_FIXED_DELTA_SECONDS,
 		GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS, GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, null, [], _sources)
 	_field.configure(_data.get_field_by_id("demo_field"))
+	_field.configure_player_names(_data.player_definitions)
 	_field.set_debug_enabled(false)
 	_field.configure_roster(_simulation.create_snapshot(), _config)
 	_build_controls()

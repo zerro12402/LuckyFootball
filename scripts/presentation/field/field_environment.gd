@@ -28,6 +28,7 @@ var _keeper_save_duration: float = 1.2
 
 var _presented_player_ids: Array[String] = []
 var _roster_actors: Dictionary[String, PlayerActor] = {}
+var _player_names: Dictionary[String, String] = {}
 var _left_net_tween: Tween
 var _right_net_tween: Tween
 
@@ -143,6 +144,13 @@ func set_presented_players(
 		_presented_player_ids.append(challenger_id)
 
 
+## Captures only presentation identity; match snapshots remain free of static display strings.
+func configure_player_names(definitions: Array[PlayerDefinition]) -> void:
+	_player_names.clear()
+	for definition in definitions:
+		_player_names[definition.player_id] = definition.display_name
+
+
 ## Copies a match snapshot into visible actors without changing simulation state.
 func present(snapshot: MatchStateSnapshot) -> void:
 	if _projection == null:
@@ -163,6 +171,8 @@ func present(snapshot: MatchStateSnapshot) -> void:
 				and snapshot.ball.owner_player_id == player_snapshot.player_id
 				and snapshot.ball.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS)
 			player_actors[player_index].configure_keeper_hands(holds_in_hands, _keeper_save_duration)
+			player_actors[player_index].set_display_name(
+				_player_names.get(player_snapshot.player_id, player_snapshot.player_id))
 			player_actors[player_index].present(player_snapshot, _projection)
 			if holds_in_hands:
 				hand_carrier_actor = player_actors[player_index]

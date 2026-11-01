@@ -136,6 +136,7 @@ func _ready() -> void:
 		return
 	if _field_environment != null:
 		_field_environment.configure(_field_definition)
+		_field_environment.configure_player_names(_data_repository.player_definitions)
 		_field_environment.configure_keeper_timing(_match_config.keeper_action_duration_seconds)
 		_field_environment.configure_hit_stun(_match_config.tackle_hit_stun_seconds)
 		_field_environment.configure_tackle_duration(_match_config.tackle_action_duration_seconds)

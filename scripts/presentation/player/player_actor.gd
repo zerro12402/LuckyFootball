@@ -1,4 +1,4 @@
-## Presents a player snapshot with sprite animations owned by AnimationPlayer.
+## Presents a player snapshot with AnimationPlayer actions and an upright overhead nameplate.
 class_name PlayerActor
 extends Node2D
 
@@ -34,6 +34,7 @@ const BALL_OFFSET_FROM_FOOT := Vector2(5.0, -2.0)
 
 @onready var _body_sprite: Sprite2D = %BodySprite
 @onready var _animation_player: AnimationPlayer = %AnimationPlayer
+@onready var _nameplate: Label = %Nameplate
 
 var _is_hand_holder: bool = false
 var _save_duration_seconds: float = 1.2
@@ -47,13 +48,23 @@ var _header_first_frame_seconds: float = 0.3
 var _header_second_frame_seconds: float = 1.0
 var _use_shoot_pose_during_jump: bool = false
 var _ground_sprite_position: Vector2
+var _ground_nameplate_position: Vector2
 var _active_animation: StringName = &""
 
 
 ## Starts the actor in its idle animation.
 func _ready() -> void:
 	_ground_sprite_position = _body_sprite.position
+	_ground_nameplate_position = _nameplate.position
 	_play_animation(IDLE_ANIMATION)
+
+
+## Limits the displayed name without editing static definitions or mirroring text with the sprite.
+func set_display_name(display_name: String) -> void:
+	var short_name := display_name.strip_edges().left(6)
+	if _nameplate.text != short_name:
+		_nameplate.text = short_name
+		_nameplate.visible = not short_name.is_empty()
 
 
 ## Projects the simulated position and action into the actor scene.
@@ -78,6 +89,7 @@ func present(
 		_body_sprite.position.y -= (
 			sin(PI * progress) * _knockdown_jump_height_m * pixels_per_meter
 		)
+	_nameplate.position = _ground_nameplate_position + _body_sprite.position - _ground_sprite_position
 	_play_animation(_resolve_animation(player_snapshot))
 	if player_snapshot.action_state == PlayerMatchState.ActionState.SAVING:
 		_animation_player.seek(clampf(player_snapshot.action_state_elapsed_seconds,
