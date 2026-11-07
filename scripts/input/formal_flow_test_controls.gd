@@ -42,6 +42,7 @@ func select_preset(preset: int) -> void:
 	_session.use_local_camera = false
 	_session.name = "FormalSession"
 	get_parent().add_child(_session)
+	_session.set_test_panels_visible((get_parent() as GameBootstrap).test_panels_visible)
 	_session.presentation_frame_ready.connect(_present)
 	var simulation := _session._simulation
 	if simulation == null:

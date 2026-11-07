@@ -9,6 +9,7 @@ signal presentation_frame_ready(snapshot: MatchStateSnapshot, events: Array[Matc
 @export var away_team_id: String = "away"
 @export var match_id: String = ""
 @export var random_seed: int = 1
+@export var auto_start_delay_seconds: float = 0.0
 @export var autonomous_players: bool = true
 @export var use_local_camera: bool = true
 @onready var _field: FieldEnvironment = %FieldEnvironment
@@ -21,11 +22,13 @@ var _data: DataRepository
 var _teams: TeamDataRepository
 var _config: MatchConfigDefinition
 var _status: Label
-var _controls_content: VBoxContainer
-var _controls_toggle: Button
+var _controls_layer: CanvasLayer
 var _pause_button: Button
 var _sources: Array[MatchActionSource] = []
 var last_errors: PackedStringArray = []
+var scripted_player_id := ""
+var player_strategy: PlayerAIDecisionStrategy
+var _production_ai: MatchPlayerAISource
 
 ## Validates all data before publishing a READY session, then creates observer lifecycle controls.
 func _ready() -> void:
@@ -56,11 +59,12 @@ func _ready() -> void:
 			_fail(_data.last_errors)
 			return
 		var source := MatchPlayerAISource.new(_teams, _data.get_field_by_id("demo_field"), _config,
-			tuning, null, null, GameLoop.DEFAULT_FIXED_DELTA_SECONDS, regions)
+			tuning, null, null, GameLoop.DEFAULT_FIXED_DELTA_SECONDS, regions, scripted_player_id, player_strategy)
 		if not source.errors.is_empty():
 			_fail(source.errors)
 			return
 		_sources.append(source)
+		_production_ai = source
 	_loop = GameLoop.new(_simulation, GameLoop.DEFAULT_FIXED_DELTA_SECONDS,
 		GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS, GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, null, [], _sources)
 	_field.use_local_camera = use_local_camera
@@ -70,6 +74,10 @@ func _ready() -> void:
 	_field.configure_roster(_simulation.create_snapshot(), _config)
 	_build_controls()
 	_present(_loop.advance_frame(0.0, []))
+	if auto_start_delay_seconds > 0.0:
+		await get_tree().create_timer(auto_start_delay_seconds, false).timeout
+		if is_inside_tree():
+			start_match()
 
 ## Reports setup failure without leaving a partially active match or half-populated field.
 func _fail(errors: PackedStringArray) -> void:
@@ -94,16 +102,18 @@ func set_action_sources(sources: Array[MatchActionSource]) -> bool:
 			GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS, GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, null, [], _sources)
 	return true
 
+## Reads the last script fallback for the local trial observer.
+func get_strategy_error() -> String:
+	return _production_ai.strategy_error if _production_ai != null else ""
+
+
 ## Returns a detached observation, or no observation when transactional setup failed.
 func get_snapshot() -> MatchStateSnapshot:
 	return _simulation.create_snapshot() if _simulation != null else null
 
-## Starts through the lifecycle controller and clears the viewing area after an accepted start.
+## Starts the match through the lifecycle controller.
 func start_match() -> bool:
-	if _simulation == null or not _simulation.start_match():
-		return false
-	_set_controls_collapsed(true)
-	return true
+	return _simulation != null and _simulation.start_match()
 
 ## Preserves the paused round, invalidates queued intent and refreshes observer control text.
 func toggle_pause() -> bool:
@@ -119,41 +129,32 @@ func cancel_match() -> bool:
 
 ## Provides only match lifecycle controls; this interface never creates player commands.
 func _build_controls() -> void:
-	var layer := CanvasLayer.new()
-	layer.name = "MatchControls"
-	add_child(layer)
+	_controls_layer = CanvasLayer.new()
+	_controls_layer.name = "MatchControls"
+	_controls_layer.hide()
+	add_child(_controls_layer)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(272, 12)
 	panel.custom_minimum_size = Vector2(310, 0)
-	layer.add_child(panel)
+	_controls_layer.add_child(panel)
 	var box := VBoxContainer.new()
 	panel.add_child(box)
-	box.minimum_size_changed.connect(panel.reset_size)
-	_controls_toggle = Button.new()
-	_controls_toggle.focus_mode = Control.FOCUS_NONE
-	_controls_toggle.pressed.connect(_toggle_controls)
-	box.add_child(_controls_toggle)
-	_controls_content = VBoxContainer.new()
-	box.add_child(_controls_content)
 	for entry in [["开始比赛", start_match], ["暂停 / 恢复", toggle_pause], ["取消比赛", cancel_match]]:
 		var button := Button.new()
 		button.text = entry[0]
 		button.focus_mode = Control.FOCUS_NONE
 		button.pressed.connect(entry[1])
-		_controls_content.add_child(button)
+		box.add_child(button)
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_controls_content.add_child(_status)
-	_set_controls_collapsed(true)
+	box.add_child(_status)
 
-## Changes only observer UI visibility; the match keeps its current lifecycle and simulation progress.
-func _toggle_controls() -> void:
-	_set_controls_collapsed(_controls_content.visible)
 
-## Keeps the toggle reachable while hiding the lifecycle buttons and verbose status together.
-func _set_controls_collapsed(collapsed: bool) -> void:
-	_controls_content.visible = not collapsed
-	_controls_toggle.text = "展开比赛控制" if collapsed else "收起比赛控制"
+
+## Toggles the development lifecycle controls independently of the official scoreboard.
+func set_test_panels_visible(show_panels: bool) -> void:
+	if _controls_layer != null:
+		_controls_layer.visible = show_panels
 
 ## Displays copied phase/time/team scores and immutable terminal facts without changing match state.
 func _present(frame: MatchFrameResult, delta_seconds: float = 0.0) -> void:

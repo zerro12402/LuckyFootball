@@ -1,0 +1,106 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/app/player_ai_script_lab.gd" id="1_lab"]
+
+[node name="PlayerAIScriptLab" type="CanvasLayer"]
+layer = 15
+visible = false
+script = ExtResource("1_lab")
+
+[node name="Editor" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -310.0
+offset_top = -197.0
+offset_right = 310.0
+offset_bottom = 197.0
+
+[node name="Rows" type="VBoxContainer" parent="Editor"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Editor/Rows"]
+layout_mode = 2
+text = "球员 AI 实验室 · 接口 v1"
+
+[node name="Setup" type="HBoxContainer" parent="Editor/Rows"]
+layout_mode = 2
+
+[node name="ForwardChoice" type="OptionButton" parent="Editor/Rows/Setup"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SeedInput" type="LineEdit" parent="Editor/Rows/Setup"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(132, 0)
+layout_mode = 2
+text = "1"
+placeholder_text = "比赛种子"
+
+[node name="ScriptSource" type="TextEdit" parent="Editor/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 230)
+layout_mode = 2
+size_flags_vertical = 3
+placeholder_text = "粘贴或编辑 JSON 策略"
+
+[node name="Diagnostic" type="Label" parent="Editor/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+text = "选择一名前锋，编辑或粘贴脚本。"
+
+[node name="Commands" type="HBoxContainer" parent="Editor/Rows"]
+layout_mode = 2
+
+[node name="ValidateButton" type="Button" parent="Editor/Rows/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "校验脚本"
+
+[node name="RunButton" type="Button" parent="Editor/Rows/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+disabled = true
+text = "绑定并试跑"
+
+[node name="BaselineButton" type="Button" parent="Editor/Rows/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+disabled = true
+text = "同种子默认复跑"
+
+[node name="ManualButton" type="Button" parent="Editor/Rows/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "复制手册"
+
+[node name="CloseButton" type="Button" parent="Editor/Rows/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "关闭"
+
+[node name="ReturnButton" type="Button" parent="."]
+unique_name_in_owner = true
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -43.0
+offset_right = 149.0
+offset_bottom = -12.0
+text = "打开 AI 实验室"
+visible = false
+
+[node name="LiveStatus" type="Label" parent="."]
+unique_name_in_owner = true
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 160.0
+offset_top = -39.0
+offset_right = 800.0
+offset_bottom = -13.0
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4

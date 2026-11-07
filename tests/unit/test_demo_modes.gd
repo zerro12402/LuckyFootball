@@ -14,7 +14,7 @@ func _init() -> void:
 ## Runs the independent mode checks and returns a failure code when needed.
 func _run_tests() -> void:
 	test_mode_scenes_when_loaded_have_expected_demo_configuration()
-	test_mode_menu_when_selected_replaces_active_scene()
+	await test_mode_menu_when_selected_replaces_active_scene()
 	test_touch_dribble_mode_when_reset_keeps_one_player()
 
 	if _failures.is_empty():
@@ -67,13 +67,27 @@ func test_mode_menu_when_selected_replaces_active_scene() -> void:
 	root.add_child(menu)
 	var mode_host := menu.get_node("ModeHost")
 	var mode_panel := menu.get_node_or_null("%ModePanel") as PanelContainer
-	var menu_toggle := menu.get_node_or_null("%TestUiToggleButton") as Button
-	_expect(mode_panel != null and menu_toggle != null, "Expected both unique test-menu nodes in the saved main scene")
-	if mode_panel == null or menu_toggle == null:
+	_expect(mode_panel != null, "Expected a test menu in the saved main scene")
+	if mode_panel == null:
 		menu.queue_free()
 		return
-	_expect(mode_panel.visible and not menu_toggle.visible, "Expected expanded demo menu without a formal-only toggle")
-	_expect(menu.current_mode == GameModeController.Mode.PASS_AND_SHOOT, "Expected pass demo")
+	_expect(not mode_panel.visible, "Test controls start hidden")
+	var f1 := InputEventKey.new()
+	f1.keycode = KEY_F1
+	f1.pressed = true
+	menu._input(f1)
+	_expect(mode_panel.visible, "F1 opens the test controls")
+	f1.echo = true
+	menu._input(f1)
+	_expect(mode_panel.visible, "Holding F1 does not repeatedly toggle the controls")
+	f1.echo = false
+	_expect(menu.current_mode == GameModeController.Mode.FORMAL_MATCH, "Expected formal play at launch")
+	var initial_match := mode_host.get_child(0) as FormalMatchBootstrap
+	_expect(initial_match.get_snapshot().phase == MatchState.Phase.READY, "Launch waits before kickoff")
+	await create_timer(0.5).timeout
+	_expect(initial_match.get_snapshot().phase == MatchState.Phase.READY, "Formal match does not start before the delay")
+	await create_timer(0.55).timeout
+	_expect(initial_match.get_snapshot().phase == MatchState.Phase.RUNNING, "Formal match starts automatically after one second")
 	_expect(mode_host.get_child_count() == 1, "Expected one active mode scene")
 	var formal_button := menu.get_node(
 		"ModeUi/ModePanel/ModeButtons/FormalMatchButton"
@@ -88,15 +102,15 @@ func test_mode_menu_when_selected_replaces_active_scene() -> void:
 	_expect(menu.current_mode == GameModeController.Mode.FORMAL_MATCH, "Expected formal mode")
 	_expect(mode_host.get_child_count() == 1, "Expected one empty formal scene")
 	_expect(mode_host.get_child(0).name == "FormalMatch", "Expected formal scene root")
-	_expect(not mode_panel.visible and menu_toggle.visible, "Expected formal entry to collapse the test menu")
-	var formal_instance := mode_host.get_child(0)
-	menu_toggle.pressed.emit()
-	_expect(mode_panel.visible and menu_toggle.text == "收起测试面板", "Expected toggle to expand the test menu")
-	_expect(mode_host.get_child(0) == formal_instance, "Expected expansion to preserve the active match instance")
-	menu_toggle.pressed.emit()
-	_expect(not mode_panel.visible and menu_toggle.text == "展开测试面板", "Expected toggle to collapse again")
+	var formal_instance := mode_host.get_child(0) as FormalMatchBootstrap
+	_expect(mode_panel.visible and formal_instance._controls_layer.visible, "Formal entry follows the F1 visibility setting")
+	menu._input(f1)
+	_expect(not mode_panel.visible and not formal_instance._controls_layer.visible, "F1 hides both test panels")
+	_expect((formal_instance.get_node("%Scoreboard") as CanvasLayer).visible, "The official scoreboard stays available")
+	menu._input(f1)
+	_expect(mode_host.get_child(0) == formal_instance and formal_instance._controls_layer.visible,
+		"Reopening test controls preserves the active match instance")
 	touch_button.pressed.emit()
-	_expect(mode_panel.visible and not menu_toggle.visible, "Expected returning to a demo to restore the full test menu")
 	_expect(
 		menu.current_mode == GameModeController.Mode.TOUCH_AND_DRIBBLE,
 		"Expected touch and dribble mode",
@@ -107,6 +121,12 @@ func test_mode_menu_when_selected_replaces_active_scene() -> void:
 		touch_demo != null and touch_demo.demo_mode == GameBootstrap.DemoMode.TOUCH_AND_DRIBBLE,
 		"Expected single-player touch scene",
 	)
+	var speed_controls := touch_demo.get_node("TouchSpeedControls") as CanvasLayer
+	_expect(speed_controls.visible, "F1 shows controls for the active preset")
+	menu._input(f1)
+	_expect(not speed_controls.visible, "F1 also hides mode-specific test panels")
+	menu._input(f1)
+	_expect(speed_controls.visible, "Reopening restores the active preset's controls")
 	pass_button.pressed.emit()
 	_expect(menu.current_mode == GameModeController.Mode.PASS_AND_SHOOT, "Expected pass mode")
 	_expect(mode_host.get_child_count() == 1, "Expected one pass mode scene")

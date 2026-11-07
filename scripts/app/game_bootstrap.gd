@@ -111,6 +111,24 @@ var _demo_player_id: String = ""
 var _demo_teammate_id: String = ""
 var _demo_opponent_id: String = ""
 var _touch_speed_override: int = 0
+var test_panels_visible := true
+var _test_layers: Array[CanvasLayer] = []
+var _test_layers_captured := false
+
+
+## Remembers which test layers belong to the selected preset, excluding the result HUD.
+func set_test_panels_visible(show_panels: bool) -> void:
+	if not _test_layers_captured:
+		_test_layers_captured = true
+		for child in get_children():
+			if child is CanvasLayer and child != _result_hud and child.visible:
+				_test_layers.append(child)
+	test_panels_visible = show_panels
+	for layer in _test_layers:
+		layer.visible = show_panels
+	for child in get_children():
+		if child is FormalMatchBootstrap:
+			child.set_test_panels_visible(show_panels)
 
 
 ## Loads static data, wires demo controls, and starts a reproducible match.

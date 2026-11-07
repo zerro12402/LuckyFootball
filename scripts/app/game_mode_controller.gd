@@ -21,8 +21,8 @@ enum Mode {
 @export var demo_scene: PackedScene
 
 @onready var _mode_host: Node = %ModeHost
+@onready var _script_lab: PlayerAIScriptLab = %PlayerAIScriptLab
 @onready var _mode_panel: PanelContainer = %ModePanel
-@onready var _test_ui_toggle: Button = %TestUiToggleButton
 @onready var _formal_match_button: Button = %FormalMatchButton
 @onready var _touch_dribble_button: Button = %TouchDribbleButton
 @onready var _pass_shoot_button: Button = %PassShootButton
@@ -38,13 +38,16 @@ var current_mode: Mode:
 	get:
 		return _current_mode
 
-var _current_mode: Mode = Mode.PASS_AND_SHOOT
+var _current_mode: Mode = Mode.FORMAL_MATCH
 var _active_mode_scene: Node
+var _test_panels_visible := false
+var _restore_script_lab := false
 
 
 ## Wires all mode buttons to independent scene instances.
 func _ready() -> void:
-	_test_ui_toggle.pressed.connect(_toggle_test_ui)
+	%ScriptLabButton.pressed.connect(_script_lab.open)
+	_script_lab.trial_requested.connect(_start_script_trial)
 	_formal_match_button.pressed.connect(_show_formal_match)
 	_touch_dribble_button.pressed.connect(_show_touch_dribble)
 	_pass_shoot_button.pressed.connect(_show_pass_shoot)
@@ -56,18 +59,22 @@ func _ready() -> void:
 	_ball_impact_test_button.pressed.connect(_show_ball_impact_test)
 	_keeper_test_button.pressed.connect(_show_keeper_test)
 	%FormalFlowTestButton.pressed.connect(func() -> void: show_mode(Mode.FORMAL_FLOW_TEST))
-	show_mode(Mode.PASS_AND_SHOOT)
+	show_mode(Mode.FORMAL_MATCH)
 
 
 ## Configures a fresh scene before it enters the tree, then updates the active mode.
-func show_mode(mode: Mode) -> void:
+func show_mode(mode: Mode, trial_seed: int = -1, scripted_id: String = "",
+		strategy: PlayerAIDecisionStrategy = null) -> void:
 	var selected_scene := _scene_for_mode(mode)
 	assert(selected_scene != null, "Each game mode requires a scene")
 	var next_mode_scene := selected_scene.instantiate()
 	if mode == Mode.FORMAL_MATCH:
 		var formal_bootstrap := next_mode_scene as FormalMatchBootstrap
 		assert(formal_bootstrap != null, "Formal mode requires a FormalMatchBootstrap scene")
-		formal_bootstrap.random_seed = randi()
+		formal_bootstrap.random_seed = randi() if trial_seed < 0 else trial_seed
+		formal_bootstrap.auto_start_delay_seconds = 1.0 if trial_seed < 0 else 0.0
+		formal_bootstrap.scripted_player_id = scripted_id
+		formal_bootstrap.player_strategy = strategy
 	else:
 		var demo_bootstrap := next_mode_scene as GameBootstrap
 		assert(demo_bootstrap != null, "Demo modes require a GameBootstrap scene")
@@ -75,10 +82,13 @@ func show_mode(mode: Mode) -> void:
 	if _active_mode_scene != null:
 		_mode_host.remove_child(_active_mode_scene)
 		_active_mode_scene.queue_free()
+	if trial_seed < 0:
+		_script_lab.close()
+		_restore_script_lab = false
 	_mode_host.add_child(next_mode_scene)
 	_active_mode_scene = next_mode_scene
 	_current_mode = mode
-	_set_test_ui_collapsed(mode == Mode.FORMAL_MATCH)
+	_apply_test_panel_visibility()
 	_formal_match_button.set_pressed_no_signal(mode == Mode.FORMAL_MATCH)
 	_touch_dribble_button.set_pressed_no_signal(mode == Mode.TOUCH_AND_DRIBBLE)
 	_pass_shoot_button.set_pressed_no_signal(mode == Mode.PASS_AND_SHOOT)
@@ -93,17 +103,37 @@ func show_mode(mode: Mode) -> void:
 	%FormalFlowTestButton.set_pressed_no_signal(mode == Mode.FORMAL_FLOW_TEST)
 
 
-## Collapses the test menu on formal entry while keeping an explicit way to reopen mode selection.
-func _set_test_ui_collapsed(collapsed: bool) -> void:
-	_test_ui_toggle.visible = _current_mode == Mode.FORMAL_MATCH
-	_mode_panel.visible = not collapsed
-	_mode_panel.position.y = 52.0 if _current_mode == Mode.FORMAL_MATCH else 12.0
-	_test_ui_toggle.text = "展开测试面板" if collapsed else "收起测试面板"
+## Runs scripted and baseline trials through the same formal entry and lifecycle.
+func _start_script_trial(player_id: String, strategy: PlayerAIDecisionStrategy, seed_value: int) -> void:
+	show_mode(Mode.FORMAL_MATCH, seed_value, player_id, strategy)
+	var formal := _active_mode_scene as FormalMatchBootstrap
+	formal.presentation_frame_ready.connect(
+		func(_snapshot: MatchStateSnapshot, _events: Array[MatchEvent], _alpha: float) -> void:
+			_script_lab.report_fallback(formal.get_strategy_error()))
+	formal.start_match()
 
 
-## Changes only menu visibility; expanding the menu never restarts or pauses the current match.
-func _toggle_test_ui() -> void:
-	_set_test_ui_collapsed(_mode_panel.visible)
+## Handles F1 even when a test field or the script editor has keyboard focus.
+func _input(event: InputEvent) -> void:
+	if not event is InputEventKey or not event.pressed or event.echo or event.keycode != KEY_F1:
+		return
+	_test_panels_visible = not _test_panels_visible
+	if not _test_panels_visible:
+		_restore_script_lab = _script_lab.visible
+		_script_lab.hide()
+	elif _restore_script_lab:
+		_script_lab.show()
+	_apply_test_panel_visibility()
+	get_viewport().set_input_as_handled()
+
+
+## Shares the debug toggle across mode changes without touching match state or HUD layers.
+func _apply_test_panel_visibility() -> void:
+	_mode_panel.visible = _test_panels_visible
+	if _active_mode_scene is FormalMatchBootstrap:
+		_active_mode_scene.set_test_panels_visible(_test_panels_visible)
+	elif _active_mode_scene is GameBootstrap:
+		_active_mode_scene.set_test_panels_visible(_test_panels_visible)
 
 
 ## Keeps formal play separate while all interactive demos share one scene resource.

@@ -24,12 +24,16 @@ var _cached_batch: MatchActionBatch
 var _stamina: AIStaminaSource
 var _modifier: AIWeightModifier
 var _fixed_delta_seconds: float
+var _scripted_player_id := ""
+var _decision_strategy: PlayerAIDecisionStrategy
+var strategy_error := ""
 
 ## Captures validated immutable setup, with an explicit unavailable-stamina adapter by default.
 func _init(teams: TeamDataRepository, field: FieldDefinition, rules: MatchConfigDefinition,
 		tuning: AIBehaviorConfig, modifier: AIWeightModifier = null,
 		stamina: AIStaminaSource = null, fixed_delta_seconds: float = 1.0 / 60.0,
-		regions: PlayerActivityRegionRepository = null) -> void:
+		regions: PlayerActivityRegionRepository = null, scripted_player_id: String = "",
+		decision_strategy: PlayerAIDecisionStrategy = null) -> void:
 	assert(is_finite(fixed_delta_seconds) and fixed_delta_seconds > 0.0)
 	_fixed_delta_seconds = fixed_delta_seconds
 	_tuning = tuning
@@ -59,6 +63,13 @@ func _init(teams: TeamDataRepository, field: FieldDefinition, rules: MatchConfig
 			var point := teams.get_position(team.default_formation, entry.default_position).position_m
 			_anchors[entry.player_id] = Vector2(point.x * team.attacking_direction, point.y)
 			_goals[entry.player_id] = Vector2(field.length_m * 0.5 * team.attacking_direction, 0.0)
+
+	if decision_strategy != null:
+		if _roles.get(scripted_player_id, "") != "forward":
+			_errors.append("自定义策略只能绑定一名前锋")
+		else:
+			_scripted_player_id = scripted_player_id
+			_decision_strategy = decision_strategy
 
 ## Decisions depend only on the complete input step; repeated calls replay copies without extra draws.
 func propose_actions(snapshot: MatchStateSnapshot) -> Array[MatchAction]:
@@ -165,7 +176,11 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		_update_pressure(snapshot, player)
 		var choices := _builder.build(snapshot, id, _roles[id], _anchors[id], _goals[id],
 			primary, _pressure.get(id, false), _stamina.ratio(snapshot, id), _positions[id])
-		var selected := _brains[id].choose(snapshot, id, choices, _rules)
+		var strategy := _decision_strategy if id == _scripted_player_id else null
+		var selected := _brains[id].choose(snapshot, id, choices, _rules, strategy, _goals[id],
+			_pressure.get(id, false))
+		if strategy != null and not _brains[id].strategy_error.is_empty():
+			strategy_error = _brains[id].strategy_error
 		if selected == null:
 			_plans.erase(id)
 			return []
