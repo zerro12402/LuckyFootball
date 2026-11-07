@@ -200,7 +200,10 @@ func present(snapshot: MatchStateSnapshot, delta_seconds: float = 0.0) -> void:
 		_update_camera(snapshot, delta_seconds)
 		_ball.present(snapshot.ball, _projection)
 		if hand_carrier_actor != null:
-			_ball.place_owned_sprite_at_foot(hand_carrier_actor.get_keeper_hand_world_position())
+			_ball.place_owned_sprite_at_hand(
+				hand_carrier_actor.get_keeper_hand_world_position(),
+				hand_carrier_actor.global_position.y,
+			)
 		elif aerial_carrier_actor != null:
 			_ball.place_owned_sprite_at_foot(
 				aerial_carrier_actor.get_aerial_ball_foot_world_position()

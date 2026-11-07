@@ -5,6 +5,7 @@ extends Node2D
 const LOOSE_ANIMATION := &"loose"
 const OWNED_ANIMATION := &"owned"
 const IN_FLIGHT_ANIMATION := &"in_flight"
+const KEEPER_HAND_SORT_OFFSET_PX := 1.0
 
 @onready var _animation_player: AnimationPlayer = %AnimationPlayer
 @onready var _ball_sprite: Sprite2D = %BallSprite
@@ -40,6 +41,12 @@ func present(
 ## Places only the owned ball sprite by the carrier's animated foot.
 func place_owned_sprite_at_foot(foot_world_position: Vector2) -> void:
 	_ball_sprite.position = to_local(foot_world_position)
+
+
+## Sorts the held ball just in front of its keeper while keeping the sprite on the hand anchor.
+func place_owned_sprite_at_hand(hand_world_position: Vector2, keeper_ground_world_y: float) -> void:
+	global_position.y = keeper_ground_world_y + KEEPER_HAND_SORT_OFFSET_PX
+	_ball_sprite.position = to_local(hand_world_position)
 
 
 ## Chooses the ball animation from its simulated motion state.
