@@ -19,7 +19,6 @@ const STARTER := """{
 @onready var _forward: OptionButton = %ForwardChoice
 @onready var _seed: LineEdit = %SeedInput
 @onready var _diagnostic: Label = %Diagnostic
-@onready var _return_button: Button = %ReturnButton
 @onready var _run: Button = %RunButton
 @onready var _baseline: Button = %BaselineButton
 
@@ -36,14 +35,12 @@ func _ready() -> void:
 	_baseline.pressed.connect(_run_baseline)
 	%ManualButton.pressed.connect(_copy_manual)
 	%CloseButton.pressed.connect(close)
-	_return_button.pressed.connect(open)
 
 
 ## Lists only blue-team forwards from the same roster and definitions used by formal play.
 func open() -> void:
 	show()
 	_editor.show()
-	_return_button.hide()
 	if _forward.item_count > 0:
 		return
 	var data := DataRepository.new()
@@ -120,7 +117,6 @@ func _run_baseline() -> void:
 ## Keeps diagnostics accessible while removing the editor from the playing area.
 func _begin_trial(player_id: String, strategy: PlayerAIDecisionStrategy, seed_value: int) -> void:
 	_editor.hide()
-	_return_button.show()
 	%LiveStatus.text = "种子 %d · %s" % [seed_value, "默认策略" if strategy == null else "脚本试跑"]
 	trial_requested.emit(player_id, strategy, seed_value)
 

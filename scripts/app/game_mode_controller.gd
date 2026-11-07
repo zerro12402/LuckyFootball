@@ -41,7 +41,6 @@ var current_mode: Mode:
 var _current_mode: Mode = Mode.FORMAL_MATCH
 var _active_mode_scene: Node
 var _test_panels_visible := false
-var _restore_script_lab := false
 
 
 ## Wires all mode buttons to independent scene instances.
@@ -84,7 +83,6 @@ func show_mode(mode: Mode, trial_seed: int = -1, scripted_id: String = "",
 		_active_mode_scene.queue_free()
 	if trial_seed < 0:
 		_script_lab.close()
-		_restore_script_lab = false
 	_mode_host.add_child(next_mode_scene)
 	_active_mode_scene = next_mode_scene
 	_current_mode = mode
@@ -118,11 +116,6 @@ func _input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo or event.keycode != KEY_F1:
 		return
 	_test_panels_visible = not _test_panels_visible
-	if not _test_panels_visible:
-		_restore_script_lab = _script_lab.visible
-		_script_lab.hide()
-	elif _restore_script_lab:
-		_script_lab.show()
 	_apply_test_panel_visibility()
 	get_viewport().set_input_as_handled()
 

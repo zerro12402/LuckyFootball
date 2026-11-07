@@ -106,10 +106,17 @@ focus_mode = 0
 toggle_mode = true
 text = "正式比赛流程测试"
 
-[node name="ScriptLabButton" type="Button" parent="ModeUi/ModePanel/ModeButtons"]
+[node name="ScriptLabButton" type="Button" parent="ModeUi"]
 unique_name_in_owner = true
-layout_mode = 2
-text = "球员 AI 实验室"
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -43.0
+offset_right = 149.0
+offset_bottom = -12.0
+focus_mode = 0
+text = "球员 AI Lab"
 
 [node name="PlayerAIScriptLab" parent="." instance=ExtResource("4_script_lab")]
 unique_name_in_owner = true

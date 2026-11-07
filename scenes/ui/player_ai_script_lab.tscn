@@ -83,17 +83,6 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "关闭"
 
-[node name="ReturnButton" type="Button" parent="."]
-unique_name_in_owner = true
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 12.0
-offset_top = -43.0
-offset_right = 149.0
-offset_bottom = -12.0
-text = "打开 AI 实验室"
-visible = false
-
 [node name="LiveStatus" type="Label" parent="."]
 unique_name_in_owner = true
 anchor_top = 1.0

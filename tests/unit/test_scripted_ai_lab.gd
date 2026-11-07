@@ -15,7 +15,17 @@ func _run() -> void:
 	var menu := scene.instantiate() as GameModeController
 	root.add_child(menu)
 	var lab := menu.get_node("%PlayerAIScriptLab") as PlayerAIScriptLab
-	menu.get_node("%ScriptLabButton").pressed.emit()
+	var lab_button := menu.get_node("%ScriptLabButton") as Button
+	var test_menu := menu.get_node("%ModePanel") as PanelContainer
+	_check(lab_button.is_visible_in_tree() and not test_menu.visible, "Lab entry is available with F1 panels hidden")
+	lab_button.pressed.emit()
+	var f1 := InputEventKey.new()
+	f1.keycode = KEY_F1
+	f1.pressed = true
+	menu._input(f1)
+	menu._input(f1)
+	_check(lab.visible and lab_button.is_visible_in_tree() and not test_menu.visible,
+		"F1 changes the test menu without closing the public lab")
 	_check(lab._forward.item_count == 2, "The lab lists only the two blue-team forwards")
 	for index in range(lab._forward.item_count):
 		_check(lab._forward.get_item_text(index).begins_with("幸运蓝队 · "),
