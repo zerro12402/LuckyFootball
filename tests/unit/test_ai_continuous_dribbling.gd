@@ -6,6 +6,7 @@ var _failures: PackedStringArray = []
 ## Verifies candidate policy for every outfield role and actual jump motion through the simulation.
 func _init() -> void:
 	_test_carrier_candidates()
+	_test_forward_clear_dribble()
 	_test_moving_jump()
 	for failure in _failures:
 		printerr(failure)
@@ -38,6 +39,31 @@ func _test_carrier_candidates() -> void:
 	for candidate in builder.build(snapshot, keeper.player_id, "keeper", keeper.state.position_m, Vector2(25, 0), "", false):
 		keeper_hold = keeper_hold or candidate.behavior == AIActionCandidate.Behavior.HOLD
 	_check(keeper_hold, "keeper still waits to distribute from a stationary position")
+
+## Uses the carrier's actual local space, including the exact radius, independently of pressure.
+func _test_forward_clear_dribble() -> void:
+	var f := Fixture.new()
+	var builder := RoleCandidateBuilder.new(f.tuning, f.rules, f.formal.field)
+	var carrier := f.player("carrier", Vector2(15, 0))
+	carrier.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
+	var ball := BallMatchState.new(carrier.state.position_m)
+	ball._set_owner(carrier.player_id)
+	var teammate := f.player("mate", Vector2(16, 0))
+	var opponent := f.player("opponent", Vector2(15, 2), "away")
+	for distance: float in [2.0, 2.01]:
+		opponent.state._set_position(carrier.state.position_m + Vector2(0, distance))
+		var snapshot := f.snapshot([carrier, teammate, opponent], ball)
+		for role: String in ["forward", "mid", "back"]:
+			var expected := f.tuning.weight(role, AIActionCandidate.Behavior.ADVANCE) * 0.5
+			if distance > 2.0 and role == "forward":
+				expected *= 1.5
+			var choices := builder.build(snapshot, carrier.player_id, role, Vector2.ZERO,
+				Vector2(25, 0), "", true)
+			for candidate in choices:
+				if candidate.behavior == AIActionCandidate.Behavior.ADVANCE:
+					_check(is_equal_approx(candidate.weight, expected),
+						"Only a forward with no opponent within two metres gets the dribble bonus")
+
 
 ## A jump preserves real dribbling input, while directed high-pass reception and kicking still explicitly stop stale movement.
 func _test_moving_jump() -> void:

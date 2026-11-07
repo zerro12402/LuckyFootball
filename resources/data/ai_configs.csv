@@ -1,12 +1,14 @@
 key,value,comment
 heartbeat_seconds,0.2,普通决策复查间隔（秒）
-hold_seconds,0.6,移动行为最短保持时间（秒）
+hold_seconds,1.0,移动行为最短保持时间（秒）
 plan_timeout_seconds,2,单次移动计划最长时间（秒）
 arrival_m,0.25,移动到达容差（米）
 pressure_m,4,受压进入距离（米）
 pressure_exit_m,5,受压退出距离（米）
 press_pass_multiplier,2,受压时传球权重倍率
 press_dribble_multiplier,0.5,受压时推进权重倍率
+forward_clear_dribble_radius_m,2,前锋持球推进加权的无对手半径（米）
+forward_clear_dribble_multiplier,1.5,前锋持球且半径内无对手时的推进权重倍率
 pass_forward_weight,4,向前传球目标权重；按球队进攻方向计算
 pass_lateral_weight,1,横向传球目标权重
 pass_backward_weight,0.1,回传目标权重；保留低概率安全回传

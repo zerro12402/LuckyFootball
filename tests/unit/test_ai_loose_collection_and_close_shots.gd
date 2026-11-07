@@ -87,6 +87,22 @@ func _test_shooting_range() -> void:
 		for candidate in choices:
 			for option in candidate.targets:
 				_check(option.action.action_type != MatchAction.Type.SHOOT, "fifteen-metre ground shot excluded")
+		var previous_weight := -1.0
+		for distance: float in [12.0, 11.9, 10.0, 5.0]:
+			carrier.state._set_position(goal - Vector2(side * distance, 0.0))
+			snapshot = f.snapshot([carrier], ball)
+			choices = builder.build(snapshot, carrier.player_id, "forward", Vector2.ZERO, goal, "", false)
+			var shot_weight := 0.0
+			for candidate in choices:
+				if candidate.behavior == AIActionCandidate.Behavior.SHOOT:
+					shot_weight = candidate.weight
+			_check(shot_weight > previous_weight, "Ground shot weight rises as either team approaches goal")
+			if distance >= 11.9:
+				_check(shot_weight < 0.25, "Ground shot has negligible weight just inside the range limit")
+			if distance == 12.0:
+				_check(is_zero_approx(shot_weight), "Ground shot has zero weight at the limit")
+			previous_weight = shot_weight
+		carrier.state._set_position(Vector2(side * 10, 0))
 		carrier.state_machine.try_start_jump(f.rules)
 		carrier.advance(0.15)
 		snapshot = f.snapshot([carrier], ball)

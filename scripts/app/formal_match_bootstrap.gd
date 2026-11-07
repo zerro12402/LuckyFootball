@@ -10,6 +10,7 @@ signal presentation_frame_ready(snapshot: MatchStateSnapshot, events: Array[Matc
 @export var match_id: String = ""
 @export var random_seed: int = 1
 @export var autonomous_players: bool = true
+@export var use_local_camera: bool = true
 @onready var _field: FieldEnvironment = %FieldEnvironment
 
 static var _instance_sequence: int = 0
@@ -61,6 +62,7 @@ func _ready() -> void:
 		_sources.append(source)
 	_loop = GameLoop.new(_simulation, GameLoop.DEFAULT_FIXED_DELTA_SECONDS,
 		GameLoop.DEFAULT_MAX_FRAME_DELTA_SECONDS, GameLoop.DEFAULT_MAX_STEPS_PER_FRAME, null, [], _sources)
+	_field.use_local_camera = use_local_camera
 	_field.configure(_data.get_field_by_id("demo_field"))
 	_field.configure_player_names(_data.player_definitions)
 	_field.set_debug_enabled(false)
@@ -78,7 +80,7 @@ func _fail(errors: PackedStringArray) -> void:
 ## Drives the same fixed-step loop as development matches, with no player keyboard input.
 func _process(delta: float) -> void:
 	if _loop != null:
-		_present(_loop.advance_frame(delta, []))
+		_present(_loop.advance_frame(delta, []), delta)
 
 ## Lets a later production AI assembler supply authorized sources without importing its implementation.
 func set_action_sources(sources: Array[MatchActionSource]) -> bool:
@@ -152,8 +154,8 @@ func _set_controls_collapsed(collapsed: bool) -> void:
 	_controls_toggle.text = "展开比赛控制" if collapsed else "收起比赛控制"
 
 ## Displays copied phase/time/team scores and immutable terminal facts without changing match state.
-func _present(frame: MatchFrameResult) -> void:
-	_field.present(frame.snapshot)
+func _present(frame: MatchFrameResult, delta_seconds: float = 0.0) -> void:
+	_field.present(frame.snapshot, delta_seconds)
 	_field.present_events(frame.events)
 	var snapshot := frame.snapshot
 	var phases := ["等待开始", "比赛中", "已暂停", "比赛结束", "比赛已取消"]

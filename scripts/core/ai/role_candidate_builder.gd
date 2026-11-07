@@ -36,14 +36,19 @@ func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 			maxf(1.0, _tuning.weight(role, AIActionCandidate.Behavior.RETURN)))]
 	if owns:
 		candidates.append(_move(player, goal, AIActionCandidate.Behavior.ADVANCE,
-			_tuning.weight(role, AIActionCandidate.Behavior.ADVANCE) * (_tuning.number("press_dribble_multiplier") if is_pressured else 1.0)))
+			_advance_weight(snapshot, player, role, is_pressured)))
 		candidates.append(_passes(snapshot, player, role, is_pressured, goal))
-		var distance := player.position_m.distance_to(goal)
-		var floor_weight := _tuning.number("shot_min_multiplier")
-		var shot_factor := floor_weight + (1.0 - floor_weight) / (1.0 + pow(distance / _tuning.number("shot_distance_scale_m"), 2.0))
 		if can_attempt_shot(player, goal):
+			var distance := player.position_m.distance_to(goal)
+			var floor_weight := _tuning.number("shot_min_multiplier")
+			var scaled_distance := distance / _tuning.number("shot_distance_scale_m")
+			var distance_factor := floor_weight + (1.0 - floor_weight) / (1.0 + scaled_distance * scaled_distance)
+			# Start the ground shot lottery at zero weight when the carrier crosses the range limit.
+			var range_ratio := distance / _tuning.number("shot_max_distance_m")
+			var range_factor := maxf(0.0, 1.0 - range_ratio * range_ratio)
+			var shot_weight := _tuning.weight(role, AIActionCandidate.Behavior.SHOOT) * distance_factor * range_factor
 			candidates.append(_one(player_id, AIActionCandidate.Behavior.SHOOT,
-				_tuning.weight(role, AIActionCandidate.Behavior.SHOOT) * shot_factor, MatchAction.Type.SHOOT))
+				shot_weight, MatchAction.Type.SHOOT))
 		if is_pressured:
 			candidates.append(_one(player_id, AIActionCandidate.Behavior.JUMP,
 				_tuning.weight(role, AIActionCandidate.Behavior.JUMP), MatchAction.Type.JUMP))
@@ -80,6 +85,22 @@ func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 			scaled.append(AIActionCandidate.new(candidate.behavior, candidate.weight * factor, candidate.targets))
 		return scaled
 	return candidates
+
+## Favors a forward's dribble when the immediate space is clear, independently of broader pressure.
+func _advance_weight(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
+		role: String, is_pressured: bool) -> float:
+	var weight := _tuning.weight(role, AIActionCandidate.Behavior.ADVANCE)
+	if is_pressured:
+		weight *= _tuning.number("press_dribble_multiplier")
+	if role != "forward":
+		return weight
+	var radius := _tuning.number("forward_clear_dribble_radius_m")
+	for opponent in snapshot.players:
+		if opponent.team_id != player.team_id \
+				and opponent.position_m.distance_squared_to(player.position_m) <= radius * radius:
+			return weight
+	return weight * _tuning.number("forward_clear_dribble_multiplier")
+
 
 ## Gives passes a category weight independent of how many eligible teammates exist.
 func _passes(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,

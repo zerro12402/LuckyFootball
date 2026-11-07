@@ -7,6 +7,11 @@ const SHOT_KEYS: Array[String] = ["shot_max_distance_m"]
 const TACTICAL_KEYS: Array[String] = ["pass_forward_weight", "pass_lateral_weight",
 	"pass_backward_weight", "pass_direction_deadzone_m", "defense_standoff_m",
 	"press_prediction_seconds"]
+const FORWARD_DRIBBLE_DEFAULTS := {
+	"forward_clear_dribble_radius_m": 2.0,
+	"forward_clear_dribble_multiplier": 1.5,
+}
+
 var errors: PackedStringArray:
 	get: return _errors.duplicate()
 var _errors: PackedStringArray = []
@@ -31,7 +36,9 @@ func load_from_csv(path: String) -> AIBehaviorConfig:
 			continue
 		var key := row[0].strip_edges()
 		var raw := row[1].strip_edges()
-		if (not KEYS.has(key) and not SHOT_KEYS.has(key) and not TACTICAL_KEYS.has(key)) or numbers.has(key) or not raw.is_valid_float():
+		var known_key := KEYS.has(key) or SHOT_KEYS.has(key) or TACTICAL_KEYS.has(key) \
+			or FORWARD_DRIBBLE_DEFAULTS.has(key)
+		if not known_key or numbers.has(key) or not raw.is_valid_float():
 			_errors.append("Unknown, duplicate or nonnumeric AI key: " + key)
 			continue
 		var amount := raw.to_float()
@@ -54,5 +61,11 @@ func load_from_csv(path: String) -> AIBehaviorConfig:
 			or numbers["pass_forward_weight"] < numbers["pass_lateral_weight"] \
 			or numbers["pass_lateral_weight"] < numbers["pass_backward_weight"]:
 		_errors.append("AI pass weights require forward >= lateral >= backward and positive forward")
+		return null
+	for key in FORWARD_DRIBBLE_DEFAULTS:
+		if not numbers.has(key):
+			numbers[key] = FORWARD_DRIBBLE_DEFAULTS[key]
+	if numbers["forward_clear_dribble_multiplier"] < 1.0:
+		_errors.append("AI clear dribble multiplier must be at least 1")
 		return null
 	return AIBehaviorConfig.new(numbers)

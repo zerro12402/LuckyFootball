@@ -5,6 +5,12 @@ extends Node2D
 const PLAYER_SCENE := preload("res://scenes/actors/player_actor.tscn")
 
 const REQUIRED_VIEW_SIZE := Vector2(960.0, 540.0)
+const LOCAL_FIELD_FRACTION := 0.25
+const GOAL_MARGIN_PX := 16.0
+const BALL_VERTICAL_MARGIN_PX := 48.0
+
+@export_range(0.01, 0.5, 0.01) var camera_follow_half_life_seconds: float = 0.08
+var use_local_camera: bool = false
 
 @onready var _left_goal: Node2D = %LeftGoal
 @onready var _right_goal: Node2D = %RightGoal
@@ -24,6 +30,9 @@ var field_definition: FieldDefinition:
 
 var _field_definition: FieldDefinition
 var _projection: FieldArtProjection
+var _local_camera_zoom: float = 1.0
+var _camera_horizontal_bounds := Vector2.ZERO
+var _camera_round: int = -1
 var _keeper_save_duration: float = 1.2
 
 var _presented_player_ids: Array[String] = []
@@ -33,7 +42,7 @@ var _left_net_tween: Tween
 var _right_net_tween: Tween
 
 
-## Keeps the fixed full-field camera fitted to the current viewport.
+## Keeps the active framing fitted to the current viewport.
 func _ready() -> void:
 	get_viewport().size_changed.connect(_fit_camera_to_viewport)
 	_fit_camera_to_viewport()
@@ -57,6 +66,11 @@ func configure(new_field_definition: FieldDefinition) -> void:
 		)
 	)
 	_debug_overlay.configure(_field_definition, _projection)
+	_camera_round = -1
+	_camera.position = Vector2.ZERO
+	if use_local_camera:
+		_calibrate_local_camera()
+	_fit_camera_to_viewport()
 
 
 ## Converts a metre position through the perspective art projection.
@@ -152,7 +166,7 @@ func configure_player_names(definitions: Array[PlayerDefinition]) -> void:
 
 
 ## Copies a match snapshot into visible actors without changing simulation state.
-func present(snapshot: MatchStateSnapshot) -> void:
+func present(snapshot: MatchStateSnapshot, delta_seconds: float = 0.0) -> void:
 	if _projection == null:
 		return
 	var player_actors: Array[PlayerActor] = [
@@ -183,6 +197,7 @@ func present(snapshot: MatchStateSnapshot) -> void:
 			):
 				aerial_carrier_actor = player_actors[player_index]
 	if snapshot.ball != null:
+		_update_camera(snapshot, delta_seconds)
 		_ball.present(snapshot.ball, _projection)
 		if hand_carrier_actor != null:
 			_ball.place_owned_sprite_at_foot(hand_carrier_actor.get_keeper_hand_world_position())
@@ -216,6 +231,65 @@ func present_events(events: Array[MatchEvent]) -> void:
 			_right_net_tween = tween
 
 
+## Calibrates the nominal frame against the projected pitch polygon and goal art.
+func _calibrate_local_camera() -> void:
+	var boundary := _projection.get_boundary_points()
+	var signed_double_area := 0.0
+	var left_edge := INF
+	var right_edge := -INF
+	for index in range(boundary.size()):
+		var point := boundary[index]
+		signed_double_area += point.cross(boundary[(index + 1) % boundary.size()])
+		left_edge = minf(left_edge, point.x)
+		right_edge = maxf(right_edge, point.x)
+	var projected_area := absf(signed_double_area) * 0.5
+	_local_camera_zoom = sqrt(REQUIRED_VIEW_SIZE.x * REQUIRED_VIEW_SIZE.y
+		/ (projected_area * LOCAL_FIELD_FRACTION))
+	for goal in [_left_goal, _right_goal]:
+		for sprite in goal.get_children():
+			if sprite is Sprite2D:
+				var bounds: Rect2 = goal.transform * sprite.transform * sprite.get_rect()
+				left_edge = minf(left_edge, bounds.position.x)
+				right_edge = maxf(right_edge, bounds.end.x)
+	_camera_horizontal_bounds = Vector2(left_edge - GOAL_MARGIN_PX, right_edge + GOAL_MARGIN_PX)
+
+
+## Follows the ground projection and applies edge correction even on a zero-time reset frame.
+func _update_camera(snapshot: MatchStateSnapshot, delta_seconds: float) -> void:
+	if not use_local_camera:
+		return
+	var ball_position := snapshot.ball.position_m
+	var target_x := _clamp_camera_x(field_to_world(ball_position).x)
+	_camera.position.y = _get_camera_y(ball_position.y)
+	if _camera_round != snapshot.round_sequence:
+		_camera_round = snapshot.round_sequence
+		_camera.position.x = target_x
+		_camera.force_update_scroll()
+		return
+	var weight := 1.0 - pow(0.5, maxf(delta_seconds, 0.0) / camera_follow_half_life_seconds)
+	_camera.position.x = lerpf(_camera.position.x, target_x, weight)
+
+
+## Moves only far enough to show the ball near either touchline, without chasing it out of play.
+func _get_camera_y(ball_y_m: float) -> float:
+	var half_pitch_width := _field_definition.width_m * 0.5
+	var field_y_m := clampf(ball_y_m, -half_pitch_width, half_pitch_width)
+	var world_y := field_to_world(Vector2(0.0, field_y_m)).y
+	var half_height := get_viewport_rect().size.y / (2.0 * _camera.zoom.y)
+	var safe_half_height := maxf(0.0, half_height - BALL_VERTICAL_MARGIN_PX)
+	return world_y - clampf(world_y, -safe_half_height, safe_half_height)
+
+
+## Keeps the corresponding goal and padding inside the frame at either end.
+func _clamp_camera_x(world_x: float) -> float:
+	var half_width := get_viewport_rect().size.x / (2.0 * _camera.zoom.x)
+	var minimum_x := _camera_horizontal_bounds.x + half_width
+	var maximum_x := _camera_horizontal_bounds.y - half_width
+	if minimum_x > maximum_x:
+		return (_camera_horizontal_bounds.x + _camera_horizontal_bounds.y) * 0.5
+	return clampf(world_x, minimum_x, maximum_x)
+
+
 ## Preserves pitch proportions while fitting the design viewport.
 func _fit_camera_to_viewport() -> void:
 	var viewport_size := get_viewport_rect().size
@@ -223,7 +297,10 @@ func _fit_camera_to_viewport() -> void:
 		viewport_size.x / REQUIRED_VIEW_SIZE.x,
 		viewport_size.y / REQUIRED_VIEW_SIZE.y,
 	)
-	_camera.zoom = Vector2.ONE * maxf(uniform_zoom, 0.01)
+	var framing_zoom := _local_camera_zoom if use_local_camera else 1.0
+	_camera.zoom = Vector2.ONE * maxf(uniform_zoom, 0.01) * framing_zoom
+	if use_local_camera and _camera_round >= 0:
+		_camera.position.x = _clamp_camera_x(_camera.position.x)
 
 
 ## Uses the configured simulation duration for read-only keeper animation playback.
