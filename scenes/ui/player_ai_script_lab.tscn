@@ -73,20 +73,37 @@ layout_mode = 2
 disabled = true
 text = "同种子默认复跑"
 
-[node name="ManualButton" type="Button" parent="Editor/Rows/Commands"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "复制 v1 手册"
-
-[node name="TeamManualButton" type="Button" parent="Editor/Rows/Commands"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "复制 v2 手册"
-
 [node name="CloseButton" type="Button" parent="Editor/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "关闭"
+
+[node name="ManualActions" type="HBoxContainer" parent="Editor/Rows"]
+layout_mode = 2
+
+[node name="ManualButton" type="Button" parent="Editor/Rows/ManualActions"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "复制 v1 手册"
+
+[node name="TeamManualButton" type="Button" parent="Editor/Rows/ManualActions"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "复制 v2 手册"
+
+[node name="SaveTeamManualButton" type="Button" parent="Editor/Rows/ManualActions"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "保存 v2 手册…"
+
+[node name="TeamManualSaveDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "保存 v2 脚本手册"
+size = Vector2i(620, 380)
+file_mode = 4
+access = 2
+filters = PackedStringArray("*.md ; Markdown")
+use_native_dialog = true
 
 [node name="LiveStatus" type="Label" parent="."]
 unique_name_in_owner = true

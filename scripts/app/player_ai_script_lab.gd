@@ -39,6 +39,8 @@ func _ready() -> void:
 	_baseline.pressed.connect(_run_baseline)
 	%ManualButton.pressed.connect(_copy_manual.bind(MANUAL_PATH, 1))
 	%TeamManualButton.pressed.connect(_copy_manual.bind(TEAM_MANUAL_PATH, 2))
+	%SaveTeamManualButton.pressed.connect(_open_team_manual_save_dialog)
+	%TeamManualSaveDialog.file_selected.connect(_save_team_manual)
 	%CloseButton.pressed.connect(close)
 
 
@@ -146,3 +148,25 @@ func _copy_manual(path: String, version: int) -> void:
 		return
 	DisplayServer.clipboard_set(manual)
 	_diagnostic.text = "接口 v%d 手册已复制" % version
+
+
+## Prompts the player for a destination outside the read-only packaged project.
+func _open_team_manual_save_dialog() -> void:
+	var dialog: FileDialog = %TeamManualSaveDialog
+	dialog.current_file = TEAM_MANUAL_PATH.get_file()
+	dialog.popup_centered()
+
+
+## Writes the bundled Markdown bytes directly so encoding and contents match the public manual.
+func _save_team_manual(path: String) -> void:
+	var contents := FileAccess.get_file_as_bytes(TEAM_MANUAL_PATH)
+	if contents.is_empty():
+		_diagnostic.text = "无法读取 v2 手册"
+		return
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		_diagnostic.text = "无法保存 v2 手册：%s" % error_string(FileAccess.get_open_error())
+		return
+	var saved := file.store_buffer(contents)
+	file.close()
+	_diagnostic.text = "v2 手册已保存：%s" % path if saved else "写入 v2 手册失败"

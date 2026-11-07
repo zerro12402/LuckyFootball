@@ -31,6 +31,7 @@ func _run() -> void:
 		_check(lab._forward.get_item_text(index).begins_with("幸运蓝队 · "),
 			"The lab never offers a red-team player")
 	_validate_examples()
+	_test_save_manual(lab)
 
 	# Acceptance strategy authored from the public manual: take a shot inside six metres, otherwise dribble.
 	var tactic := """{
@@ -77,6 +78,18 @@ func _run() -> void:
 		push_error(failure)
 	print("Scripted AI lab failures: ", _failures.size())
 	quit(0 if _failures.is_empty() else 1)
+
+
+## Verifies the selected destination receives exactly the bundled UTF-8 bytes.
+func _test_save_manual(lab: PlayerAIScriptLab) -> void:
+	var destination := "user://script_lab_manual_test_%s.md" % OS.get_process_id()
+	var dialog := lab.get_node("%TeamManualSaveDialog") as FileDialog
+	dialog.file_selected.emit(ProjectSettings.globalize_path(destination))
+	var expected := FileAccess.get_file_as_bytes(PlayerAIScriptLab.TEAM_MANUAL_PATH)
+	_check(not expected.is_empty() and FileAccess.get_file_as_bytes(destination) == expected,
+		"The save dialog writes a standalone byte-identical v2 manual")
+	if FileAccess.file_exists(destination):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(destination))
 
 
 ## Uses the published team example for one binding, deterministic replay and an unbound baseline.
