@@ -64,7 +64,11 @@ func show_mode(mode: Mode) -> void:
 	var selected_scene := _scene_for_mode(mode)
 	assert(selected_scene != null, "Each game mode requires a scene")
 	var next_mode_scene := selected_scene.instantiate()
-	if mode != Mode.FORMAL_MATCH:
+	if mode == Mode.FORMAL_MATCH:
+		var formal_bootstrap := next_mode_scene as FormalMatchBootstrap
+		assert(formal_bootstrap != null, "Formal mode requires a FormalMatchBootstrap scene")
+		formal_bootstrap.random_seed = randi()
+	else:
 		var demo_bootstrap := next_mode_scene as GameBootstrap
 		assert(demo_bootstrap != null, "Demo modes require a GameBootstrap scene")
 		_configure_demo_mode(mode, demo_bootstrap)

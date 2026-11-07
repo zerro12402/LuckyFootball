@@ -234,11 +234,17 @@ func test_shot_slows_and_stops_as_loose_ball() -> void:
 	simulation.advance_fixed_step(FIXED_DELTA, [])
 	var second_speed := simulation.create_snapshot().ball.velocity_mps.length()
 	_expect(second_speed < first_speed, "Ground shot did not decelerate")
+	var landing_x := INF
 	for step_index in range(40):
-		if simulation.create_snapshot().ball.motion_state == BallMatchState.MotionState.LOOSE:
+		var current := simulation.create_snapshot().ball
+		if current.motion_state == BallMatchState.MotionState.LOOSE:
 			break
+		if is_inf(landing_x) and is_zero_approx(current.height_m) and current.velocity_mps.x > 0.0:
+			landing_x = current.position_m.x
 		simulation.advance_fixed_step(FIXED_DELTA, [])
 	var ball := simulation.create_snapshot().ball
+	_expect(is_finite(landing_x) and ball.position_m.x > landing_x,
+		"Shot must travel on the ground after its arc ends")
 	_expect(ball.motion_state == BallMatchState.MotionState.LOOSE, "Shot did not stop")
 	_expect(ball.velocity_mps.is_zero_approx(), "Stopped shot retained velocity")
 	_expect(is_zero_approx(ball.height_m), "Stopped shot remained above ground")

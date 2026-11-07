@@ -77,7 +77,9 @@ func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 			_tuning.weight(role, AIActionCandidate.Behavior.SUPPORT)))
 	if not owns:
 		_add_contests(snapshot, player, role, candidates)
-	if not owns and not is_primary_defender and not is_primary_collector:
+	# A defender already stops on arrival; a separate HOLD lottery interrupts its return.
+	var tracks_live_carrier := phase == TeamTacticalContext.Phase.DEFEND and not ball.owner_player_id.is_empty()
+	if not owns and not tracks_live_carrier and not is_primary_collector:
 		candidates.append(_move(player, player.position_m, AIActionCandidate.Behavior.HOLD,
 			_tuning.weight(role, AIActionCandidate.Behavior.HOLD)))
 	if is_finite(stamina_ratio) and stamina_ratio >= 0.0:
@@ -142,6 +144,8 @@ func movement_target(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 			if carrier != null:
 				point = carrier.position_m + carrier.movement_input * carrier.movement_speed_mps \
 					* PlayerStateMachine.POSSESSION_MOVEMENT_SPEED_MULTIPLIER * _tuning.number("press_prediction_seconds")
+				# Approach from the defending goal side while staying within ordinary tackle reach.
+				point.x -= direction * _rules.tackle_start_range_m * 0.5
 		AIActionCandidate.Behavior.RETURN:
 			if carrier == null or not carrier.is_goalkeeper or carrier.team_id == player.team_id:
 				var threat := carrier.position_m if carrier != null else snapshot.ball.position_m

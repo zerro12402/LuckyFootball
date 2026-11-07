@@ -20,6 +20,7 @@ enum FlightKind {
 	PASS,
 	SHOT,
 	CLEARANCE,
+	ROLL,
 }
 
 var position_m: Vector2:
@@ -174,6 +175,21 @@ func _launch_clearance(
 	_height_m = start_height_m
 	_flight_kind = FlightKind.CLEARANCE
 	_motion_state = MotionState.IN_FLIGHT
+
+
+## Ends the pass at touchdown while retaining a controllable, unowned ground trajectory.
+func _begin_roll(new_velocity_mps: Vector2, range_m: float) -> void:
+	_clear_flight()
+	_flight_kind = FlightKind.ROLL
+	_velocity_mps = new_velocity_mps
+	_flight_range_m = range_m
+
+
+## Updates a rolling ball without recreating pass or shot metadata.
+func _advance_roll(new_position_m: Vector2, new_velocity_mps: Vector2, distance_m: float) -> void:
+	_position_m = new_position_m
+	_velocity_mps = new_velocity_mps
+	_flight_distance_m += distance_m
 
 
 ## Advances a pass while keeping its parabolic height synchronized with distance.

@@ -18,9 +18,12 @@ static func time_to(ball: BallStateSnapshot, point: Vector2, config: MatchConfig
 	var distance := (point - ball.position_m).dot(ball.velocity_mps / speed)
 	if distance < 0.0:
 		return -1.0
-	if ball.flight_kind != BallMatchState.FlightKind.SHOT:
+	if ball.flight_kind not in [BallMatchState.FlightKind.SHOT, BallMatchState.FlightKind.ROLL]:
 		return distance / speed
-	var deceleration := config.shot_ground_deceleration_mps2
+	if ball.flight_kind == BallMatchState.FlightKind.ROLL \
+			and distance > ball.flight_range_m - ball.flight_distance_m:
+		return -1.0
+	var deceleration := BallShotTrajectory.ground_deceleration(config)
 	var discriminant := speed * speed - 2.0 * deceleration * distance
 	if discriminant < 0.0:
 		return -1.0
@@ -29,7 +32,12 @@ static func time_to(ball: BallStateSnapshot, point: Vector2, config: MatchConfig
 ## Targets a bounded, observable predicted point rather than reading the preselected shot aim.
 static func point_at(ball: BallStateSnapshot, seconds: float, config: MatchConfigDefinition) -> Vector2:
 	var speed := ball.velocity_mps.length()
-	var decay := config.shot_ground_deceleration_mps2 if ball.flight_kind == BallMatchState.FlightKind.SHOT else 0.0
-	var distance := maxf(0.0, speed * seconds - 0.5 * decay * seconds * seconds)
+	var decay := 0.0
+	if ball.flight_kind in [BallMatchState.FlightKind.SHOT, BallMatchState.FlightKind.ROLL]:
+		decay = BallShotTrajectory.ground_deceleration(config)
+	var travel_seconds := seconds
+	if ball.flight_kind == BallMatchState.FlightKind.ROLL:
+		travel_seconds = minf(seconds, maxf(0.0, (speed - BallShotTrajectory.stop_speed(config)) / decay))
+	var distance := maxf(0.0, speed * travel_seconds - 0.5 * decay * travel_seconds * travel_seconds)
 	distance = minf(distance, maxf(ball.flight_range_m - ball.flight_distance_m, 0.0))
 	return ball.position_m + ball.velocity_mps.normalized() * distance

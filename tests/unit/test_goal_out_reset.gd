@@ -23,6 +23,7 @@ func _init() -> void:
 	test_sideline_and_non_goal_baseline_are_out()
 	test_dribbled_ball_crosses_boundary_and_resets()
 	test_picking_up_ball_at_boundary_waits_to_reset()
+	test_receiving_pass_over_end_line_waits_to_reset()
 	test_dribble_out_waits_with_idle_player()
 	test_vertical_dribble_waits_until_visible_ball_clears_line()
 	test_goal_waits_while_shot_ball_keeps_moving()
@@ -34,6 +35,27 @@ func _init() -> void:
 	test_reset_during_flight_and_loose_ball_is_stable()
 	test_same_commands_produce_same_boundary_result()
 	_finish()
+
+
+## Checks the short displacement from flight contact to the receiver's foot.
+func test_receiving_pass_over_end_line_waits_to_reset() -> void:
+	for side: float in [-1.0, 1.0]:
+		var end_x := side * _field.length_m * 0.5
+		var foot_limit := _config.ball_radius_m
+		var player_point := Vector2(end_x + side * (foot_limit - 0.25), 5.0)
+		var ball_start := player_point - Vector2(side * 1.0, 0.0)
+		var simulation := _create_match(Vector2(end_x, 0.0), ball_start, player_point)
+		var receiver := simulation._player_runtime_system.get_player(SHOOTER_ID)
+		receiver.state._set_facing_direction(Vector2(side, 0.0))
+		simulation._ball_runtime_system.state._launch_pass(
+			SHOOTER_ID, Vector2(side * 5.0, 0.0), 2.0, 0.0)
+		var events := simulation.advance_fixed_step(FIXED_DELTA, [])
+		var event := _find_event(events, MatchEvent.Type.BALL_OUT_OF_BOUNDS)
+		var expected_side := MatchBoundaryResult.Side.LEFT if side < 0.0 else MatchBoundaryResult.Side.RIGHT
+		_expect(event != null and event.side == expected_side,
+			"Reception moving the ball beyond either end line must settle as out")
+		_expect(simulation.create_snapshot().round_phase == MatchState.RoundPhase.OUT_RESOLVED,
+			"End-line reception must wait before reset")
 
 
 ## Both physical goals count once and reset after bounded net motion.

@@ -8,6 +8,8 @@ const DEFAULT_PASS_SPEED_MPS := 14.0
 const DEFAULT_MAX_PASS_DISTANCE_M := 20.0
 const DEFAULT_LOFTED_PASS_MIN_DISTANCE_M := 8.0
 const DEFAULT_LOFTED_PASS_APEX_HEIGHT_M := 1.8
+const LOFTED_PASS_LANDING_SPEED_MULTIPLIER := 0.6
+const SHOT_AIR_RANGE_FRACTION := 0.75
 const MAX_RECEIVE_HEIGHT_M := 0.2
 const AERIAL_RECEIVE_HEIGHT_TOLERANCE_M := 0.5
 const MIN_PASS_DISTANCE_M := 1.0
@@ -650,6 +652,7 @@ func _launch_pending_shot(players: PlayerRuntimeSystem, result: BallAdvanceResul
 		var flight_range_m := (
 			initial_speed_mps * initial_speed_mps - stop_speed_mps * stop_speed_mps
 		) / (2.0 * _shot_config.shot_ground_deceleration_mps2)
+		flight_range_m *= SHOT_AIR_RANGE_FRACTION
 		if _current_shot_aim != null:
 			flight_range_m = minf(flight_range_m,
 				release_position_m.distance_to(_current_shot_aim.point_m))
@@ -707,11 +710,49 @@ func _advance_flight(
 		return
 	var next_position_m := trajectory.position_at(trajectory.duration_seconds)
 	result.motion_end_position_m = next_position_m
+	if _state.flight_kind == BallMatchState.FlightKind.ROLL:
+		_finish_roll_segment(trajectory)
+		return
 	_state._advance_flight(next_position_m, travel_distance_m)
 	if _state.flight_distance_m + DISTANCE_EPSILON >= _state.flight_range_m:
-		var was_pass := _state.flight_kind == BallMatchState.FlightKind.PASS
+		result.was_pass_missed = _state.flight_kind == BallMatchState.FlightKind.PASS
+		if result.was_pass_missed and _state.flight_apex_height_m > 0.0 and _begin_pass_roll():
+			var remaining := fixed_delta_seconds - trajectory.duration_seconds
+			if remaining > DISTANCE_EPSILON:
+				var roll := BallShotTrajectory.new(_state, remaining, _shot_config)
+				var pickup := find_control_contact(roll, players, starts, heights,
+					fixed_delta_seconds, trajectory.duration_seconds)
+				if pickup != null:
+					result.motion_end_position_m = pickup.position_m
+					result.new_owner_player_id = acquire_contact_ball(pickup, players).new_owner_player_id
+				else:
+					_finish_roll_segment(roll)
+					result.motion_end_position_m = _state.position_m
+			return
 		_state._release(next_position_m)
-		result.was_pass_missed = was_pass
+
+
+## Preserves part of the horizontal momentum of an uncaught lofted pass.
+func _begin_pass_roll() -> bool:
+	var velocity := _state.velocity_mps * LOFTED_PASS_LANDING_SPEED_MULTIPLIER
+	var stop_speed := BallShotTrajectory.stop_speed(_shot_config)
+	if velocity.length() <= stop_speed:
+		return false
+	var distance := (velocity.length_squared() - stop_speed * stop_speed) / (
+		2.0 * BallShotTrajectory.ground_deceleration(_shot_config))
+	_state._begin_roll(velocity, distance)
+	return true
+
+
+## Commits the ground interval using the same trajectory used for swept pickup.
+func _finish_roll_segment(trajectory: BallShotTrajectory) -> void:
+	var seconds := trajectory.duration_seconds
+	var point := trajectory.position_at(seconds)
+	var speed := trajectory.speed_mps - trajectory.deceleration_mps2 * seconds
+	if speed <= BallShotTrajectory.stop_speed(_shot_config) + DISTANCE_EPSILON:
+		_state._release(point)
+	else:
+		_state._advance_roll(point, trajectory.direction * speed, trajectory.distance_at(seconds))
 
 
 ## Advances to the precise high contact, redirects once, then spends unused step time.
@@ -749,6 +790,7 @@ func _advance_header_contact(
 		var stop_speed_mps := _shot_config.shot_stop_speed_mps
 		var range_m := (speed_mps * speed_mps - stop_speed_mps * stop_speed_mps) / (
 			2.0 * _shot_config.shot_ground_deceleration_mps2)
+		range_m *= SHOT_AIR_RANGE_FRACTION
 		if _current_shot_aim != null:
 			range_m = minf(range_m, contact.contact_position_m.distance_to(_current_shot_aim.point_m))
 		_state._launch_shot(contact.contact_position_m, direction.normalized() * speed_mps,

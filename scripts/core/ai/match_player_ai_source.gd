@@ -187,7 +187,11 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		var direction := remaining.normalized()
 		var outside_region := plan.behavior == AIActionCandidate.Behavior.RETURN \
 			and _builder.requires_region_return(snapshot, player, primary, _positions[id], _goals[id])
-		if remaining.length() <= _tuning.number("arrival_m") and not outside_region \
+		var arrival_m := _tuning.number("arrival_m")
+		if plan.behavior == AIActionCandidate.Behavior.PRESS and player.movement_input.is_zero_approx():
+			# Once stopped, ignore small movements of the intercept point before resuming.
+			arrival_m *= 2.0
+		if remaining.length() <= arrival_m and not outside_region \
 				and plan.behavior != AIActionCandidate.Behavior.CHASE:
 			direction = Vector2.ZERO
 		else:
@@ -195,7 +199,15 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 			var speed := player.movement_speed_mps
 			if snapshot.ball.owner_player_id == id:
 				speed *= PlayerStateMachine.POSSESSION_MOVEMENT_SPEED_MULTIPLIER
-			direction *= minf(1.0, remaining.length() / (speed * _fixed_delta_seconds))
+			var distance_to_cover := remaining.length()
+			var approach_seconds := _fixed_delta_seconds
+			if not outside_region and plan.behavior in [AIActionCandidate.Behavior.PRESS, AIActionCandidate.Behavior.RETURN]:
+				var carrier := snapshot.get_player(snapshot.ball.owner_player_id)
+				if carrier != null and carrier.team_id != player.team_id and not carrier.movement_input.is_zero_approx():
+					# Ease into a moving defensive target instead of arriving at full speed and stopping repeatedly.
+					distance_to_cover = maxf(0.0, distance_to_cover - arrival_m)
+					approach_seconds = maxf(_fixed_delta_seconds, _tuning.number("heartbeat_seconds"))
+			direction *= minf(1.0, distance_to_cover / (speed * approach_seconds))
 		return [MatchAction.new(id, MatchAction.Type.MOVE, direction)]
 	if not ActionEligibility.allows(snapshot, plan.action, _rules):
 		_plans.erase(id)

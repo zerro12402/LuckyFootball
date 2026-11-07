@@ -518,6 +518,11 @@ func _advance_play_step(
 					ball_result.motion_start_position_m,
 					ball_result.motion_end_position_m,
 				)
+	if boundary_result == null and _match_rules != null and not ball_result.new_owner_player_id.is_empty():
+		# The flight segment stops at contact, before the controlled ball moves to the receiver's foot.
+		boundary_result = _match_rules.resolve_ball_boundary(
+			ball_result.motion_end_position_m, _ball_runtime_system.state.position_m, false)
+		is_carried_boundary = boundary_result != null
 	if boundary_result != null:
 		var exit_velocity_mps := Vector2.ZERO
 		if not is_carried_boundary:

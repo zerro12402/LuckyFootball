@@ -298,12 +298,23 @@ func test_long_pass_when_missed_lands_at_original_target() -> void:
 		MatchAction.new(RECEIVER_ID, MatchAction.Type.MOVE, Vector2.UP),
 	]
 	simulation.advance_fixed_step(0.4, move_actions)
-	var events := simulation.advance_fixed_step(0.4, _no_actions())
+	var flight := simulation.create_snapshot().ball
+	var time_to_land := (flight.flight_range_m - flight.flight_distance_m) / flight.velocity_mps.length()
+	var events := simulation.advance_fixed_step(time_to_land, _no_actions())
 	var ball := simulation.create_snapshot().ball
-	_expect(ball.motion_state == BallMatchState.MotionState.LOOSE, "Expected missed pass to land")
+	_expect(ball.flight_kind == BallMatchState.FlightKind.ROLL, "Expected missed pass to roll")
 	_expect(ball.position_m.distance_to(Vector2(10.55, 0.0)) < 0.01, "Expected target landing")
 	_expect(is_zero_approx(ball.height_m), "Expected landed ball at ground height")
 	_expect(_has_event(events, MatchEvent.Type.BALL_PASS_MISSED), "Expected missed pass event")
+	simulation.advance_fixed_step(0.1, _no_actions())
+	var rolling := simulation.create_snapshot().ball
+	_expect(rolling.position_m.x > ball.position_m.x and rolling.velocity_mps.x > 0.0
+		and rolling.velocity_mps.x < ball.velocity_mps.x, "Expected rollout with decreasing speed")
+	events = simulation.advance_fixed_step(0.8, _no_actions())
+	var stopped := simulation.create_snapshot().ball
+	_expect(stopped.motion_state == BallMatchState.MotionState.LOOSE and stopped.velocity_mps.is_zero_approx(),
+		"Expected rollout to finish as a stationary free ball")
+	_expect(not _has_event(events, MatchEvent.Type.BALL_PASS_MISSED), "Expected exactly one missed-pass event")
 
 
 ## Caps flight distance when the target runs beyond the limit.
@@ -315,12 +326,14 @@ func test_long_pass_when_target_moves_beyond_range_lands_at_maximum() -> void:
 	]
 	simulation.advance_fixed_step(0.1, actions)
 	simulation.advance_fixed_step(0.1, _no_actions())
-	var events := simulation.advance_fixed_step(2.0, _no_actions())
+	var flight := simulation.create_snapshot().ball
+	var time_to_land := (flight.flight_range_m - flight.flight_distance_m) / flight.velocity_mps.length()
+	var events := simulation.advance_fixed_step(time_to_land, _no_actions())
 	var ball := simulation.create_snapshot().ball
-	_expect(ball.motion_state == BallMatchState.MotionState.LOOSE, "Expected maximum-range landing")
+	_expect(ball.flight_kind == BallMatchState.FlightKind.ROLL, "Expected maximum-range landing followed by roll")
 	_expect(
 		ball.position_m.distance_to(Vector2(20.55, 0.0)) < 0.01,
-		"Expected long pass to stop at maximum range",
+		"Expected long pass to touch down at maximum air range",
 	)
 	_expect(is_zero_approx(ball.height_m), "Expected maximum-range landing at ground height")
 	_expect(_has_event(events, MatchEvent.Type.BALL_PASS_MISSED), "Expected miss event")

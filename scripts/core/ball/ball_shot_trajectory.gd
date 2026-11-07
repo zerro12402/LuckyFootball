@@ -2,6 +2,9 @@
 class_name BallShotTrajectory
 extends RefCounted
 
+const DEFAULT_GROUND_DECELERATION_MPS2 := 12.0
+const DEFAULT_STOP_SPEED_MPS := 0.5
+
 var start_position_m: Vector2
 var direction: Vector2
 var speed_mps: float
@@ -15,11 +18,13 @@ func _init(ball: BallMatchState, seconds: float, config: MatchConfigDefinition) 
 	speed_mps = ball.velocity_mps.length()
 	direction = ball.velocity_mps.normalized()
 	deceleration_mps2 = 0.0
-	if ball.flight_kind == BallMatchState.FlightKind.SHOT:
-		assert(config != null)
-		deceleration_mps2 = config.shot_ground_deceleration_mps2
+	if ball.flight_kind in [BallMatchState.FlightKind.SHOT, BallMatchState.FlightKind.ROLL]:
+		deceleration_mps2 = ground_deceleration(config)
 		duration_seconds = minf(seconds, maxf(
-			(speed_mps - config.shot_stop_speed_mps) / deceleration_mps2, 0.0))
+			(speed_mps - stop_speed(config)) / deceleration_mps2, 0.0))
+		if ball.flight_kind == BallMatchState.FlightKind.ROLL:
+			height_coefficients = [0.0, 0.0, 0.0, 0.0, 0.0]
+			return
 	else:
 		duration_seconds = minf(seconds, maxf(
 			(ball.flight_range_m - ball.flight_distance_m) / speed_mps, 0.0))
@@ -41,6 +46,16 @@ func _init(ball: BallMatchState, seconds: float, config: MatchConfigDefinition) 
 			4.0 * ball.flight_apex_height_m - ball.flight_start_height_m)
 	for index in range(squared.size()):
 		height_coefficients[index] -= 4.0 * ball.flight_apex_height_m * squared[index]
+
+## Shares the production ground friction with configuration-free simulation fixtures.
+static func ground_deceleration(config: MatchConfigDefinition) -> float:
+	return config.shot_ground_deceleration_mps2 if config != null else DEFAULT_GROUND_DECELERATION_MPS2
+
+
+## Keeps the same stopping rule for shots and pass rollouts.
+static func stop_speed(config: MatchConfigDefinition) -> float:
+	return config.shot_stop_speed_mps if config != null else DEFAULT_STOP_SPEED_MPS
+
 
 ## Converts elapsed seconds into the shot's traveled distance.
 func distance_at(seconds: float) -> float:

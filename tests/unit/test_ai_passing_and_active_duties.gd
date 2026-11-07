@@ -10,10 +10,20 @@ class SupportPreference extends AIWeightModifier:
 			return 1.0 if behavior == AIActionCandidate.Behavior.SUPPORT else 0.0
 		return 1.0
 
+class PressPreference extends AIWeightModifier:
+	## Isolates movement from randomly chosen tackle or attack animations.
+	func multiplier(_snapshot: MatchStateSnapshot, id: String, behavior: int) -> float:
+		if id == "formal_player_04":
+			return 1.0 if behavior == AIActionCandidate.Behavior.PRESS else 0.0
+		return 1.0
+
+
 ## Tests intent weighting, persistent moving targets and immediate handoffs before ordinary heartbeat expiry.
 func _init() -> void:
 	_test_directional_passes()
 	_test_pressing_and_handoff()
+	_test_press_stops_without_jitter()
+	_test_press_tracks_a_moving_carrier_continuously()
 	_test_retreat_on_keeper_possession()
 	_test_live_support()
 	_test_actual_player_movement()
@@ -21,6 +31,58 @@ func _init() -> void:
 		printerr(failure)
 	print("AI passing and active duties: ", "PASS" if _failures.is_empty() else "FAIL")
 	quit(0 if _failures.is_empty() else 1)
+
+## Holds the goal-side position through small reversals and follows a substantial displacement.
+func _test_press_stops_without_jitter() -> void:
+	var f := Fixture.new()
+	var carrier := f.player("swift_forward", Vector2.ZERO)
+	carrier.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
+	var defender := f.player("formal_player_04", Vector2(f.rules.tackle_start_range_m * 0.5, 0), "away")
+	var ball := BallMatchState.new(Vector2.ZERO)
+	ball._set_owner(carrier.player_id)
+	var source := MatchPlayerAISource.new(f.formal.teams, f.formal.field, f.rules, f.tuning, PressPreference.new())
+	var step := 0
+	for offset: float in [0.0, 0.35, -0.35, 0.35]:
+		carrier.state._set_position(Vector2(offset, 0))
+		var actions := source.propose_actions(f.snapshot([carrier, defender], ball, "", 1, false, step))
+		_check(source._plans[defender.player_id].behavior == AIActionCandidate.Behavior.PRESS
+			and _movement(actions, defender.player_id).is_zero_approx(),
+			"A stopped defender ignores small reversals of the goal-side press target")
+		step += 1
+	carrier.state._set_position(Vector2(0.65, 0))
+	var actions := source.propose_actions(f.snapshot([carrier, defender], ball, "", 1, false, step))
+	_check(_movement(actions, defender.player_id).x > 0.0, "A stopped defender resumes pressing once the target moves away")
+
+
+## Checks the actual movement state across fixed steps with a slower, steadily dribbling carrier.
+func _test_press_tracks_a_moving_carrier_continuously() -> void:
+	var f := Fixture.new()
+	var carrier := f.player("swift_forward", Vector2.ZERO)
+	carrier.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
+	carrier.state_machine.set_movement_input(Vector2.LEFT * 0.3)
+	var defender := f.player("formal_player_04", Vector2(f.rules.tackle_start_range_m * 0.5 + 0.35, 0), "away")
+	defender.state_machine.set_movement_input(Vector2.LEFT)
+	var ball := BallMatchState.new(Vector2.ZERO)
+	ball._set_owner(carrier.player_id)
+	var source := MatchPlayerAISource.new(f.formal.teams, f.formal.field, f.rules, f.tuning, PressPreference.new())
+	var fixed_step := 1.0 / 60.0
+	for step in range(90):
+		var snapshot := f.snapshot([carrier, defender], ball, "", 1, false, step)
+		var actions := source.propose_actions(snapshot)
+		defender.state_machine.set_movement_input(_movement(actions, defender.player_id))
+		_check(defender.state.movement_state == PlayerMatchState.MovementState.MOVING,
+			"An already moving defender keeps running while pacing a slower dribbler")
+		defender.advance(fixed_step)
+		carrier.advance(fixed_step)
+
+	var builder := RoleCandidateBuilder.new(f.tuning, f.rules, f.formal.field)
+	var snapshot := f.snapshot([carrier, defender], ball)
+	var cover := builder.build(snapshot, defender.player_id, "back", Vector2(16, 0),
+		Vector2(-25, 0), "another_defender", false)
+	for candidate in cover:
+		_check(candidate.behavior != AIActionCandidate.Behavior.HOLD,
+			"A covering defender cannot randomly idle while the opponent controls the ball")
+
 
 ## The former presser must drop back on the same frame that the opposing keeper gains control.
 func _test_retreat_on_keeper_possession() -> void:
