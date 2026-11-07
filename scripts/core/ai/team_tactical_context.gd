@@ -4,6 +4,14 @@ extends RefCounted
 
 enum Phase { ATTACK, DEFEND, LOOSE }
 
+
+## A rival keeper's controlled possession calls for a defensive reset rather than a press.
+static func is_defending_keeper_possession(snapshot: MatchStateSnapshot, team: String) -> bool:
+	if snapshot.ball == null:
+		return false
+	var owner := snapshot.get_player(snapshot.ball.owner_player_id)
+	return owner != null and owner.is_goalkeeper and owner.team_id != team
+
 ## Uncontrolled untouched passes/shots retain the releasing team's tactics; defensive contact makes both loose.
 static func phase_for(snapshot: MatchStateSnapshot, team: String) -> int:
 	if snapshot.ball == null:

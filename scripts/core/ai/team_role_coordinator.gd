@@ -8,6 +8,9 @@ var _assigned_at: Dictionary[String, float] = {}
 ## Keeps a valid incumbent until a materially earlier eligible teammate can take over.
 func select_primary(snapshot: MatchStateSnapshot, team: String, target: Vector2,
 		config: AIBehaviorConfig) -> String:
+	if TeamTacticalContext.is_defending_keeper_possession(snapshot, team):
+		clear_team(team)
+		return ""
 	var best: PlayerStateSnapshot = null
 	var best_time := INF
 	for player in snapshot.players:

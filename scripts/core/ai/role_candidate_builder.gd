@@ -30,6 +30,11 @@ func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 	var is_primary_defender := phase == TeamTacticalContext.Phase.DEFEND \
 		and not ball.owner_player_id.is_empty() and primary == player_id
 	var is_primary_collector := phase == TeamTacticalContext.Phase.LOOSE and primary == player_id
+	if TeamTacticalContext.is_defending_keeper_possession(snapshot, player.team_id):
+		var retreat := movement_target(snapshot, player, AIActionCandidate.Behavior.RETURN,
+			role, anchor, goal, position_id)
+		return [_move(player, retreat, AIActionCandidate.Behavior.RETURN,
+			_tuning.weight(role, AIActionCandidate.Behavior.RETURN))]
 	if requires_region_return(snapshot, player, primary, position_id, goal):
 		var bounds := activity_bounds(snapshot, player, position_id, goal)
 		return [_move(player, _clamp_to_rect(player.position_m, bounds), AIActionCandidate.Behavior.RETURN,
@@ -138,8 +143,9 @@ func movement_target(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 				point = carrier.position_m + carrier.movement_input * carrier.movement_speed_mps \
 					* PlayerStateMachine.POSSESSION_MOVEMENT_SPEED_MULTIPLIER * _tuning.number("press_prediction_seconds")
 		AIActionCandidate.Behavior.RETURN:
-			var threat := carrier.position_m if carrier != null else snapshot.ball.position_m
-			point = anchor.lerp(threat - Vector2(direction * _tuning.number("defense_standoff_m"), 0), 0.5)
+			if carrier == null or not carrier.is_goalkeeper or carrier.team_id == player.team_id:
+				var threat := carrier.position_m if carrier != null else snapshot.ball.position_m
+				point = anchor.lerp(threat - Vector2(direction * _tuning.number("defense_standoff_m"), 0), 0.5)
 		AIActionCandidate.Behavior.SUPPORT:
 			if snapshot.ball.target_player_id == player.player_id:
 				return player.position_m

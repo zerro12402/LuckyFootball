@@ -14,12 +14,41 @@ class SupportPreference extends AIWeightModifier:
 func _init() -> void:
 	_test_directional_passes()
 	_test_pressing_and_handoff()
+	_test_retreat_on_keeper_possession()
 	_test_live_support()
 	_test_actual_player_movement()
 	for failure in _failures:
 		printerr(failure)
 	print("AI passing and active duties: ", "PASS" if _failures.is_empty() else "FAIL")
 	quit(0 if _failures.is_empty() else 1)
+
+## The former presser must drop back on the same frame that the opposing keeper gains control.
+func _test_retreat_on_keeper_possession() -> void:
+	var f := Fixture.new()
+	var carrier := f.player("swift_forward", Vector2(-24, 0))
+	var keeper := f.player("steady_keeper", Vector2(-24, 0), "home", true)
+	var defender := f.player("formal_player_04", Vector2(-22, 0), "away")
+	var players: Array[PlayerRuntime] = [carrier, keeper, defender]
+	var ball := BallMatchState.new(carrier.state.position_m)
+	ball._set_owner(carrier.player_id)
+	var source := f.source(true)
+	source.propose_actions(f.snapshot(players, ball))
+	_check(source._plans[defender.player_id].behavior == AIActionCandidate.Behavior.PRESS,
+		"An ordinary opposing carrier draws the primary defender")
+	ball._set_owner(keeper.player_id)
+	var snapshot := f.snapshot(players, ball, "", 1, false, 1)
+	var actions := source.propose_actions(snapshot)
+	_check(TeamTacticalContext.phase_for(snapshot, "home") == TeamTacticalContext.Phase.ATTACK
+		and TeamTacticalContext.phase_for(snapshot, "away") == TeamTacticalContext.Phase.DEFEND,
+		"Keeper control puts the keeper's team on attack and its opponent on defense")
+	_check(source._plans[defender.player_id].behavior == AIActionCandidate.Behavior.RETURN
+		and _movement(actions, defender.player_id).x > 0.0,
+		"The former presser returns to its defensive region before the next heartbeat")
+	ball._set_owner(carrier.player_id)
+	source.propose_actions(f.snapshot(players, ball, "", 1, false, 2))
+	_check(source._plans[defender.player_id].behavior == AIActionCandidate.Behavior.PRESS,
+		"Ordinary pressing resumes when a field player takes possession")
+
 
 ## Forward/backward uses team attack direction, including mirrored sides and a backward-only escape.
 func _test_directional_passes() -> void:
