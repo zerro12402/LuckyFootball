@@ -4,6 +4,7 @@ extends RefCounted
 
 const SETTLEMENT_TIME_EPSILON := 0.000001
 const KNOCKDOWN_WINDOW_EPSILON := 0.000001
+const KEEPER_CARRIER_CLAIM_RADIUS_FACTOR := 0.5
 
 enum MeleeOutcome {
 	TARGET_KNOCKED_DOWN,
@@ -547,6 +548,7 @@ func _advance_play_step(
 		step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 		_record_step_events(step_events)
 		return step_events
+	_try_keeper_claim_against_carrier(step_events)
 	_resolve_pending_tackles(step_events)
 	var released_after_motion := _resolve_pending_knockdowns(step_events)
 	was_ball_released_by_knockdown = (
@@ -575,6 +577,48 @@ func _advance_play_step(
 	step_events.append(_create_event(MatchEvent.Type.SIMULATION_ADVANCED))
 	_record_step_events(step_events)
 	return step_events
+
+
+## An active keeper in their own penalty area can take the ball directly from a grounded opponent.
+func _try_keeper_claim_against_carrier(events: Array[MatchEvent]) -> void:
+	var ball := _ball_runtime_system.state
+	if ball == null or ball.owner_player_id.is_empty() or _match_config == null or _field_definition == null:
+		return
+	var carrier := _player_runtime_system.get_player(ball.owner_player_id)
+	if carrier == null or carrier.state.jump_phase != PlayerMatchState.JumpPhase.NONE \
+			or carrier.state.action_state in [PlayerMatchState.ActionState.KNOCKED_DOWN, PlayerMatchState.ActionState.GETTING_UP]:
+		return
+	var claim_radius_m := _match_config.keeper_contact_radius_m * KEEPER_CARRIER_CLAIM_RADIUS_FACTOR
+	for keeper in _player_runtime_system.get_players():
+		if not keeper.is_goalkeeper or keeper.team_id == carrier.team_id \
+				or keeper.state.action_state != PlayerMatchState.ActionState.IDLE \
+				or keeper.state.jump_phase != PlayerMatchState.JumpPhase.NONE:
+			continue
+		var offset := carrier.state.position_m - keeper.state.position_m
+		if offset.length_squared() > claim_radius_m * claim_radius_m:
+			continue
+		var attacking_goal: Vector2 = _attacking_goals_by_team.get(keeper.team_id, Vector2.ZERO)
+		if not _is_in_keeper_penalty(keeper.state.position_m, attacking_goal.x) \
+				or not _is_in_keeper_penalty(carrier.state.position_m, attacking_goal.x):
+			continue
+		_orient_goalkeeper(keeper)
+		var direction := keeper.state.facing_direction if offset.is_zero_approx() else offset.normalized()
+		_ball_runtime_system.release_knocked_down_ball(carrier)
+		_commit_player_knockback(carrier, direction, _match_config.ball_impact_knockback_apex_height_m)
+		_ball_runtime_system.catch_by_keeper(keeper, true)
+		events.append(_create_event(MatchEvent.Type.PLAYER_KNOCKED_DOWN, carrier.player_id))
+		events.append(_create_event(MatchEvent.Type.BALL_POSSESSION_GAINED, keeper.player_id))
+		return
+
+
+## Uses the keeper's registered team orientation to select the correct physical penalty area.
+func _is_in_keeper_penalty(point: Vector2, attacking_goal_x: float) -> bool:
+	if is_zero_approx(attacking_goal_x):
+		return false
+	var half_length := _field_definition.length_m * 0.5
+	var depth := -point.x * signf(attacking_goal_x)
+	return depth >= half_length - _field_definition.penalty_area_depth_m and depth <= half_length \
+		and absf(point.y) <= _field_definition.penalty_area_width_m * 0.5
 
 
 ## Advances only to the first contact, commits it, and rebuilds the unused interval.
@@ -1282,9 +1326,9 @@ func _commit_melee_result(result: MeleeContestResult, attacker: PlayerRuntime,
 	# Drop at the captured contact point before either state machine can advance displacement.
 	var released := target_falls and _ball_runtime_system.release_knocked_down_ball(target)
 	if target_falls:
-		_commit_melee_knockback(target, result.direction)
+		_commit_player_knockback(target, result.direction)
 	if attacker_falls:
-		_commit_melee_knockback(attacker, -result.direction)
+		_commit_player_knockback(attacker, -result.direction)
 	_append_melee_event(MatchEvent.Type.MELEE_CONTEST_RESOLVED, result, previous_owner, events)
 	if target_falls:
 		_append_melee_event(MatchEvent.Type.PLAYER_KNOCKED_DOWN, result, previous_owner, events)
@@ -1293,16 +1337,16 @@ func _commit_melee_result(result: MeleeContestResult, attacker: PlayerRuntime,
 	return released
 
 ## Cancels unfinished actor intents and applies one existing knockdown/knockback response.
-func _commit_melee_knockback(player: PlayerRuntime, direction: Vector2) -> void:
+func _commit_player_knockback(player: PlayerRuntime, direction: Vector2, apex_height_m: float = 0.0) -> void:
 	_pending_knockdown_targets.erase(player.player_id)
 	_pending_melee_sequences.erase(player.player_id)
 	_pending_tackle_targets.erase(player.player_id)
 	_pending_header_actions.erase(player.player_id)
 	_keeper_intents.erase(player.player_id)
 	var started := player.state_machine.start_knockdown(_match_config)
-	assert(started, "Both melee actors were validated before atomic commit")
-	var pushed := player.state_machine.start_knockback(direction)
-	assert(pushed, "A normalized melee direction must produce a single knockback")
+	assert(started, "The knockback target was validated before commit")
+	var pushed := player.state_machine.start_knockback(direction, -1.0, -1.0, apex_height_m)
+	assert(pushed, "A valid direction must produce a single knockback")
 
 ## Publishes copied contest and ownership facts; response events never re-run the contest.
 func _append_melee_event(kind: int, result: MeleeContestResult, previous_owner: String,

@@ -29,7 +29,7 @@ static func allows(snapshot: MatchStateSnapshot, intent: MatchAction,
 				and target.jump_phase == PlayerMatchState.JumpPhase.NONE \
 				and ball.position_m.distance_to(target.position_m) >= BallRuntimeSystem.MIN_PASS_DISTANCE_M \
 				and ball.position_m.distance_to(target.position_m) <= BallRuntimeSystem.DEFAULT_MAX_PASS_DISTANCE_M \
-				and ball.control_attachment == BallMatchState.ControlAttachment.FOOT
+				and (ball.control_attachment == BallMatchState.ControlAttachment.FOOT or actor.is_goalkeeper)
 		MatchAction.Type.SHOOT:
 			return not actor.is_goalkeeper and owns and actor.shooting_attribute > 0 \
 				and is_finite(intent.power) and intent.power > 0.0 and intent.power <= 1.0

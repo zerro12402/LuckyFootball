@@ -21,6 +21,9 @@ func _run() -> void:
 	var field := formal.get_node("FieldEnvironment") as FieldEnvironment
 	_check(snapshot.phase == MatchState.Phase.READY and field.get_presented_player_ids().size() == 12, "formal READY binds twelve stable actors")
 	_check(formal._sources.size() == 1 and formal._sources[0] is MatchPlayerAISource and not _has_keyboard(formal), "production formal scene uses real AI without keyboard")
+	var scoreboard := formal.get_node("%ScoreboardLabel") as Label
+	_check(scoreboard.text.contains("0 : 0") and scoreboard.text.ends_with("03:00"),
+		"Initial formal scoreboard reads the configured score and clock")
 	var ids := field.get_presented_player_ids()
 	var actor_ids: Dictionary[String, int] = {}
 	for id in ids:
@@ -30,8 +33,10 @@ func _run() -> void:
 	_check(formal.get_snapshot().phase == MatchState.Phase.RUNNING and formal.get_snapshot().elapsed_seconds > 0, "start control enters running")
 	_button(formal, "暂停 / 恢复").pressed.emit()
 	var before := formal.get_snapshot()
+	var before_clock := scoreboard.text
 	formal._process(0.2)
 	_check(formal.get_snapshot().phase == MatchState.Phase.PAUSED and formal.get_snapshot().elapsed_seconds == before.elapsed_seconds, "pause control freezes time")
+	_check(scoreboard.text == before_clock, "The scoreboard does not tick during pause")
 	_button(formal, "暂停 / 恢复").pressed.emit()
 	var fixture := Fixture.new()
 	fixture.launch_boundary(formal._simulation, 0.01)
@@ -41,6 +46,8 @@ func _run() -> void:
 		if formal.get_snapshot().round_sequence == 2:
 			break
 	_check(formal.get_snapshot().round_sequence == 2 and formal.get_snapshot().home_score == 1, "formal scene uses real goal/net/reset rules")
+	_check(scoreboard.text.contains("1 : 0") and not scoreboard.text.ends_with("03:00"),
+		"The separate scoreboard updates with the score and clock while controls are collapsed")
 	_check(field.get_presented_player_ids() == ids, "actor mapping survives reset")
 	for id in ids:
 		_check(field._roster_actors[id].get_instance_id() == actor_ids[id], "actor reused by stable ID after reset")

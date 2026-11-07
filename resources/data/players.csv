@@ -2,9 +2,9 @@ player_id,display_name,default_role,speed,shooting,strength,technique,stamina,ta
 swift_forward,疾风,forward,92,84,58,88,75,42,18,speedster,dribbler,risk_shooter,,,player_blue
 iron_guard,铁壁,defender,75,48,91,55,82,89,32,protector,aggressive,safe_passer,,,player_red
 steady_keeper,磐石,goalkeeper,75,45,94,61,88,50,94,calm_keeper,long_thrower,team_leader,,,player_green
-formal_player_01,洛神,forward,80,78,75,94,80,75,35,protector,aggressive,safe_passer,,,player_red
+formal_player_01,洛神,forward,80,75,88,66,80,88,35,protector,aggressive,safe_passer,,,player_red
 formal_player_02,日天,defender,80,75,75,75,80,82,35,protector,aggressive,safe_passer,,,player_red
-formal_player_03,熊猫,defender,80,75,88,66,80,88,35,protector,aggressive,safe_passer,,,player_red
+formal_player_03,熊猫,defender,80,88,75,94,80,75,35,protector,aggressive,safe_passer,,,player_red
 formal_player_04,肉肉,forward,80,92,90,81,80,75,35,protector,aggressive,safe_passer,,,player_red
 formal_player_05,阿三,defender,80,57,78,70,80,75,35,protector,aggressive,safe_passer,,,player_red
 formal_player_06,berkan,defender,80,78,89,71,80,80,35,protector,aggressive,safe_passer,,,player_red

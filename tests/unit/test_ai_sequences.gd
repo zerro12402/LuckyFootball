@@ -8,6 +8,7 @@ func _init() -> void:
 	_test_ground_receptions()
 	_test_aerial_sequence()
 	_test_keeper_sequence()
+	_test_keeper_sequence(true)
 	for failure in _failures:
 		printerr(failure)
 	print("AI sequences: ", "PASS" if _failures.is_empty() else "FAIL")
@@ -87,8 +88,8 @@ func _test_aerial_sequence() -> void:
 	_check(jumps == 2 and shots == 2 and airborne_receives == 2,
 		"successive high passes cause airborne receive and actual shot on both attempts")
 
-## Forces only a contact sample, not the catch itself; F04 and the hand/foot attachment still execute.
-func _test_keeper_sequence() -> void:
+## Exercises actual keeper distribution after either an F04 save or a close-range hand claim.
+func _test_keeper_sequence(close_claim: bool = false) -> void:
 	var f := Fixture.new()
 	var simulation := f.formal.create(5.0)
 	for runtime in simulation._player_runtime_system.get_players():
@@ -99,13 +100,21 @@ func _test_keeper_sequence() -> void:
 	var mate := simulation._player_runtime_system.get_player("formal_player_06")
 	mate.state_machine.reset_to_spawn(Vector2(15, 5))
 	var ball := simulation._ball_runtime_system
-	ball.reset_ball(Vector2(16, 0))
-	ball.state._launch_shot(Vector2(16, 0), Vector2(20, 0), 20, 0.65)
-	ball._last_kicker_id = "swift_forward"
-	ball._shot_source = BallShotSource.new("swift_forward", "home", 84, 1)
-	ball._shot_context = ShotFlightContext.new(ball._shot_source)
-	ball._ai_flight_sequence += 1
-	simulation._keeper_sampler = func() -> float: return 0.0
+	if close_claim:
+		var carrier := simulation._player_runtime_system.get_player("swift_forward")
+		carrier.state_machine.reset_to_spawn(Vector2(23.45, 0))
+		ball.reset_ball(carrier.state.position_m)
+		var contact := BallContactCandidate.new()
+		contact.player_id = carrier.player_id
+		ball.acquire_contact_ball(contact, simulation._player_runtime_system)
+	else:
+		ball.reset_ball(Vector2(16, 0))
+		ball.state._launch_shot(Vector2(16, 0), Vector2(20, 0), 20, 0.65)
+		ball._last_kicker_id = "swift_forward"
+		ball._shot_source = BallShotSource.new("swift_forward", "home", 84, 1)
+		ball._shot_context = ShotFlightContext.new(ball._shot_source)
+		ball._ai_flight_sequence += 1
+		simulation._keeper_sampler = func() -> float: return 0.0
 	var source := f.source()
 	var loop := GameLoop.new(simulation, 1.0 / 60.0, 0.25, 8, null, [], [source])
 	simulation.start_match()
@@ -118,12 +127,16 @@ func _test_keeper_sequence() -> void:
 				caught = true
 			if event.event_type == MatchEvent.Type.BALL_PASSED and event.subject_id == keeper.player_id:
 				passed = true
+		if close_claim and frame.snapshot.ball.owner_player_id == keeper.player_id:
+			caught = true
+			_check(frame.snapshot.ball.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS,
+				"Keeper keeps the hand attachment through the pass windup")
 		if caught and frame.snapshot.ball.owner_player_id == keeper.player_id:
 			_check(frame.snapshot.get_player(keeper.player_id).movement_input == Vector2.ZERO,
 				"keeper never carries a catch away from goal")
 		if passed:
 			break
-	_check(caught and passed, "keeper responds to actual shot, catches via F04 and passes from a stationary position")
+	_check(caught and passed, "keeper catches and passes from a stationary position (close claim: %s)" % close_claim)
 
 ## Records sequence-level failures independently.
 func _check(condition: bool, message: String) -> void:

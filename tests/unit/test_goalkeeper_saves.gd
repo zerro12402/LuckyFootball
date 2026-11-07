@@ -23,6 +23,7 @@ func _init() -> void:
 	_test_pause_reset_replay()
 	_test_wrong_lane_and_window()
 	_test_catch_release_and_animation_duration()
+	_test_close_range_claim()
 	_test_seeded_sampling_replay()
 	_test_configuration_validation()
 	_test_large_step_contact_and_event_time()
@@ -30,6 +31,49 @@ func _init() -> void:
 		push_error(failure)
 	print("Goalkeeper rules failures: ", _failures.size())
 	quit(0 if _failures.is_empty() else 1)
+
+## Verifies that the close-range claim is a single hand transfer and needs no keeper action.
+func _test_close_range_claim() -> void:
+	var simulation := _match()
+	var carrier := simulation._player_runtime_system.get_player("shooter")
+	carrier.state._set_position(Vector2(21.9, 0))
+	simulation.advance_fixed_step(0.01, [])
+	_check(simulation.create_snapshot().ball.owner_player_id == "shooter", "Keeper leaves a carrier outside reach alone")
+	carrier.state._set_position(Vector2(22.0, 0))
+	var events := simulation.advance_fixed_step(0.01, [MatchAction.new("shooter", MatchAction.Type.SHOOT)])
+	var snapshot := simulation.create_snapshot()
+	_check(snapshot.ball.owner_player_id == "keeper"
+		and snapshot.ball.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS,
+		"Nearby grounded attacker loses the ball to the keeper's hands")
+	_check(snapshot.get_player("shooter").action_state == PlayerMatchState.ActionState.KNOCKED_DOWN
+		and snapshot.get_player("keeper").action_state == PlayerMatchState.ActionState.IDLE,
+		"Attacker is knocked down without a keeper attack or save action")
+	var knocks := 0
+	var claims := 0
+	for event in events:
+		if event.event_type == MatchEvent.Type.PLAYER_KNOCKED_DOWN:
+			knocks += 1
+		if event.event_type == MatchEvent.Type.BALL_POSSESSION_GAINED:
+			claims += 1
+	_check(knocks == 1 and claims == 1, "Claim publishes one knockdown and one possession event")
+	simulation.advance_fixed_step(0.1, [])
+	snapshot = simulation.create_snapshot()
+	_check(snapshot.get_player("shooter").position_m.x < 22.0 and snapshot.get_player("shooter").height_m > 0.0,
+		"Attacker is pushed away from the keeper and briefly airborne")
+	_check(snapshot.ball.owner_player_id == "keeper"
+		and snapshot.ball.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS,
+		"Keeper keeps holding the ball on later steps")
+	_check(_aim_draws == 0 and _save_draws == 0, "Claim cancels the old shot without drawing F04 or F11 samples")
+
+	simulation = _match()
+	carrier = simulation._player_runtime_system.get_player("shooter")
+	var keeper := simulation._player_runtime_system.get_player("keeper")
+	var outside_y := _field.penalty_area_width_m * 0.5 + 0.5
+	keeper.state._set_position(Vector2(23, outside_y))
+	carrier.state._set_position(Vector2(22.0, outside_y))
+	simulation.advance_fixed_step(0.01, [])
+	_check(simulation.create_snapshot().ball.owner_player_id == "shooter", "Close claim is disabled outside the own penalty area")
+
 
 ## Counts injected aim samples so rejected/cancelled commands cannot draw early.
 func _draw_aim() -> int:

@@ -94,7 +94,7 @@ func present(
 	if player_snapshot.action_state == PlayerMatchState.ActionState.SAVING:
 		_animation_player.seek(clampf(player_snapshot.action_state_elapsed_seconds,
 			0.0, _save_duration_seconds - 0.00001), true)
-	elif _is_hand_holder:
+	elif _is_hand_holder and player_snapshot.action_state == PlayerMatchState.ActionState.IDLE:
 		_animation_player.seek(0.0, true)
 	if player_snapshot.jump_phase != PlayerMatchState.JumpPhase.NONE:
 		_animation_player.advance(0.0)

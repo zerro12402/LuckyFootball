@@ -25,6 +25,7 @@ var last_kicker_id: String:
 		return _last_kicker_id
 
 var _state: BallMatchState
+var _keeper_keeps_hands: bool = false
 var _last_kicker_id: String = ""
 var last_touch_player_id: String:
 	get: return _last_touch_player_id
@@ -925,13 +926,13 @@ func _follow_owner(players: PlayerRuntimeSystem) -> void:
 	_set_ball_at_control_point(owner)
 
 
-## Keeps a catch in the hands during SAVING, then uses the ordinary dribble attachment.
+## Keeps close-range claims in the hands; ordinary saves return to feet after SAVING.
 func _set_ball_at_control_point(owner: PlayerRuntime) -> void:
 	if (_state.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS
-		and owner.state.action_state != PlayerMatchState.ActionState.SAVING):
+		and not _keeper_keeps_hands and owner.state.action_state != PlayerMatchState.ActionState.SAVING):
 		_state._set_attachment(BallMatchState.ControlAttachment.FOOT)
 	if _state.control_attachment == BallMatchState.ControlAttachment.KEEPER_HANDS:
-		var lateral := float(owner.state.save_lane - ShotAim.Lane.CENTER)
+		var lateral := 0.0 if _keeper_keeps_hands else float(owner.state.save_lane - ShotAim.Lane.CENTER)
 		_state._set_position(owner.state.position_m
 			+ owner.state.facing_direction * _shot_config.keeper_hand_forward_m
 			+ Vector2(0.0, lateral * _shot_config.keeper_hand_lateral_m))
@@ -957,10 +958,11 @@ func configure_shot_aim(selector: Callable) -> void:
 	_shot_aim_selector = selector
 
 
-## Commits an authorized F04 catch through the unique ownership path, then attaches hands.
-func catch_by_keeper(keeper: PlayerRuntime) -> BallAdvanceResult:
+## Commits an authorized keeper catch; a close-range claim keeps the centered hand attachment.
+func catch_by_keeper(keeper: PlayerRuntime, keep_in_hands: bool = false) -> BallAdvanceResult:
 	var result := BallAdvanceResult.new()
 	_claim_ball(keeper, result)
+	_keeper_keeps_hands = keep_in_hands
 	_state._set_attachment(BallMatchState.ControlAttachment.KEEPER_HANDS)
 	_set_ball_at_control_point(keeper)
 	return result

@@ -12,6 +12,7 @@ signal presentation_frame_ready(snapshot: MatchStateSnapshot, events: Array[Matc
 @export var autonomous_players: bool = true
 @export var use_local_camera: bool = true
 @onready var _field: FieldEnvironment = %FieldEnvironment
+@onready var _scoreboard: Label = %ScoreboardLabel
 
 static var _instance_sequence: int = 0
 var _simulation: MatchSimulation
@@ -75,6 +76,7 @@ func _fail(errors: PackedStringArray) -> void:
 	last_errors = errors.duplicate()
 	set_process(false)
 	_field.visible = false
+	%Scoreboard.hide()
 	startup_failed.emit(last_errors)
 
 ## Drives the same fixed-step loop as development matches, with no player keyboard input.
@@ -158,12 +160,12 @@ func _present(frame: MatchFrameResult, delta_seconds: float = 0.0) -> void:
 	_field.present(frame.snapshot, delta_seconds)
 	_field.present_events(frame.events)
 	var snapshot := frame.snapshot
+	_present_scoreboard(snapshot)
 	var phases := ["等待开始", "比赛中", "已暂停", "比赛结束", "比赛已取消"]
 	var rounds := ["正常比赛", "进球确认", "球网运动", "出界等待", "重置"]
-	_status.text = "%s %d : %d %s\n%s · %s\n剩余 %.1f 秒 · 回合 %d\n球员决策：%s" % [
-		_teams.get_team(snapshot.home_team_id).display_name, snapshot.home_score, snapshot.away_score,
-		_teams.get_team(snapshot.away_team_id).display_name, phases[snapshot.phase], rounds[snapshot.round_phase],
-		snapshot.remaining_seconds, snapshot.round_sequence, "允许" if snapshot.can_decide_player_actions else "暂停"]
+	_status.text = "%s · %s\n回合 %d\n球员决策：%s" % [
+		phases[snapshot.phase], rounds[snapshot.round_phase], snapshot.round_sequence,
+		"允许" if snapshot.can_decide_player_actions else "暂停"]
 	if snapshot.result != null:
 		_status.text += "\n赛果：" + ["主队获胜", "平局", "客队获胜"][snapshot.result.outcome]
 	elif snapshot.phase == MatchState.Phase.CANCELLED:
@@ -171,3 +173,14 @@ func _present(frame: MatchFrameResult, delta_seconds: float = 0.0) -> void:
 	elif _sources.is_empty():
 		_status.text += "\n战术AI待接入，当前为空动作来源"
 	presentation_frame_ready.emit(snapshot, frame.events, frame.interpolation_alpha)
+
+
+## Formats official scores and time on a separate HUD that stays present when controls collapse.
+func _present_scoreboard(snapshot: MatchStateSnapshot) -> void:
+	var seconds_left := ceili(maxf(snapshot.remaining_seconds, 0.0))
+	var minutes := floori(seconds_left / 60.0)
+	_scoreboard.text = "%s  %d : %d  %s\n剩余 %02d:%02d" % [
+		_teams.get_team(snapshot.home_team_id).display_name, snapshot.home_score,
+		snapshot.away_score, _teams.get_team(snapshot.away_team_id).display_name,
+		minutes, seconds_left % 60,
+	]
