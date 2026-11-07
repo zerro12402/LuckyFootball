@@ -17,12 +17,12 @@ func _init(tuning: AIBehaviorConfig, rules: MatchConfigDefinition, field: FieldD
 ## Builds categories once per review; precision jump/save opportunities are also checked every fixed step.
 func build(snapshot: MatchStateSnapshot, player_id: String, role: String,
 		anchor: Vector2, goal: Vector2, primary: String, is_pressured: bool,
-		stamina_ratio: float = -1.0, position_id: String = "") -> Array[AIActionCandidate]:
+		stamina_ratio: float = -1.0, position_id: String = "", scripted_keeper: bool = false) -> Array[AIActionCandidate]:
 	var player := snapshot.get_player(player_id)
 	if player == null or snapshot.ball == null:
 		return []
 	if player.is_goalkeeper:
-		return _keeper(snapshot, player, goal)
+		return _keeper(snapshot, player, goal, scripted_keeper)
 	var candidates: Array[AIActionCandidate] = []
 	var ball := snapshot.ball
 	var phase := TeamTacticalContext.phase_for(snapshot, player.team_id)
@@ -146,6 +146,21 @@ func movement_target(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 					* PlayerStateMachine.POSSESSION_MOVEMENT_SPEED_MULTIPLIER * _tuning.number("press_prediction_seconds")
 				# Approach from the defending goal side while staying within ordinary tackle reach.
 				point.x -= direction * _rules.tackle_start_range_m * 0.5
+		AIActionCandidate.Behavior.DROP_SUPPORT, AIActionCandidate.Behavior.BACK_SUPPORT:
+			if carrier != null:
+				point.x = carrier.position_m.x - direction * _tuning.number("role_forward_offset_m")
+		AIActionCandidate.Behavior.CENTRAL_SUPPORT:
+			if carrier != null:
+				point = Vector2(carrier.position_m.x + direction * _tuning.number("role_forward_offset_m"), 0.0)
+		AIActionCandidate.Behavior.COVER_LANE, AIActionCandidate.Behavior.MARK, AIActionCandidate.Behavior.PROTECT_GOAL:
+			var threat := carrier.position_m if carrier != null else snapshot.ball.position_m
+			var goal_side := threat - Vector2(direction * _tuning.number("defense_standoff_m"), 0.0)
+			if behavior == AIActionCandidate.Behavior.COVER_LANE:
+				point = anchor.lerp(goal_side, 0.5)
+			elif behavior == AIActionCandidate.Behavior.MARK:
+				point = goal_side
+			else:
+				point.y = threat.y
 		AIActionCandidate.Behavior.RETURN:
 			if carrier == null or not carrier.is_goalkeeper or carrier.team_id == player.team_id:
 				var threat := carrier.position_m if carrier != null else snapshot.ball.position_m
@@ -194,7 +209,7 @@ func _clamp_to_rect(point: Vector2, bounds: Rect2) -> Vector2:
 
 ## Includes attacks against legal nearby opponents, not just the current ball carrier.
 func _add_contests(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot, role: String,
-		candidates: Array[AIActionCandidate]) -> void:
+		candidates: Array[AIActionCandidate], include_tackle: bool = true) -> void:
 	var tackles: Array[AITargetOption] = []
 	var attacks: Array[AITargetOption] = []
 	for opponent in snapshot.players:
@@ -209,8 +224,9 @@ func _add_contests(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot, ro
 				MatchAction.Type.TACKLE, direction, opponent.player_id)))
 	candidates.append(AIActionCandidate.new(AIActionCandidate.Behavior.ATTACK,
 		_tuning.weight(role, AIActionCandidate.Behavior.ATTACK), attacks))
-	candidates.append(AIActionCandidate.new(AIActionCandidate.Behavior.TACKLE,
-		_tuning.weight(role, AIActionCandidate.Behavior.TACKLE), tackles))
+	if include_tackle:
+		candidates.append(AIActionCandidate.new(AIActionCandidate.Behavior.TACKLE,
+			_tuning.weight(role, AIActionCandidate.Behavior.TACKLE), tackles))
 
 ## Predicts the receive window; automatic receiving jumps are reserved for an in-range aerial finish.
 func aerial_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
@@ -245,14 +261,15 @@ func aerial_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	return MatchAction.new(player.player_id, MatchAction.Type.JUMP)
 
 ## Collects controllable penalty-area balls, otherwise returns to ordinary goal-mouth positioning.
-func _keeper(snapshot: MatchStateSnapshot, keeper: PlayerStateSnapshot, goal: Vector2) -> Array[AIActionCandidate]:
+func _keeper(snapshot: MatchStateSnapshot, keeper: PlayerStateSnapshot, goal: Vector2,
+		stay_at_goal: bool) -> Array[AIActionCandidate]:
 	var candidates: Array[AIActionCandidate] = []
 	if snapshot.ball.owner_player_id == keeper.player_id:
 		candidates.append(_passes(snapshot, keeper, "keeper", false, goal))
 		candidates.append(_move(keeper, keeper.position_m, AIActionCandidate.Behavior.HOLD,
 			_tuning.weight("keeper", AIActionCandidate.Behavior.HOLD)))
 		return candidates
-	var pickup := keeper_pickup_target(snapshot, keeper, goal)
+	var pickup := Vector2.INF if stay_at_goal else keeper_pickup_target(snapshot, keeper, goal)
 	if pickup.is_finite():
 		return [_move(keeper, pickup, AIActionCandidate.Behavior.CHASE,
 			_tuning.weight("keeper", AIActionCandidate.Behavior.CHASE))]
@@ -260,15 +277,88 @@ func _keeper(snapshot: MatchStateSnapshot, keeper: PlayerStateSnapshot, goal: Ve
 	var limit := maxf(0.0, _field.goal_width_m * 0.5 - margin)
 	var target := Vector2(-goal.x + signf(goal.x) * _tuning.number("keeper_line_offset_m"),
 		clampf(snapshot.ball.position_m.y * 0.5, -limit, limit))
-	if absf(keeper.position_m.x - target.x) > _tuning.number("arrival_m"):
+	if not stay_at_goal and absf(keeper.position_m.x - target.x) > _tuning.number("arrival_m"):
 		target.y = keeper.position_m.y
 	candidates.append(_move(keeper, target, AIActionCandidate.Behavior.RETURN,
 		_tuning.weight("keeper", AIActionCandidate.Behavior.RETURN)))
-	if absf(keeper.position_m.x - target.x) > _tuning.number("arrival_m"):
+	if absf(keeper.position_m.x - target.x) > _tuning.number("arrival_m") \
+			or (stay_at_goal and absf(keeper.position_m.y) > limit):
 		return candidates
 	candidates.append(_move(keeper, keeper.position_m, AIActionCandidate.Behavior.HOLD,
 		_tuning.weight("keeper", AIActionCandidate.Behavior.HOLD)))
 	return candidates
+
+## Offers a central goal-mouth anchor independently of the existing lateral tracking plan.
+func scripted_keeper_options(snapshot: MatchStateSnapshot, keeper: PlayerStateSnapshot,
+		goal: Vector2) -> Array[AIActionCandidate]:
+	if snapshot.ball.owner_player_id == keeper.player_id:
+		return []
+	var point := Vector2(-goal.x + signf(goal.x) * _tuning.number("keeper_line_offset_m"), 0.0)
+	return [_move(keeper, point, AIActionCandidate.Behavior.KEEPER_POSITION, 1.0)]
+
+
+## Adds opt-in v2 actions; the default lottery assigns them no weight unless the script opts in.
+func scripted_options(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
+		goal: Vector2, ordinary: Array[AIActionCandidate], role: String, anchor: Vector2,
+		position_id: String, primary: String, allow_header: bool) -> Array[AIActionCandidate]:
+	var options: Array[AIActionCandidate] = []
+	var ball := snapshot.ball
+	if ball.owner_player_id == player.player_id:
+		_add_contests(snapshot, player, role, options, false)
+		if not ordinary.any(func(candidate: AIActionCandidate) -> bool: return candidate.behavior == AIActionCandidate.Behavior.JUMP):
+			options.append(_one(player.player_id, AIActionCandidate.Behavior.JUMP, 1.0, MatchAction.Type.JUMP))
+		if player.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE and can_attempt_shot(player, goal) \
+				and not ordinary.any(func(candidate: AIActionCandidate) -> bool: return candidate.behavior == AIActionCandidate.Behavior.SHOOT):
+			options.append(_one(player.player_id, AIActionCandidate.Behavior.SHOOT, 1.0, MatchAction.Type.SHOOT))
+		return options
+	if requires_region_return(snapshot, player, primary, position_id, goal) \
+			or TeamTacticalContext.is_defending_keeper_possession(snapshot, player.team_id):
+		return options
+	for behavior in _scripted_positioning(role, ordinary):
+		var target := movement_target(snapshot, player, behavior, role, anchor, goal, position_id)
+		options.append(_move(player, target, behavior, 1.0))
+	if not allow_header or not _has_header_window(snapshot, player):
+		return options
+	if can_attempt_shot(player, goal):
+		options.append(_one(player.player_id, AIActionCandidate.Behavior.HEADER_SHOT, 1.0, MatchAction.Type.HEADER_SHOT))
+	var clear := MatchAction.new(player.player_id, MatchAction.Type.HEADER_CLEAR, Vector2(signf(goal.x), 0.0))
+	options.append(AIActionCandidate.new(AIActionCandidate.Behavior.HEADER_CLEAR, 1.0, [AITargetOption.new(clear)]))
+	return options
+
+
+## Adds only tactical positions that fit the current built-in duty and role.
+func _scripted_positioning(role: String, ordinary: Array[AIActionCandidate]) -> Array[int]:
+	var result: Array[int] = []
+	for candidate in ordinary:
+		if candidate.behavior == AIActionCandidate.Behavior.SUPPORT:
+			if role == "mid":
+				result.append_array([AIActionCandidate.Behavior.DROP_SUPPORT, AIActionCandidate.Behavior.CENTRAL_SUPPORT])
+			elif role == "back":
+				result.append(AIActionCandidate.Behavior.BACK_SUPPORT)
+		elif candidate.behavior == AIActionCandidate.Behavior.RETURN:
+			if role in ["mid", "back"]:
+				result.append(AIActionCandidate.Behavior.COVER_LANE)
+			if role == "back":
+				result.append_array([AIActionCandidate.Behavior.MARK, AIActionCandidate.Behavior.PROTECT_GOAL])
+	return result
+
+
+## Checks a short observable high-pass window; the simulation still resolves the exact header contact.
+func _has_header_window(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot) -> bool:
+	var ball := snapshot.ball
+	if ball.flight_kind != BallMatchState.FlightKind.PASS or ball.velocity_mps.is_zero_approx():
+		return false
+	var direction := ball.velocity_mps.normalized()
+	var offset := player.position_m - ball.position_m
+	var along := maxf(0.0, offset.dot(direction))
+	if (offset - direction * along).length() > _rules.header_contact_radius_m:
+		return false
+	if along > ball.flight_range_m - ball.flight_distance_m \
+			or along / ball.velocity_mps.length() > _tuning.number("heartbeat_seconds"):
+		return false
+	var height := AIBallPrediction.height_at(ball, along)
+	return height >= _rules.header_min_contact_height_m and height <= player.height_m + _rules.header_reach_height_m
+
 
 ## Limits AI shooting opportunities without restricting player commands or changing contest formulas.
 func can_attempt_shot(player: PlayerStateSnapshot, goal: Vector2) -> bool:

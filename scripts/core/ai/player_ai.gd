@@ -30,12 +30,12 @@ func _init(seed_value: int, player_id: String, modifier: AIWeightModifier = null
 func choose(snapshot: MatchStateSnapshot, player_id: String,
 		candidates: Array[AIActionCandidate], config: MatchConfigDefinition,
 		strategy: PlayerAIDecisionStrategy = null, goal: Vector2 = Vector2.ZERO,
-		pressured: bool = false) -> MatchAction:
+		pressured: bool = false, context: Dictionary = {}, extra: Array[AIActionCandidate] = []) -> MatchAction:
 	_selected_target = null
 	_selected_behavior = AIActionCandidate.Behavior.HOLD
 	if not snapshot.can_decide_player_actions:
 		return null
-	var sorted: Array[AIActionCandidate] = candidates.duplicate()
+	var sorted: Array[AIActionCandidate] = candidates + extra
 	sorted.sort_custom(func(a: AIActionCandidate, b: AIActionCandidate) -> bool: return a.behavior < b.behavior)
 	var legal: Array[AIActionCandidate] = []
 	var category_weights: Array[float] = []
@@ -53,10 +53,10 @@ func choose(snapshot: MatchStateSnapshot, player_id: String,
 		if not is_finite(multiplier) or multiplier < 0.0 or not is_finite(weight) or weight <= 0.0:
 			continue
 		legal.append(AIActionCandidate.new(candidate.behavior, weight, targets))
-		category_weights.append(weight)
+		category_weights.append(0.0 if extra.has(candidate) else weight)
 	strategy_error = ""
 	if strategy != null and not legal.is_empty():
-		var direct := _apply_strategy(strategy, snapshot, player_id, goal, pressured, legal, category_weights)
+		var direct := _apply_strategy(strategy, snapshot, player_id, goal, pressured, legal, category_weights, context)
 		if direct != null:
 			return direct
 	var index := WeightedActionSelector.choose_index(category_weights, _sampler)
@@ -76,8 +76,9 @@ func choose(snapshot: MatchStateSnapshot, player_id: String,
 ## Validates the entire response before consuming any random draw or changing lottery weights.
 func _apply_strategy(strategy: PlayerAIDecisionStrategy, snapshot: MatchStateSnapshot,
 		player_id: String, goal: Vector2, pressured: bool, legal: Array[AIActionCandidate],
-		weights: Array[float]) -> MatchAction:
-	var view := ScriptedAIContract.make_view(snapshot, player_id, goal, pressured, legal)
+		weights: Array[float], context: Dictionary) -> MatchAction:
+	var version := strategy.interface_version()
+	var view := ScriptedAIContract.make_view(snapshot, player_id, goal, pressured, legal, version, context)
 	var public_choices: Dictionary = view["candidates"]
 	var result := strategy.decide(view.duplicate(true))
 	if result.is_empty():
@@ -85,14 +86,14 @@ func _apply_strategy(strategy: PlayerAIDecisionStrategy, snapshot: MatchStateSna
 	if result.has("error"):
 		strategy_error = str(result["error"])
 	elif result.size() == 2 and result.get("behavior") is String and result.get("target") is String:
-		var choice := ScriptedAIContract.select(legal, public_choices, result["behavior"], result["target"])
+		var choice := ScriptedAIContract.select(legal, public_choices, result["behavior"], result["target"], version)
 		if choice != null:
-			_selected_behavior = ScriptedAIContract.BEHAVIORS[result["behavior"]]
+			_selected_behavior = ScriptedAIContract.behaviors(version)[result["behavior"]]
 			_selected_target = choice
 			return choice.action
 		strategy_error = "当前行为或目标不可用"
 	elif result.size() == 1 and result.get("weights") is Dictionary:
-		strategy_error = _apply_strategy_weights(result["weights"], public_choices, legal, weights)
+		strategy_error = _apply_strategy_weights(result["weights"], public_choices, legal, weights, version)
 	else:
 		strategy_error = "无效的策略返回值"
 	return null
@@ -100,7 +101,7 @@ func _apply_strategy(strategy: PlayerAIDecisionStrategy, snapshot: MatchStateSna
 
 ## Keeps category weights atomic and rejects alias conflicts and empty lotteries.
 func _apply_strategy_weights(multipliers: Dictionary, public_choices: Dictionary,
-		legal: Array[AIActionCandidate], weights: Array[float]) -> String:
+		legal: Array[AIActionCandidate], weights: Array[float], version: int) -> String:
 	var revised := weights.duplicate()
 	var modified := {}
 	for id in multipliers:
@@ -108,13 +109,13 @@ func _apply_strategy_weights(multipliers: Dictionary, public_choices: Dictionary
 		if not public_choices.has(id) or not (multiplier is int or multiplier is float) \
 				or not is_finite(float(multiplier)) or float(multiplier) < 0.0:
 			return "当前行为不可用或倍率无效：%s" % id
-		var behavior: int = ScriptedAIContract.BEHAVIORS[id]
+		var behavior: int = ScriptedAIContract.behaviors(version)[id]
 		if modified.has(behavior):
 			return "同一行为不能重复加权"
 		modified[behavior] = true
 		for index in range(legal.size()):
 			if legal[index].behavior == behavior:
-				revised[index] *= float(multiplier)
+				revised[index] = legal[index].weight * float(multiplier)
 				break
 	var total := 0.0
 	for weight in revised:

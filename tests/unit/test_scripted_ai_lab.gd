@@ -46,7 +46,7 @@ func _run() -> void:
 	lab._seed.text = "42"
 	_check(lab.submit(tactic), "A strategy written from the manual passes the public submit flow")
 	var program := lab._program
-	_check(not lab.submit('{"version":2,"rules":[],"default":{}}') and lab._program == program,
+	_check(not lab.submit('{"version":3,"rules":[],"default":{}}') and lab._program == program,
 		"Invalid submission does not replace the validated program")
 	lab._run.pressed.emit()
 	var first := menu._active_mode_scene as FormalMatchBootstrap
@@ -71,11 +71,40 @@ func _run() -> void:
 	_check(baseline.get_snapshot().home_team_id == replay.get_snapshot().home_team_id
 		and baseline.get_snapshot().away_team_id == replay.get_snapshot().away_team_id,
 		"Baseline uses the same teams")
+	_test_team_trial(menu, lab)
 	menu.free()
 	for failure in _failures:
 		push_error(failure)
 	print("Scripted AI lab failures: ", _failures.size())
 	quit(0 if _failures.is_empty() else 1)
+
+
+## Uses the published team example for one binding, deterministic replay and an unbound baseline.
+func _test_team_trial(menu: GameModeController, lab: PlayerAIScriptLab) -> void:
+	var text := FileAccess.get_file_as_string(PlayerAIScriptLab.TEAM_MANUAL_PATH)
+	var sections := text.split("```json")
+	_check(sections.size() == 2, "The v2 manual includes a runnable four-role script")
+	if sections.size() != 2:
+		return
+	lab._source.text = sections[1].get_slice("```", 0)
+	_check(lab.submit(lab._source.text), "The official editor accepts the v2 manual example")
+	_check(lab._forward.item_count == 2, "v2 lists the two eligible teams")
+	for index in range(lab._forward.item_count):
+		if lab._forward.get_item_metadata(index) == "away":
+			lab._forward.select(index)
+	lab._seed.text = "42"
+	lab._run.pressed.emit()
+	var formal := menu._active_mode_scene as FormalMatchBootstrap
+	_check(formal.scripted_team_id == "away" and formal.scripted_player_id.is_empty()
+		and formal._production_ai._decision_strategy == lab._program, "v2 binds one compiled program to the selected team")
+	var first := _trace(formal)
+	lab._run.pressed.emit()
+	var replay := menu._active_mode_scene as FormalMatchBootstrap
+	_check(_trace(replay) == first, "Team trial replays with identical actions and positions")
+	lab._baseline.pressed.emit()
+	var baseline := menu._active_mode_scene as FormalMatchBootstrap
+	_check(baseline.get_snapshot().random_seed == 42 and baseline.scripted_team_id.is_empty()
+		and baseline._production_ai._decision_strategy == null, "Team baseline retains the seed and disables binding")
 
 
 ## Reads each published JSON block through the exact parser used by the editor.
@@ -95,12 +124,13 @@ func _trace(formal: FormalMatchBootstrap) -> Array:
 	for step in range(240):
 		formal._process(1.0 / 60.0)
 		var snapshot := formal.get_snapshot()
-		var player := snapshot.get_player(formal.scripted_player_id)
+		var positions: Array = []
+		for player in snapshot.players:
+			positions.append(player.position_m)
 		var actions: Array = []
 		for action in formal._production_ai.get_last_actions():
-			if action.player_id == formal.scripted_player_id:
-				actions.append([action.action_type, action.direction, action.target_player_id])
-		trace.append([player.position_m, snapshot.ball.position_m, snapshot.ball.owner_player_id, actions])
+			actions.append([action.player_id, action.action_type, action.direction, action.target_player_id])
+		trace.append([positions, snapshot.ball.position_m, snapshot.ball.owner_player_id, actions])
 	return trace
 
 

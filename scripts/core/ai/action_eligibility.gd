@@ -45,6 +45,9 @@ static func allows(snapshot: MatchStateSnapshot, intent: MatchAction,
 			if actor.position_m.distance_to(target.position_m) > range_m:
 				return false
 			return intent.action_type == MatchAction.Type.ATTACK or ball.owner_player_id == target.player_id
+		MatchAction.Type.HEADER_SHOT, MatchAction.Type.HEADER_CLEAR:
+			return not actor.is_goalkeeper and not owns and ball.flight_kind == BallMatchState.FlightKind.PASS \
+				and ball.flight_apex_height_m > 0.0 and (intent.action_type != MatchAction.Type.HEADER_CLEAR or not intent.direction.is_zero_approx())
 		MatchAction.Type.SAVE:
 			return actor.is_goalkeeper and not owns and ball.flight_kind == BallMatchState.FlightKind.SHOT
 	return false

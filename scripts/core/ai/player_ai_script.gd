@@ -9,6 +9,7 @@ const MAX_CONDITIONS := 8
 const MAX_INSTRUCTIONS := 128
 const OPERATORS := ["==", "!=", "<", "<=", ">", ">="]
 
+var _version := 1
 var _rules: Array[Dictionary] = []
 var _default: Dictionary = {}
 
@@ -25,18 +26,20 @@ static func compile(source: String) -> Dictionary:
 	if not json.data is Dictionary:
 		return {"error": "根节点必须是对象"}
 	var root: Dictionary = json.data
-	if root.size() != 3 or root.get("version") != ScriptedAIContract.VERSION \
+	var version: Variant = root.get("version")
+	if root.size() != 3 or not (version is int or version is float) or float(version) not in [1.0, 2.0] \
 			or not root.get("rules") is Array or not root.get("default") is Dictionary:
-		return {"error": "根节点须包含 version: 1、rules 和 default"}
+		return {"error": "根节点须包含 version: 1 或 2、rules 和 default"}
 	if root["rules"].size() > MAX_RULES:
 		return {"error": "rules 最多 24 条"}
-	var fallback_error := _result_error(root["default"])
+	var fallback_error := _result_error(root["default"], int(version))
 	if not fallback_error.is_empty():
 		return {"error": "default：%s" % fallback_error}
 	var script := PlayerAIScript.new()
+	script._version = int(version)
 	for index in range(root["rules"].size()):
 		var rule: Variant = root["rules"][index]
-		var error := _rule_error(rule)
+		var error := _rule_error(rule, script._version)
 		if not error.is_empty():
 			return {"error": "rules[%d]：%s" % [index, error]}
 		script._rules.append(rule)
@@ -66,7 +69,7 @@ static func _within_depth(source: String) -> bool:
 
 
 ## Validates statically named fields, operators and values using the published version contract.
-static func _rule_error(rule: Variant) -> String:
+static func _rule_error(rule: Variant, version: int) -> String:
 	if not rule is Dictionary or rule.size() != 2 or not rule.get("when") is Array \
 			or not rule.get("then") is Dictionary:
 		return "须包含 when 数组和 then 对象"
@@ -78,9 +81,7 @@ static func _rule_error(rule: Variant) -> String:
 				or condition[1] not in OPERATORS:
 			return "when[%d] 须为 [字段, 比较符, 值]" % index
 		var field: String = condition[0]
-		var field_type: int = ScriptedAIContract.FIELDS.get(field, TYPE_NIL)
-		if field.begins_with("has.") and ScriptedAIContract.BEHAVIORS.has(field.substr(4)):
-			field_type = TYPE_BOOL
+		var field_type := ScriptedAIContract.field_type(field, version)
 		var value: Variant = condition[2]
 		if field_type in [TYPE_FLOAT, TYPE_INT] and (value is float or value is int) and is_finite(float(value)):
 			continue
@@ -88,15 +89,15 @@ static func _rule_error(rule: Variant) -> String:
 				and condition[1] in ["==", "!="]:
 			continue
 		return "when[%d] 的字段、比较符或值类型无效：%s" % [index, field]
-	return _result_error(rule["then"])
+	return _result_error(rule["then"], version)
 
 
 ## Restricts output to fallback, finite multipliers, or an advertised behavior and target ID.
-static func _result_error(result: Dictionary) -> String:
+static func _result_error(result: Dictionary, version: int) -> String:
 	if result.is_empty():
 		return ""
 	if result.size() == 2 and result.get("behavior") is String and result.get("target") is String:
-		if ScriptedAIContract.BEHAVIORS.has(result["behavior"]) and result["target"].length() <= 64:
+		if ScriptedAIContract.behaviors(version).has(result["behavior"]) and result["target"].length() <= 64:
 			return ""
 		return "未知行为或目标 ID 过长"
 	if result.size() == 1 and result.get("weights") is Dictionary:
@@ -105,16 +106,20 @@ static func _result_error(result: Dictionary) -> String:
 			return "weights 不能为空"
 		for behavior in weights:
 			var amount: Variant = weights[behavior]
-			if not ScriptedAIContract.BEHAVIORS.has(behavior) or not (amount is float or amount is int) \
+			if not ScriptedAIContract.behaviors(version).has(behavior) or not (amount is float or amount is int) \
 					or not is_finite(float(amount)) or float(amount) < 0.0:
 				return "无效的行为倍率：%s" % behavior
 		return ""
 	return "结果须为 {}、weights 对象或 behavior/target 对象"
 
 
+func interface_version() -> int:
+	return _version
+
+
 ## Evaluates bounded ordered rules using only detached public input values.
 func decide(view: Dictionary) -> Dictionary:
-	if view.get("version") != ScriptedAIContract.VERSION:
+	if view.get("version") != _version:
 		return {"error": "脚本接口版本不匹配"}
 	var instructions := 0
 	for rule in _rules:
@@ -137,6 +142,9 @@ static func _matches(view: Dictionary, condition: Array) -> bool:
 	var left: Variant
 	if field.begins_with("has."):
 		left = view["candidates"].has(field.substr(4))
+	elif field.begins_with("has_target."):
+		var parts := field.split(".", false, 2)
+		left = ScriptedAIContract.has_target(view["candidates"], parts[1], parts[2])
 	elif "." in field:
 		var parts := field.split(".", true, 1)
 		left = view[parts[0]][parts[1]]

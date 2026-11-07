@@ -18,6 +18,7 @@ var _plans: Dictionary[String, PlayerAIPlan] = {}
 var _pressure: Dictionary[String, bool] = {}
 var _save_sequences: Dictionary[String, int] = {}
 var _aerial_pending: Dictionary[String, int] = {}
+var _header_sequences: Dictionary[String, int] = {}
 var _coordinator := TeamRoleCoordinator.new()
 var _last_tactics: Dictionary[String, int] = {}
 var _cached_batch: MatchActionBatch
@@ -25,6 +26,8 @@ var _stamina: AIStaminaSource
 var _modifier: AIWeightModifier
 var _fixed_delta_seconds: float
 var _scripted_player_id := ""
+var _scripted_team_id := ""
+var _strategy_errors: Dictionary[String, String] = {}
 var _decision_strategy: PlayerAIDecisionStrategy
 var strategy_error := ""
 
@@ -33,7 +36,7 @@ func _init(teams: TeamDataRepository, field: FieldDefinition, rules: MatchConfig
 		tuning: AIBehaviorConfig, modifier: AIWeightModifier = null,
 		stamina: AIStaminaSource = null, fixed_delta_seconds: float = 1.0 / 60.0,
 		regions: PlayerActivityRegionRepository = null, scripted_player_id: String = "",
-		decision_strategy: PlayerAIDecisionStrategy = null) -> void:
+		decision_strategy: PlayerAIDecisionStrategy = null, scripted_team_id: String = "") -> void:
 	assert(is_finite(fixed_delta_seconds) and fixed_delta_seconds > 0.0)
 	_fixed_delta_seconds = fixed_delta_seconds
 	_tuning = tuning
@@ -65,11 +68,34 @@ func _init(teams: TeamDataRepository, field: FieldDefinition, rules: MatchConfig
 			_goals[entry.player_id] = Vector2(field.length_m * 0.5 * team.attacking_direction, 0.0)
 
 	if decision_strategy != null:
-		if _roles.get(scripted_player_id, "") != "forward":
-			_errors.append("自定义策略只能绑定一名前锋")
-		else:
-			_scripted_player_id = scripted_player_id
-			_decision_strategy = decision_strategy
+		_configure_strategy(teams, scripted_player_id, scripted_team_id, decision_strategy)
+
+
+## Locks one v1 forward or one v2 team for the lifetime of the action source.
+func _configure_strategy(teams: TeamDataRepository, player_id: String, team_id: String,
+		strategy: PlayerAIDecisionStrategy) -> void:
+	if strategy.interface_version() == 2:
+		if team_id.is_empty() or teams.get_team(team_id) == null or not player_id.is_empty():
+			_errors.append("接口 v2 须绑定一支球队")
+			return
+		_scripted_team_id = team_id
+	elif not team_id.is_empty() or _roles.get(player_id, "") != "forward":
+		_errors.append("接口 v1 须绑定一名前锋")
+		return
+	_scripted_player_id = player_id
+	_decision_strategy = strategy
+
+
+## Preserves per-player fallback diagnostics without changing the selected team's binding.
+func get_strategy_errors() -> Dictionary[String, String]:
+	return _strategy_errors.duplicate()
+
+
+## Finds the shared strategy for one actor without exposing it to opponents.
+func _strategy_for(player: PlayerStateSnapshot) -> PlayerAIDecisionStrategy:
+	if player.player_id == _scripted_player_id or player.team_id == _scripted_team_id:
+		return _decision_strategy
+	return null
 
 ## Decisions depend only on the complete input step; repeated calls replay copies without extra draws.
 func propose_actions(snapshot: MatchStateSnapshot) -> Array[MatchAction]:
@@ -109,6 +135,7 @@ func invalidate_control(_snapshot: MatchStateSnapshot) -> void:
 	_pressure.clear()
 	_save_sequences.clear()
 	_aerial_pending.clear()
+	_header_sequences.clear()
 	_last_tactics.clear()
 	_coordinator.clear()
 	_cached_batch = null
@@ -145,7 +172,9 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		return []
 	var phase := TeamTacticalContext.phase_for(snapshot, player.team_id)
 	var hold_seconds := _tuning.number("keeper_hold_seconds") if player.is_goalkeeper else _tuning.number("hold_seconds")
-	var precision := _precision_action(snapshot, player)
+	var strategy := _strategy_for(player)
+	var scripted_keeper := player.is_goalkeeper and strategy != null and strategy.interface_version() == 2
+	var precision := _precision_action(snapshot, player, primary, strategy)
 	if precision != null:
 		_plans.erase(id)
 		return _emit_action(precision, player)
@@ -159,7 +188,7 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 			or (has_contest and not plan.had_contest_opportunity)
 		changed = changed or (plan.behavior != AIActionCandidate.Behavior.RETURN
 			and _builder.requires_region_return(snapshot, player, primary, _positions[id], _goals[id]))
-		if player.is_goalkeeper:
+		if player.is_goalkeeper and not scripted_keeper:
 			var pickup := _builder.keeper_pickup_target(snapshot, player, _goals[id])
 			var was_collecting := plan.behavior == AIActionCandidate.Behavior.CHASE
 			changed = changed or was_collecting != pickup.is_finite()
@@ -175,12 +204,14 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	if changed:
 		_update_pressure(snapshot, player)
 		var choices := _builder.build(snapshot, id, _roles[id], _anchors[id], _goals[id],
-			primary, _pressure.get(id, false), _stamina.ratio(snapshot, id), _positions[id])
-		var strategy := _decision_strategy if id == _scripted_player_id else null
-		var selected := _brains[id].choose(snapshot, id, choices, _rules, strategy, _goals[id],
-			_pressure.get(id, false))
-		if strategy != null and not _brains[id].strategy_error.is_empty():
-			strategy_error = _brains[id].strategy_error
+			primary, _pressure.get(id, false), _stamina.ratio(snapshot, id), _positions[id], scripted_keeper)
+		var extra: Array[AIActionCandidate] = []
+		if scripted_keeper:
+			extra = _builder.scripted_keeper_options(snapshot, player, _goals[id])
+		elif strategy != null and strategy.interface_version() == 2:
+			extra = _builder.scripted_options(snapshot, player, _goals[id], choices, _roles[id],
+				_anchors[id], _positions[id], primary, _header_sequences.get(id, -1) != snapshot.ball.flight_sequence)
+		var selected := _choose(snapshot, player, primary, choices, strategy, extra)
 		if selected == null:
 			_plans.erase(id)
 			return []
@@ -194,7 +225,10 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	plan.had_contest_opportunity = has_contest
 	if not player.is_goalkeeper and plan.behavior in [
 		AIActionCandidate.Behavior.PRESS, AIActionCandidate.Behavior.SUPPORT, AIActionCandidate.Behavior.RETURN,
-		AIActionCandidate.Behavior.CHASE]:
+		AIActionCandidate.Behavior.CHASE, AIActionCandidate.Behavior.DROP_SUPPORT,
+		AIActionCandidate.Behavior.CENTRAL_SUPPORT, AIActionCandidate.Behavior.BACK_SUPPORT,
+		AIActionCandidate.Behavior.COVER_LANE, AIActionCandidate.Behavior.MARK,
+		AIActionCandidate.Behavior.PROTECT_GOAL]:
 		plan.target_m = _builder.movement_target(snapshot, player, plan.behavior,
 			_roles[id], _anchors[id], _goals[id], _positions[id])
 	if plan.action.action_type == MatchAction.Type.MOVE:
@@ -230,6 +264,8 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	plan.was_sent = true
 	if plan.action.action_type == MatchAction.Type.JUMP:
 		_aerial_pending[id] = snapshot.ball.flight_sequence
+	elif plan.action.action_type in [MatchAction.Type.HEADER_SHOT, MatchAction.Type.HEADER_CLEAR]:
+		_header_sequences[id] = snapshot.ball.flight_sequence
 	return _emit_action(plan.action, player)
 
 ## Recognizes new legal contest windows without sampling or directly starting a runtime action.
@@ -249,8 +285,39 @@ func _can_challenge_carrier(snapshot: MatchStateSnapshot, player: PlayerStateSna
 	return ActionEligibility.allows(snapshot, MatchAction.new(player.player_id,
 		MatchAction.Type.ATTACK, direction, carrier.player_id), _rules)
 
+## Supplies the actor's current duties and keeps all random draws in that actor's brain.
+func _choose(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot, primary: String,
+		choices: Array[AIActionCandidate], strategy: PlayerAIDecisionStrategy,
+		extra: Array[AIActionCandidate] = []) -> MatchAction:
+	var id := player.player_id
+	if strategy == null:
+		return _brains[id].choose(snapshot, id, choices, _rules)
+	var duty := "positioning"
+	if player.is_goalkeeper:
+		duty = "goalkeeper"
+	elif snapshot.ball.owner_player_id == id:
+		duty = "carrier"
+	elif snapshot.ball.target_player_id == id:
+		duty = "receiver"
+	elif id == primary:
+		var phase := TeamTacticalContext.phase_for(snapshot, player.team_id)
+		if phase == TeamTacticalContext.Phase.DEFEND:
+			duty = "press"
+		elif phase == TeamTacticalContext.Phase.LOOSE:
+			duty = "chase"
+	var context := {"role": _roles[id], "position": _positions[id], "duty": duty}
+	var selected := _brains[id].choose(snapshot, id, choices, _rules, strategy, _goals[id],
+		_pressure.get(id, false), context, extra)
+	var error: String = _brains[id].strategy_error
+	if not error.is_empty():
+		_strategy_errors[id] = error
+		strategy_error = "%s · %s" % [id, error]
+	return selected
+
+
 ## Keeps aerial receptions and legal shot saves responsive at every simulation step.
-func _precision_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot) -> MatchAction:
+func _precision_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
+		primary: String = "", strategy: PlayerAIDecisionStrategy = null) -> MatchAction:
 	var id := player.player_id
 	var ball := snapshot.ball
 	if player.is_goalkeeper:
@@ -258,7 +325,7 @@ func _precision_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot
 			return null
 		var save := _builder.save_candidate(snapshot, player, _goals[id])
 		if save != null and not save.targets.is_empty():
-			var action := _brains[id].choose(snapshot, id, [save], _rules)
+			var action := _choose(snapshot, player, primary, [save], strategy)
 			if action != null and action.action_type == MatchAction.Type.SAVE:
 				_save_sequences[id] = ball.flight_sequence
 				return action
@@ -272,6 +339,10 @@ func _precision_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot
 	if aerial != null and ActionEligibility.allows(snapshot, aerial, _rules):
 		if aerial.action_type == MatchAction.Type.JUMP:
 			_aerial_pending[id] = ball.flight_sequence
+		if strategy != null and strategy.interface_version() == 2:
+			var behavior := AIActionCandidate.Behavior.JUMP if aerial.action_type == MatchAction.Type.JUMP else AIActionCandidate.Behavior.SHOOT
+			return _choose(snapshot, player, primary,
+				[AIActionCandidate.new(behavior, 1.0, [AITargetOption.new(aerial)])], strategy)
 		return aerial
 	return null
 

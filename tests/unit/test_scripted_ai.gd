@@ -17,11 +17,29 @@ class Probe extends PlayerAIDecisionStrategy:
 		return result
 
 
+class TeamProbe extends PlayerAIDecisionStrategy:
+	var seen: Dictionary[String, Dictionary] = {}
+	var fail_id := ""
+
+	func interface_version() -> int:
+		return 2
+
+	## Observes each independently copied view and fails one player on purpose.
+	func decide(view: Dictionary) -> Dictionary:
+		var id: String = view["self"]["id"]
+		seen[id] = view
+		if id == fail_id:
+			return {"behavior": "chase", "target": ""}
+		return {}
+
+
 ## Exercises real candidates and source scheduling without a renderer.
 func _init() -> void:
 	_test_binding_and_schedule()
 	_test_public_contract_and_fallback()
 	_test_compiler_and_budget()
+	_test_team_binding()
+	_test_scripted_header()
 	for failure in _failures:
 		push_error(failure)
 	print("Scripted AI failures: ", _failures.size())
@@ -94,7 +112,7 @@ func _test_public_contract_and_fallback() -> void:
 
 ## Validates parse, version, static names, memory caps and the separate runtime budget.
 func _test_compiler_and_budget() -> void:
-	for source: String in ["{", '{"version":2,"rules":[],"default":{}}',
+	for source: String in ["{", '{"version":3,"rules":[],"default":{}}',
 			'{"version":1,"rules":[{"when":[["os.time",">",0]],"then":{}}],"default":{}}',
 			'{"version":1,"rules":[],"default":{"weights":{"shoot":-1}}}', " ".repeat(8193),
 			"[".repeat(9) + "]".repeat(9)]:
@@ -111,6 +129,71 @@ func _test_compiler_and_budget() -> void:
 	if compiled.has("script"):
 		_check(compiled["script"].decide({"version": 1, "self": {"owns_ball": true}}).has("error"),
 			"Runtime comparison budget aborts execution")
+
+
+## Confirms all six players get their own context while a keeper's illegal pursuit falls back safely.
+func _test_team_binding() -> void:
+	var f := Fixture.new()
+	var simulation := f.formal.create(3.0)
+	var ball := simulation._ball_runtime_system
+	ball.reset_ball(Vector2(-18, 0))
+	simulation.start_match()
+	var snapshot := simulation.create_snapshot()
+	var probe := TeamProbe.new()
+	probe.fail_id = "steady_keeper"
+	var regions := f.formal.data.load_activity_regions()
+	var source := MatchPlayerAISource.new(f.formal.teams, f.formal.field, f.rules, f.tuning,
+		null, null, 1.0 / 60.0, regions, "", probe, "home")
+	source.propose_actions(snapshot)
+	var roles := {}
+	for id in probe.seen:
+		var view: Dictionary = probe.seen[id]
+		roles[view["self"]["role"]] = true
+		_check(snapshot.get_player(id).team_id == "home", "Only the selected team runs the shared program")
+		_check(view["version"] == 2 and view["ball"]["relation"] == "none"
+			and view["ball"]["source"] == "none" and view["phase"] == "loose",
+			"Team context reports current role, phase, ownership and source")
+	_check(probe.seen.size() == 6 and roles.size() == 4, "All six teammates independently invoke one strategy across four roles")
+	var errors := source.get_strategy_errors()
+	_check(errors.size() == 1 and errors.has("steady_keeper"), "Illegal keeper choice only marks the keeper's decision")
+	var keeper_view: Dictionary = probe.seen.get("steady_keeper", {})
+	_check(not keeper_view.is_empty() and not keeper_view["candidates"].has("chase")
+		and keeper_view["self"]["duty"] == "goalkeeper", "Keeper context only exposes goal-mouth movement")
+	var keeper_plan: PlayerAIPlan = source._plans.get("steady_keeper")
+	_check(keeper_plan != null and keeper_plan.behavior != AIActionCandidate.Behavior.CHASE
+		and absf(keeper_plan.target_m.x + 24.2) <= 0.25,
+		"Fallback never sends the scripted keeper after a loose ball")
+	var version_error := PlayerAIScript.compile('{"version":1,"rules":[{"when":[["self.role","==","mid"]],"then":{}}],"default":{}}')
+	_check(version_error.has("error"), "v2 fields cannot leak into the v1 contract")
+	var target_rule := PlayerAIScript.compile('{"version":2,"rules":[{"when":[["has_target.pass.mate","==",true]],"then":{"behavior":"pass","target":"mate"}}],"default":{}}')
+	_check(target_rule.has("script") and target_rule["script"].decide(
+		{"version": 2, "candidates": {"pass": {"targets": [{"id": "mate"}]}}}).get("target") == "mate",
+		"Exact target availability is evaluated from the current candidate list")
+
+
+## The v2 header choice schedules an existing high-pass contact rather than changing the ball directly.
+func _test_scripted_header() -> void:
+	var f := Fixture.new()
+	var simulation := f.formal.create(3.0)
+	for player in simulation._player_runtime_system.get_players():
+		player.state_machine.reset_to_spawn(Vector2(-20, 12))
+	var midfielder := simulation._player_runtime_system.get_player("formal_player_02")
+	midfielder.state_machine.reset_to_spawn(Vector2(4, 0))
+	var ball := simulation._ball_runtime_system
+	ball.reset_ball(Vector2.ZERO)
+	ball.state._launch_pass(midfielder.player_id, Vector2.RIGHT * 14.0, 10.0, 1.8)
+	ball.state._advance_flight(Vector2(3.5, 0), 3.5)
+	var compiled := PlayerAIScript.compile('{"version":2,"rules":[{"when":[["self.id","==","formal_player_02"],["has.header_clear","==",true]],"then":{"behavior":"header_clear","target":""}}],"default":{}}')
+	var source := MatchPlayerAISource.new(f.formal.teams, f.formal.field, f.rules, f.tuning,
+		null, null, 1.0 / 60.0, null, "", compiled["script"], "home")
+	var loop := GameLoop.new(simulation, 1.0 / 60.0, 0.25, 8, null, [], [source])
+	simulation.start_match()
+	var frame := loop.advance_frame(1.0 / 60.0, [])
+	var headed := false
+	for event in frame.events:
+		headed = headed or (event.event_type == MatchEvent.Type.BALL_HEADED and event.subject_id == midfielder.player_id)
+	_check(headed and frame.snapshot.ball.flight_kind == BallMatchState.FlightKind.CLEARANCE,
+		"A legal script header executes through the real fixed-step contact window")
 
 
 ## Reports independent contract failures together.

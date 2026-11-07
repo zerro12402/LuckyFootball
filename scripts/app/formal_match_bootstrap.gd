@@ -27,6 +27,7 @@ var _pause_button: Button
 var _sources: Array[MatchActionSource] = []
 var last_errors: PackedStringArray = []
 var scripted_player_id := ""
+var scripted_team_id := ""
 var player_strategy: PlayerAIDecisionStrategy
 var _production_ai: MatchPlayerAISource
 
@@ -59,7 +60,7 @@ func _ready() -> void:
 			_fail(_data.last_errors)
 			return
 		var source := MatchPlayerAISource.new(_teams, _data.get_field_by_id("demo_field"), _config,
-			tuning, null, null, GameLoop.DEFAULT_FIXED_DELTA_SECONDS, regions, scripted_player_id, player_strategy)
+			tuning, null, null, GameLoop.DEFAULT_FIXED_DELTA_SECONDS, regions, scripted_player_id, player_strategy, scripted_team_id)
 		if not source.errors.is_empty():
 			_fail(source.errors)
 			return

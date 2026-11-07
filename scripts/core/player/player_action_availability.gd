@@ -21,6 +21,8 @@ static func allows(kind: int, action: int, jump: int, possession: int,
 			return grounded and possession == PlayerMatchState.PossessionState.NO_BALL and tackle_cooldown <= 0.0
 		MatchAction.Type.ATTACK:
 			return grounded and attack_cooldown <= 0.0
+		MatchAction.Type.HEADER_SHOT, MatchAction.Type.HEADER_CLEAR:
+			return possession == PlayerMatchState.PossessionState.NO_BALL
 		MatchAction.Type.SAVE:
 			return grounded and possession == PlayerMatchState.PossessionState.NO_BALL
 	return false

@@ -23,7 +23,7 @@ layout_mode = 2
 
 [node name="Title" type="Label" parent="Editor/Rows"]
 layout_mode = 2
-text = "球员 AI 实验室 · 接口 v1"
+text = "球员 AI 实验室 · v1 / v2"
 
 [node name="Setup" type="HBoxContainer" parent="Editor/Rows"]
 layout_mode = 2
@@ -76,7 +76,12 @@ text = "同种子默认复跑"
 [node name="ManualButton" type="Button" parent="Editor/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "复制手册"
+text = "复制 v1 手册"
+
+[node name="TeamManualButton" type="Button" parent="Editor/Rows/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "复制 v2 手册"
 
 [node name="CloseButton" type="Button" parent="Editor/Rows/Commands"]
 unique_name_in_owner = true

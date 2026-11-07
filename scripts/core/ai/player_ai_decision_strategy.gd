@@ -3,5 +3,9 @@ class_name PlayerAIDecisionStrategy
 extends RefCounted
 
 
+func interface_version() -> int:
+	return 1
+
+
 func decide(_view: Dictionary) -> Dictionary:
 	return {}
