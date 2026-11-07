@@ -45,7 +45,7 @@ var _test_panels_visible := false
 
 ## Wires all mode buttons to independent scene instances.
 func _ready() -> void:
-	%ScriptLabButton.pressed.connect(_script_lab.open)
+	%ScriptLabButton.pressed.connect(_script_lab.toggle_editor)
 	_script_lab.trial_requested.connect(_start_script_trial)
 	_formal_match_button.pressed.connect(_show_formal_match)
 	_touch_dribble_button.pressed.connect(_show_touch_dribble)
@@ -104,9 +104,12 @@ func show_mode(mode: Mode, trial_seed: int = -1, scripted_id: String = "",
 	%FormalFlowTestButton.set_pressed_no_signal(mode == Mode.FORMAL_FLOW_TEST)
 
 
-## Runs scripted and baseline trials through the same formal entry and lifecycle.
-func _start_script_trial(player_id: String, strategy: PlayerAIDecisionStrategy, seed_value: int) -> void:
-	show_mode(Mode.FORMAL_MATCH, seed_value, player_id, strategy)
+## Restarts a scripted trial with the current formal seed so repeated attempts can be compared.
+func _start_script_trial(binding_id: String, strategy: PlayerAIDecisionStrategy) -> void:
+	var previous := _active_mode_scene as FormalMatchBootstrap
+	var snapshot := previous.get_snapshot() if previous != null else null
+	var seed_value := snapshot.random_seed if snapshot != null else randi()
+	show_mode(Mode.FORMAL_MATCH, seed_value, binding_id, strategy)
 	var formal := _active_mode_scene as FormalMatchBootstrap
 	formal.presentation_frame_ready.connect(
 		func(_snapshot: MatchStateSnapshot, _events: Array[MatchEvent], _alpha: float) -> void:
@@ -114,9 +117,14 @@ func _start_script_trial(player_id: String, strategy: PlayerAIDecisionStrategy, 
 	formal.start_match()
 
 
-## Handles F1 even when a test field or the script editor has keyboard focus.
+## Handles Escape and F1 even when a test field or the script editor has keyboard focus.
 func _input(event: InputEvent) -> void:
-	if not event is InputEventKey or not event.pressed or event.echo or event.keycode != KEY_F1:
+	if not event is InputEventKey or not event.pressed or event.echo:
+		return
+	if event.keycode == KEY_ESCAPE and _script_lab.close_editor_from_keyboard():
+		get_viewport().set_input_as_handled()
+		return
+	if event.keycode != KEY_F1:
 		return
 	_test_panels_visible = not _test_panels_visible
 	_apply_test_panel_visibility()

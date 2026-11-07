@@ -21,25 +21,6 @@ offset_bottom = 197.0
 [node name="Rows" type="VBoxContainer" parent="Editor"]
 layout_mode = 2
 
-[node name="Title" type="Label" parent="Editor/Rows"]
-layout_mode = 2
-text = "球员 AI 实验室 · v1 / v2"
-
-[node name="Setup" type="HBoxContainer" parent="Editor/Rows"]
-layout_mode = 2
-
-[node name="ForwardChoice" type="OptionButton" parent="Editor/Rows/Setup"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="SeedInput" type="LineEdit" parent="Editor/Rows/Setup"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(132, 0)
-layout_mode = 2
-text = "1"
-placeholder_text = "比赛种子"
-
 [node name="ScriptSource" type="TextEdit" parent="Editor/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 230)
@@ -51,7 +32,7 @@ placeholder_text = "粘贴或编辑 JSON 策略"
 unique_name_in_owner = true
 layout_mode = 2
 autowrap_mode = 3
-text = "选择一名前锋，编辑或粘贴脚本。"
+text = ""
 
 [node name="Commands" type="HBoxContainer" parent="Editor/Rows"]
 layout_mode = 2
@@ -64,37 +45,17 @@ text = "校验脚本"
 [node name="RunButton" type="Button" parent="Editor/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
-disabled = true
 text = "绑定并试跑"
 
-[node name="BaselineButton" type="Button" parent="Editor/Rows/Commands"]
-unique_name_in_owner = true
-layout_mode = 2
-disabled = true
-text = "同种子默认复跑"
-
-[node name="CloseButton" type="Button" parent="Editor/Rows/Commands"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "关闭"
-
-[node name="ManualActions" type="HBoxContainer" parent="Editor/Rows"]
-layout_mode = 2
-
-[node name="ManualButton" type="Button" parent="Editor/Rows/ManualActions"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "复制 v1 手册"
-
-[node name="TeamManualButton" type="Button" parent="Editor/Rows/ManualActions"]
+[node name="TeamManualButton" type="Button" parent="Editor/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "复制 v2 手册"
 
-[node name="SaveTeamManualButton" type="Button" parent="Editor/Rows/ManualActions"]
+[node name="SaveTeamManualButton" type="Button" parent="Editor/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "保存 v2 手册…"
+text = "保存 v2 手册"
 
 [node name="TeamManualSaveDialog" type="FileDialog" parent="."]
 unique_name_in_owner = true
