@@ -20,6 +20,8 @@ const STARTER := """{
 @onready var _run: Button = %RunButton
 @onready var _summary: Label = %OverlaySummary
 @onready var _tactic: LineEdit = %TacticPrompt
+@onready var _history_option: OptionButton = %HistoryOption
+@onready var _load_history: Button = %LoadHistoryButton
 @onready var _generate: Button = %GenerateButton
 @onready var _cancel: Button = %CancelButton
 @onready var _api_key_input: LineEdit = %ApiKeyInput
@@ -27,8 +29,10 @@ const STARTER := """{
 var _accepted_source := ""
 var _program: PlayerAIScript
 var _settings := PlayerAISettings.new()
+var _history := PlayerAIHistory.new()
 var _transport: DeepSeekTransport
 var _generation: PlayerAIScriptGenerator
+var _active_description := ""
 var _busy := false
 
 
@@ -44,9 +48,11 @@ func _ready() -> void:
 	_cancel.pressed.connect(_cancel_generation)
 	%SaveKeyButton.pressed.connect(_save_api_key)
 	%ClearKeyButton.pressed.connect(_clear_api_key)
+	_load_history.pressed.connect(_load_selected_history)
 	_transport = DeepSeekTransport.new()
 	add_child(_transport)
 	_refresh_key_hint()
+	_refresh_history()
 
 
 ## Toggles only the editor; the match continues underneath it.
@@ -56,6 +62,7 @@ func toggle_editor() -> void:
 	else:
 		show()
 		_editor.show()
+		_refresh_history()
 
 
 func is_editor_open() -> bool:
@@ -169,6 +176,7 @@ func _generate_from_text() -> void:
 	var description := _tactic_description()
 	if description.is_empty():
 		return
+	_active_description = description
 	var key := _settings.api_key()
 	if key.is_empty():
 		_diagnostic.text = "请先填写并保存 DeepSeek Key"
@@ -212,6 +220,8 @@ func _finish_generation(result: Dictionary) -> void:
 	if not submit(source):
 		return
 	_summary.text = PlayerAIScriptGenerator.summarize(source)
+	_history.record(_active_description, source)
+	_refresh_history()
 	_diagnostic.text = "生成成功 · 尝试 %d 次" % int(result.get("attempts", 1))
 
 
@@ -267,3 +277,37 @@ func _tactic_description() -> String:
 	if description.is_empty():
 		_diagnostic.text = "请先描述战术"
 	return description
+
+
+## Rebuilds the option list from the local history, newest first.
+func _refresh_history() -> void:
+	_history_option.clear()
+	var entries := _history.entries()
+	if entries.is_empty():
+		_history_option.add_item("暂无历史")
+		_history_option.set_item_disabled(0, true)
+		return
+	for entry in entries:
+		var prompt: String = entry["prompt"]
+		var shortened := prompt.substr(0, 24)
+		if prompt.length() > 24:
+			shortened += "…"
+		_history_option.add_item("%s｜%s" % [entry["created_at"], shortened])
+		_history_option.set_item_metadata(_history_option.item_count - 1, entry)
+
+
+## Restores a selected prompt and its compiled script without another request.
+func _load_selected_history() -> void:
+	if _history_option.item_count == 0 or _history_option.selected < 0:
+		_diagnostic.text = "没有可载入的历史"
+		return
+	var entry: Variant = _history_option.get_item_metadata(_history_option.selected)
+	if not entry is Dictionary:
+		_diagnostic.text = "该历史记录不可用"
+		return
+	_tactic.text = str(entry["prompt"])
+	_source.text = str(entry["json"])
+	if not submit(_source.text):
+		return
+	_summary.text = PlayerAIScriptGenerator.summarize(_source.text)
+	_diagnostic.text = "已载入历史 · 可直接绑定试跑"

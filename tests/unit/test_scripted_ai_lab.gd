@@ -90,6 +90,7 @@ func _run() -> void:
 	_test_team_trial(menu, lab, seed_value)
 	_test_overlay_trial(menu, lab, seed_value)
 	_test_generation_guards(lab)
+	_test_history(lab)
 	menu.free()
 	for failure in _failures:
 		push_error(failure)
@@ -175,6 +176,28 @@ func _test_generation_guards(lab: PlayerAIScriptLab) -> void:
 	_check(not lab._busy and lab._diagnostic.text.contains("取消"),
 		"Cancelling clears the busy state without binding")
 	lab._settings.clear_key()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+## Records a successful generation, then restores it from the option list without a request.
+func _test_history(lab: PlayerAIScriptLab) -> void:
+	var path := "user://test_lab_history_%s.json" % OS.get_process_id()
+	lab._history = PlayerAIHistory.new(path)
+	lab._refresh_history()
+	lab._active_description = "后卫防守不要铲球"
+	var json := '{"version":3,"mode":"overlay","scope":{"role":"back"},"modifiers":[' \
+		+ '{"when":[["phase","==","defend"]],"weights":{"tackle":0}}]}'
+	lab._finish_generation({"ok": true, "json": json, "attempts": 1})
+	_check(lab._history.entries().size() == 1 and lab._history_option.item_count == 1,
+		"A successful generation appears in the local history")
+	lab._tactic.text = ""
+	lab._source.text = ""
+	lab._history_option.select(0)
+	lab._load_selected_history()
+	_check(lab._tactic.text == "后卫防守不要铲球" and lab._program != null
+		and lab._program.interface_version() == 3,
+		"Selecting history restores the prompt and the compiled script")
+	lab._history.clear()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 

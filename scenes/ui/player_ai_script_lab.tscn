@@ -61,6 +61,19 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "清除 Key"
 
+[node name="HistoryRow" type="HBoxContainer" parent="Editor/Scroll/Rows"]
+layout_mode = 2
+
+[node name="HistoryOption" type="OptionButton" parent="Editor/Scroll/Rows/HistoryRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LoadHistoryButton" type="Button" parent="Editor/Scroll/Rows/HistoryRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "载入历史"
+
 [node name="ScriptSource" type="TextEdit" parent="Editor/Scroll/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 180)
