@@ -74,6 +74,12 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "载入历史"
 
+[node name="MergeCheckbox" type="CheckBox" parent="Editor/Scroll/Rows/HistoryRow"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "叠加到当前脚本"
+
 [node name="ScriptSource" type="TextEdit" parent="Editor/Scroll/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 180)

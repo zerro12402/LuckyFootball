@@ -311,6 +311,12 @@ func scripted_options(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 				and not ordinary.any(func(candidate: AIActionCandidate) -> bool: return candidate.behavior == AIActionCandidate.Behavior.SHOOT):
 			options.append(_one(player.player_id, AIActionCandidate.Behavior.SHOOT, 1.0, MatchAction.Type.SHOOT))
 		return options
+	var carrier := snapshot.get_player(ball.owner_player_id)
+	if carrier != null and carrier.team_id != player.team_id \
+			and TeamTacticalContext.phase_for(snapshot, player.team_id) == TeamTacticalContext.Phase.DEFEND \
+			and not ordinary.any(func(candidate: AIActionCandidate) -> bool: return candidate.behavior == AIActionCandidate.Behavior.PRESS):
+		options.append(_move(player, movement_target(snapshot, player, AIActionCandidate.Behavior.PRESS,
+			role, anchor, goal, position_id), AIActionCandidate.Behavior.PRESS, 1.0))
 	if requires_region_return(snapshot, player, primary, position_id, goal) \
 			or TeamTacticalContext.is_defending_keeper_possession(snapshot, player.team_id):
 		return options

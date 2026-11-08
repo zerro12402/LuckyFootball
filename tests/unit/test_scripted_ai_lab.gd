@@ -91,6 +91,7 @@ func _run() -> void:
 	_test_overlay_trial(menu, lab, seed_value)
 	_test_generation_guards(lab)
 	_test_history(lab)
+	_test_merge(lab)
 	menu.free()
 	for failure in _failures:
 		push_error(failure)
@@ -197,6 +198,25 @@ func _test_history(lab: PlayerAIScriptLab) -> void:
 	_check(lab._tactic.text == "后卫防守不要铲球" and lab._program != null
 		and lab._program.interface_version() == 3,
 		"Selecting history restores the prompt and the compiled script")
+	lab._history.clear()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+## Stacks a new generation onto the editor's overlay without losing the old rule.
+func _test_merge(lab: PlayerAIScriptLab) -> void:
+	var path := "user://test_lab_merge_%s.json" % OS.get_process_id()
+	lab._history = PlayerAIHistory.new(path)
+	lab._merge_base = '{"version":3,"mode":"overlay","scope":{"role":"back"},"modifiers":[' \
+		+ '{"when":[["phase","==","defend"]],"weights":{"tackle":0}}]}'
+	lab._active_description = "前锋多射门"
+	var addition := '{"version":3,"mode":"overlay","scope":{"role":"forward"},"modifiers":[' \
+		+ '{"when":[["has.shoot","==",true]],"weights":{"shoot":3}}]}'
+	lab._finish_generation({"ok": true, "json": addition, "attempts": 1})
+	var document: Dictionary = JSON.parse_string(lab._source.text)
+	_check(lab._program != null and lab._program.interface_version() == 3
+		and document["modifiers"].size() == 2,
+		"A merged generation keeps the old rule and adds the new one")
+	lab._merge_base = ""
 	lab._history.clear()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 

@@ -175,6 +175,61 @@ func interface_version() -> int:
 	return _version
 
 
+## Merges two v3 overlays deterministically, lifting scopes into per-rule conditions.
+static func merge_overlay(base_source: String, addition_source: String) -> Dictionary:
+	var base := _overlay_document(base_source)
+	if base.has("error"):
+		return base
+	var addition := _overlay_document(addition_source)
+	if addition.has("error"):
+		return addition
+	var modifiers: Array = []
+	for document in [base, addition]:
+		var lifted := _lift_scope(document)
+		if lifted.has("error"):
+			return lifted
+		modifiers.append_array(lifted["modifiers"])
+	var json := JSON.stringify({"version": OVERLAY_VERSION, "mode": "overlay", "scope": {},
+		"modifiers": modifiers})
+	var compiled := compile(json)
+	if compiled.has("error"):
+		return {"error": compiled["error"]}
+	return {"json": json, "script": compiled["script"]}
+
+
+## Parses the minimum structure needed before merging an overlay document.
+static func _overlay_document(source: String) -> Dictionary:
+	var json := JSON.new()
+	if json.parse(source) != OK or not json.data is Dictionary:
+		return {"error": "无法解析现有脚本"}
+	var document: Dictionary = json.data
+	if int(document.get("version", 0)) != OVERLAY_VERSION or document.get("mode") != "overlay" \
+			or not document.get("scope") is Dictionary or not document.get("modifiers") is Array:
+		return {"error": "现有脚本不是 v3 覆盖补丁"}
+	return {"document": document}
+
+
+## Prepends scope checks to each modifier so differing scopes can coexist.
+static func _lift_scope(result: Dictionary) -> Dictionary:
+	var document: Dictionary = result["document"]
+	var conditions: Array = []
+	for key in SCOPE_KEYS:
+		if document["scope"].has(key):
+			conditions.append(["self." + key, "==", document["scope"][key]])
+	var modifiers: Array = []
+	for modifier in document["modifiers"]:
+		if not modifier is Dictionary or not modifier.get("when") is Array:
+			return {"error": "现有脚本包含无效规则"}
+		var copy: Dictionary = modifier.duplicate(true)
+		var when: Array = conditions.duplicate(true)
+		when.append_array(copy["when"])
+		if when.size() > MAX_CONDITIONS:
+			return {"error": "叠加后单条规则超过 8 个条件"}
+		copy["when"] = when
+		modifiers.append(copy)
+	return {"modifiers": modifiers}
+
+
 ## Evaluates bounded rules or merges every matching overlay modifier using only public input values.
 func decide(view: Dictionary) -> Dictionary:
 	if view.get("version") != _version:

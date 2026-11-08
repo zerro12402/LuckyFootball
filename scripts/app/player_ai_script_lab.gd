@@ -22,6 +22,7 @@ const STARTER := """{
 @onready var _tactic: LineEdit = %TacticPrompt
 @onready var _history_option: OptionButton = %HistoryOption
 @onready var _load_history: Button = %LoadHistoryButton
+@onready var _merge_check: CheckBox = %MergeCheckbox
 @onready var _generate: Button = %GenerateButton
 @onready var _cancel: Button = %CancelButton
 @onready var _api_key_input: LineEdit = %ApiKeyInput
@@ -33,6 +34,7 @@ var _history := PlayerAIHistory.new()
 var _transport: DeepSeekTransport
 var _generation: PlayerAIScriptGenerator
 var _active_description := ""
+var _merge_base := ""
 var _busy := false
 
 
@@ -185,6 +187,11 @@ func _generate_from_text() -> void:
 	if manual.is_empty():
 		_diagnostic.text = "无法读取脚本手册"
 		return
+	_merge_base = ""
+	if _merge_check.button_pressed:
+		var base := PlayerAIScript.compile(_source.text)
+		if base.has("script") and base["script"].interface_version() == PlayerAIScript.OVERLAY_VERSION:
+			_merge_base = _source.text
 	_summary.text = ""
 	_set_busy(true)
 	_diagnostic.text = "生成中…"
@@ -216,6 +223,12 @@ func _finish_generation(result: Dictionary) -> void:
 			_diagnostic.text = "生成失败（%s）：%s" % [result.get("error_kind", "?"), result.get("error", "")]
 		return
 	var source: String = result["json"]
+	if not _merge_base.is_empty():
+		var merged := PlayerAIScript.merge_overlay(_merge_base, source)
+		if merged.has("error"):
+			_diagnostic.text = "叠加失败：%s" % merged["error"]
+			return
+		source = merged["json"]
 	_source.text = source
 	if not submit(source):
 		return

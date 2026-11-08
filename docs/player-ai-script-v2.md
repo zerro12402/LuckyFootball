@@ -44,12 +44,12 @@ v1 仍使用 [v1 手册](player-ai-script-v1.md) 的蓝队单前锋流程。v2 �
 {
   "version": 2,
   "rules": [
-    {"when":[["self.role","==","keeper"],["has.pass","==",true]],"then":{"behavior":"pass","target":"first"}},
-    {"when":[["self.role","==","keeper"],["has.keeper_save","==",true]],"then":{"behavior":"keeper_save","target":"first"}},
-    {"when":[["self.role","==","keeper"],["has.keeper_position","==",true]],"then":{"behavior":"keeper_position","target":""}},
-    {"when":[["self.role","==","forward"],["has.shoot","==",true],["self.goal_distance_m","<",7]],"then":{"weights":{"shoot":2}}},
-    {"when":[["self.role","==","mid"],["phase","==","attack"],["has.central_support","==",true]],"then":{"behavior":"central_support","target":""}},
-    {"when":[["self.role","==","back"],["phase","==","defend"],["has.protect_goal","==",true]],"then":{"behavior":"protect_goal","target":""}}
+	{"when":[["self.role","==","keeper"],["has.pass","==",true]],"then":{"behavior":"pass","target":"first"}},
+	{"when":[["self.role","==","keeper"],["has.keeper_save","==",true]],"then":{"behavior":"keeper_save","target":"first"}},
+	{"when":[["self.role","==","keeper"],["has.keeper_position","==",true]],"then":{"behavior":"keeper_position","target":""}},
+	{"when":[["self.role","==","forward"],["has.shoot","==",true],["self.goal_distance_m","<",7]],"then":{"weights":{"shoot":2}}},
+	{"when":[["self.role","==","mid"],["phase","==","attack"],["has.central_support","==",true]],"then":{"behavior":"central_support","target":""}},
+	{"when":[["self.role","==","back"],["phase","==","defend"],["has.protect_goal","==",true]],"then":{"behavior":"protect_goal","target":""}}
   ],
   "default": {}
 }

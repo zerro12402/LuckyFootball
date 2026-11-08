@@ -42,6 +42,8 @@ func _init() -> void:
 	_test_no_header_contract()
 	_test_overlay_contract()
 	_test_overlay_runtime()
+	_test_scripted_press_option()
+	_test_overlay_merge()
 	for failure in _failures:
 		push_error(failure)
 	print("Scripted AI failures: ", _failures.size())
@@ -279,6 +281,62 @@ func _test_overlay_runtime() -> void:
 		zero["script"], goal, true, {"role": "back"})
 	_check(fallback_action != null and not fallback.strategy_error.is_empty(),
 		"An all-zero overlay falls back to built-in AI with a diagnostic")
+
+
+## Gives scripted defenders an opt-in press candidate; built-in still uses only the primary.
+func _test_scripted_press_option() -> void:
+	var f := Fixture.new()
+	var carrier := f.player("away_carrier", Vector2.ZERO, "away")
+	carrier.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
+	var ball := BallMatchState.new(carrier.state.position_m)
+	ball._set_owner(carrier.player_id)
+	var back := f.player("home_back", Vector2(8.0, 2.0))
+	var snapshot := f.snapshot([carrier, back], ball)
+	var builder := RoleCandidateBuilder.new(f.tuning, f.rules, f.formal.field)
+	var goal := Vector2(25.0, 0.0)
+	var ordinary := builder.build(snapshot, back.player_id, "back", Vector2.ZERO, goal, "", false)
+	_check(not ordinary.any(func(candidate: AIActionCandidate) -> bool:
+		return candidate.behavior == AIActionCandidate.Behavior.PRESS),
+		"A non-primary defender gets no press in the built-in candidate set")
+	var player := snapshot.get_player(back.player_id)
+	var options := builder.scripted_options(snapshot, player, goal, ordinary, "back", Vector2.ZERO, "", "")
+	_check(options.any(func(candidate: AIActionCandidate) -> bool:
+		return candidate.behavior == AIActionCandidate.Behavior.PRESS),
+		"A scripted defender gains an opt-in press candidate")
+	var patch := PlayerAIScript.compile('{"version":3,"mode":"overlay","scope":{"role":"back"},' \
+		+ '"modifiers":[{"when":[["phase","==","defend"]],"weights":{"press":10}}]}')
+	var patched := PlayerAI.new(5, back.player_id)
+	var action := patched.choose(snapshot, back.player_id, ordinary, f.rules,
+		patch["script"], goal, false, {"role": "back"}, options)
+	_check(action != null and patched.selected_behavior == AIActionCandidate.Behavior.PRESS,
+		"The overlay can select the opt-in press candidate")
+
+
+## Stacks two overlays: scopes become conditions and identical behaviors multiply.
+func _test_overlay_merge() -> void:
+	var base := '{"version":3,"mode":"overlay","scope":{"role":"back"},"modifiers":[' \
+		+ '{"when":[["phase","==","defend"]],"weights":{"tackle":0}}]}'
+	var addition := '{"version":3,"mode":"overlay","scope":{"role":"forward"},"modifiers":[' \
+		+ '{"when":[["has.shoot","==",true]],"weights":{"shoot":3}}]}'
+	var merged := PlayerAIScript.merge_overlay(base, addition)
+	_check(merged.has("script") and merged["script"].interface_version() == 3,
+		"Two overlays merge into one valid v3 document")
+	var document: Dictionary = JSON.parse_string(merged["json"])
+	var modifiers: Array = document["modifiers"]
+	_check(document["scope"].is_empty() and modifiers.size() == 2,
+		"Different scopes are lifted into conditions and both rules remain")
+	_check(modifiers[0]["when"].has(["self.role", "==", "back"])
+		and modifiers[1]["when"].has(["self.role", "==", "forward"]),
+		"Each rule keeps its original scope as a condition")
+	var doubled := PlayerAIScript.merge_overlay(
+		'{"version":3,"mode":"overlay","scope":{},"modifiers":[{"when":[["phase","==","defend"]],"weights":{"attack":2}}]}',
+		'{"version":3,"mode":"overlay","scope":{},"modifiers":[{"when":[["phase","==","defend"]],"weights":{"attack":3}}]}')
+	_check(doubled.has("script") and doubled["script"].decide({
+		"version": 3, "self": {"role": "back"}, "phase": "defend",
+		"candidates": {"attack": {"targets": []}}}).get("weights", {}).get("attack") == 6.0,
+		"Stacking the same behavior multiplies its multiplier")
+	_check(PlayerAIScript.merge_overlay('{"version":2,"rules":[],"default":{}}', addition).has("error"),
+		"A non-overlay base cannot be stacked")
 
 
 ## Reports independent contract failures together.
