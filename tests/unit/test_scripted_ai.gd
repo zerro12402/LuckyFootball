@@ -39,7 +39,7 @@ func _init() -> void:
 	_test_public_contract_and_fallback()
 	_test_compiler_and_budget()
 	_test_team_binding()
-	_test_scripted_header()
+	_test_no_header_contract()
 	for failure in _failures:
 		push_error(failure)
 	print("Scripted AI failures: ", _failures.size())
@@ -171,29 +171,17 @@ func _test_team_binding() -> void:
 		"Exact target availability is evaluated from the current candidate list")
 
 
-## The v2 header choice schedules an existing high-pass contact rather than changing the ball directly.
-func _test_scripted_header() -> void:
-	var f := Fixture.new()
-	var simulation := f.formal.create(3.0)
-	for player in simulation._player_runtime_system.get_players():
-		player.state_machine.reset_to_spawn(Vector2(-20, 12))
-	var midfielder := simulation._player_runtime_system.get_player("formal_player_02")
-	midfielder.state_machine.reset_to_spawn(Vector2(4, 0))
-	var ball := simulation._ball_runtime_system
-	ball.reset_ball(Vector2.ZERO)
-	ball.state._launch_pass(midfielder.player_id, Vector2.RIGHT * 14.0, 10.0, 1.8)
-	ball.state._advance_flight(Vector2(3.5, 0), 3.5)
-	var compiled := PlayerAIScript.compile('{"version":2,"rules":[{"when":[["self.id","==","formal_player_02"],["has.header_clear","==",true]],"then":{"behavior":"header_clear","target":""}}],"default":{}}')
-	var source := MatchPlayerAISource.new(f.formal.teams, f.formal.field, f.rules, f.tuning,
-		null, null, 1.0 / 60.0, null, "", compiled["script"], "home")
-	var loop := GameLoop.new(simulation, 1.0 / 60.0, 0.25, 8, null, [], [source])
-	simulation.start_match()
-	var frame := loop.advance_frame(1.0 / 60.0, [])
-	var headed := false
-	for event in frame.events:
-		headed = headed or (event.event_type == MatchEvent.Type.BALL_HEADED and event.subject_id == midfielder.player_id)
-	_check(headed and frame.snapshot.ball.flight_kind == BallMatchState.FlightKind.CLEARANCE,
-		"A legal script header executes through the real fixed-step contact window")
+## Confirms the current version keeps headers out of the public v2 contract.
+func _test_no_header_contract() -> void:
+	var behaviors := ScriptedAIContract.behaviors(2)
+	_check(not behaviors.has("header_shot") and not behaviors.has("header_clear"),
+		"v2 contract must not expose header behaviors")
+	for source in [
+		'{"version":2,"rules":[{"when":[["has.header_clear","==",true]],"then":{}}],"default":{}}',
+		'{"version":2,"rules":[{"when":[["self.id","==","formal_player_02"]],"then":{"behavior":"header_clear","target":""}}],"default":{}}',
+	]:
+		_check(PlayerAIScript.compile(source).has("error"),
+			"Header conditions and behaviors must be rejected at submission")
 
 
 ## Reports independent contract failures together.

@@ -18,7 +18,6 @@ var _plans: Dictionary[String, PlayerAIPlan] = {}
 var _pressure: Dictionary[String, bool] = {}
 var _save_sequences: Dictionary[String, int] = {}
 var _aerial_pending: Dictionary[String, int] = {}
-var _header_sequences: Dictionary[String, int] = {}
 var _coordinator := TeamRoleCoordinator.new()
 var _last_tactics: Dictionary[String, int] = {}
 var _cached_batch: MatchActionBatch
@@ -135,7 +134,6 @@ func invalidate_control(_snapshot: MatchStateSnapshot) -> void:
 	_pressure.clear()
 	_save_sequences.clear()
 	_aerial_pending.clear()
-	_header_sequences.clear()
 	_last_tactics.clear()
 	_coordinator.clear()
 	_cached_batch = null
@@ -210,7 +208,7 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 			extra = _builder.scripted_keeper_options(snapshot, player, _goals[id])
 		elif strategy != null and strategy.interface_version() == 2:
 			extra = _builder.scripted_options(snapshot, player, _goals[id], choices, _roles[id],
-				_anchors[id], _positions[id], primary, _header_sequences.get(id, -1) != snapshot.ball.flight_sequence)
+				_anchors[id], _positions[id], primary)
 		var selected := _choose(snapshot, player, primary, choices, strategy, extra)
 		if selected == null:
 			_plans.erase(id)
@@ -264,8 +262,6 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	plan.was_sent = true
 	if plan.action.action_type == MatchAction.Type.JUMP:
 		_aerial_pending[id] = snapshot.ball.flight_sequence
-	elif plan.action.action_type in [MatchAction.Type.HEADER_SHOT, MatchAction.Type.HEADER_CLEAR]:
-		_header_sequences[id] = snapshot.ball.flight_sequence
 	return _emit_action(plan.action, player)
 
 ## Recognizes new legal contest windows without sampling or directly starting a runtime action.

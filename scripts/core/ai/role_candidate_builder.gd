@@ -300,7 +300,7 @@ func scripted_keeper_options(snapshot: MatchStateSnapshot, keeper: PlayerStateSn
 ## Adds opt-in v2 actions; the default lottery assigns them no weight unless the script opts in.
 func scripted_options(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		goal: Vector2, ordinary: Array[AIActionCandidate], role: String, anchor: Vector2,
-		position_id: String, primary: String, allow_header: bool) -> Array[AIActionCandidate]:
+		position_id: String, primary: String) -> Array[AIActionCandidate]:
 	var options: Array[AIActionCandidate] = []
 	var ball := snapshot.ball
 	if ball.owner_player_id == player.player_id:
@@ -317,12 +317,6 @@ func scripted_options(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	for behavior in _scripted_positioning(role, ordinary):
 		var target := movement_target(snapshot, player, behavior, role, anchor, goal, position_id)
 		options.append(_move(player, target, behavior, 1.0))
-	if not allow_header or not _has_header_window(snapshot, player):
-		return options
-	if can_attempt_shot(player, goal):
-		options.append(_one(player.player_id, AIActionCandidate.Behavior.HEADER_SHOT, 1.0, MatchAction.Type.HEADER_SHOT))
-	var clear := MatchAction.new(player.player_id, MatchAction.Type.HEADER_CLEAR, Vector2(signf(goal.x), 0.0))
-	options.append(AIActionCandidate.new(AIActionCandidate.Behavior.HEADER_CLEAR, 1.0, [AITargetOption.new(clear)]))
 	return options
 
 
@@ -341,23 +335,6 @@ func _scripted_positioning(role: String, ordinary: Array[AIActionCandidate]) -> 
 			if role == "back":
 				result.append_array([AIActionCandidate.Behavior.MARK, AIActionCandidate.Behavior.PROTECT_GOAL])
 	return result
-
-
-## Checks a short observable high-pass window; the simulation still resolves the exact header contact.
-func _has_header_window(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot) -> bool:
-	var ball := snapshot.ball
-	if ball.flight_kind != BallMatchState.FlightKind.PASS or ball.velocity_mps.is_zero_approx():
-		return false
-	var direction := ball.velocity_mps.normalized()
-	var offset := player.position_m - ball.position_m
-	var along := maxf(0.0, offset.dot(direction))
-	if (offset - direction * along).length() > _rules.header_contact_radius_m:
-		return false
-	if along > ball.flight_range_m - ball.flight_distance_m \
-			or along / ball.velocity_mps.length() > _tuning.number("heartbeat_seconds"):
-		return false
-	var height := AIBallPrediction.height_at(ball, along)
-	return height >= _rules.header_min_contact_height_m and height <= player.height_m + _rules.header_reach_height_m
 
 
 ## Limits AI shooting opportunities without restricting player commands or changing contest formulas.

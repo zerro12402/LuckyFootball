@@ -34,8 +34,6 @@ const V2_BEHAVIORS := {
 	"protect_goal": AIActionCandidate.Behavior.PROTECT_GOAL,
 	"jump": AIActionCandidate.Behavior.JUMP,
 	"air_shoot": AIActionCandidate.Behavior.SHOOT,
-	"header_shot": AIActionCandidate.Behavior.HEADER_SHOT,
-	"header_clear": AIActionCandidate.Behavior.HEADER_CLEAR,
 	"attack": AIActionCandidate.Behavior.ATTACK,
 	"keeper_position": AIActionCandidate.Behavior.KEEPER_POSITION,
 	"keeper_slide": AIActionCandidate.Behavior.RETURN,

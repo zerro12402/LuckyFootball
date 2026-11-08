@@ -34,9 +34,9 @@ v1 仍使用 [v1 手册](player-ai-script-v1.md) 的蓝队单前锋流程。v2 �
 外场保留 v1 的 `hold`、`dribble`、`pass`、`shoot`、`support`、`run_forward`、`press`、`tackle`、`chase`、`return`。新行为只有当前候选满足资格时可用。
 
 - 中场可用 `drop_support` 向持球者身后接应、`central_support` 支援中路。后卫可用 `back_support` 在后方接应、`mark` 在对手与本方球门之间盯防、`protect_goal` 在防区内横向保护球门。中场和后卫都可用 `cover_lane` 在站位和威胁之间封线。目标由游戏计算并限制在职责区域，封线只决定跑位。
-- `jump` 使用现有起跳动作，`air_shoot` 使用合法的持球空中射门。`header_shot`、`header_clear` 在高空传球可达时准备头球；实际触球仍按固定步判定。`attack` 使用现有近身攻击及其对抗规则。
+- `jump` 使用现有起跳动作，`air_shoot` 使用合法的持球空中射门。`attack` 使用现有近身攻击及其对抗规则。当前版本没有头球，不提供 `header_shot`、`header_clear`；写入这些行为会在校验时被拒绝。
 - 门将只开放 `keeper_position`、`keeper_slide`、`keeper_save`、`hold`、`pass`。站位回到门口中点，横移沿门口跟踪球的横向偏移，两者都由游戏限制在门口范围内，扑救候选只在现有窗口出现，目标为 `upper`、`center`、`lower` 或 `first`。持球传球原地进行。
-- `pass`、`tackle`、`attack` 目标是合法球员 ID 或 `first`。移动、起跳、射门和头球目标用空串。射门目标由比赛规则决定。共用同一计划的别名不能在一条 `weights` 中重复加权。
+- `pass`、`tackle`、`attack` 目标是合法球员 ID 或 `first`。移动、起跳和射门目标用空串。射门目标由比赛规则决定。共用同一计划的别名不能在一条 `weights` 中重复加权。
 
 ## 四位置完整示例
 
