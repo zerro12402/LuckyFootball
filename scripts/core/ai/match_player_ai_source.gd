@@ -70,12 +70,12 @@ func _init(teams: TeamDataRepository, field: FieldDefinition, rules: MatchConfig
 		_configure_strategy(teams, scripted_player_id, scripted_team_id, decision_strategy)
 
 
-## Locks one v1 forward or one v2 team for the lifetime of the action source.
+## Locks one v1 forward or one v2+ team for the lifetime of the action source.
 func _configure_strategy(teams: TeamDataRepository, player_id: String, team_id: String,
 		strategy: PlayerAIDecisionStrategy) -> void:
-	if strategy.interface_version() == 2:
+	if strategy.interface_version() >= 2:
 		if team_id.is_empty() or teams.get_team(team_id) == null or not player_id.is_empty():
-			_errors.append("接口 v2 须绑定一支球队")
+			_errors.append("接口 v2 及以上须绑定一支球队")
 			return
 		_scripted_team_id = team_id
 	elif not team_id.is_empty() or _roles.get(player_id, "") != "forward":
@@ -171,7 +171,7 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 	var phase := TeamTacticalContext.phase_for(snapshot, player.team_id)
 	var hold_seconds := _tuning.number("keeper_hold_seconds") if player.is_goalkeeper else _tuning.number("hold_seconds")
 	var strategy := _strategy_for(player)
-	var scripted_keeper := player.is_goalkeeper and strategy != null and strategy.interface_version() == 2
+	var scripted_keeper := player.is_goalkeeper and strategy != null and strategy.interface_version() >= 2
 	var precision := _precision_action(snapshot, player, primary, strategy)
 	if precision != null:
 		_plans.erase(id)
@@ -206,7 +206,7 @@ func _advance_player(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot,
 		var extra: Array[AIActionCandidate] = []
 		if scripted_keeper:
 			extra = _builder.scripted_keeper_options(snapshot, player, _goals[id])
-		elif strategy != null and strategy.interface_version() == 2:
+		elif strategy != null and strategy.interface_version() >= 2:
 			extra = _builder.scripted_options(snapshot, player, _goals[id], choices, _roles[id],
 				_anchors[id], _positions[id], primary)
 		var selected := _choose(snapshot, player, primary, choices, strategy, extra)
@@ -335,7 +335,7 @@ func _precision_action(snapshot: MatchStateSnapshot, player: PlayerStateSnapshot
 	if aerial != null and ActionEligibility.allows(snapshot, aerial, _rules):
 		if aerial.action_type == MatchAction.Type.JUMP:
 			_aerial_pending[id] = ball.flight_sequence
-		if strategy != null and strategy.interface_version() == 2:
+		if strategy != null and strategy.interface_version() >= 2:
 			var behavior := AIActionCandidate.Behavior.JUMP if aerial.action_type == MatchAction.Type.JUMP else AIActionCandidate.Behavior.SHOOT
 			return _choose(snapshot, player, primary,
 				[AIActionCandidate.new(behavior, 1.0, [AITargetOption.new(aerial)])], strategy)

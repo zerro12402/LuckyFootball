@@ -72,7 +72,7 @@ func show_mode(mode: Mode, trial_seed: int = -1, scripted_id: String = "",
 		assert(formal_bootstrap != null, "Formal mode requires a FormalMatchBootstrap scene")
 		formal_bootstrap.random_seed = randi() if trial_seed < 0 else trial_seed
 		formal_bootstrap.auto_start_delay_seconds = 1.0 if trial_seed < 0 else 0.0
-		if strategy != null and strategy.interface_version() == 2:
+		if strategy != null and strategy.interface_version() >= 2:
 			formal_bootstrap.scripted_team_id = scripted_id
 		else:
 			formal_bootstrap.scripted_player_id = scripted_id

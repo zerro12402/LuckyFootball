@@ -19,6 +19,12 @@ func _run() -> void:
 	var test_menu := menu.get_node("%ModePanel") as PanelContainer
 	_check(lab_button.is_visible_in_tree() and not test_menu.visible, "Lab entry is available with F1 panels hidden")
 	lab_button.pressed.emit()
+	var editor := lab.get_node("%Editor") as PanelContainer
+	var viewport: Vector2 = lab.get_viewport_rect().size
+	_check(editor.position.x >= 0.0 and editor.position.y >= 0.0
+		and editor.position.x + editor.size.x <= viewport.x
+		and editor.position.y + editor.size.y <= viewport.y,
+		"The editor stays fully inside the viewport")
 	var f1 := InputEventKey.new()
 	f1.keycode = KEY_F1
 	f1.pressed = true
@@ -28,7 +34,7 @@ func _run() -> void:
 		"F1 changes the test menu without closing the public lab")
 	var initial := menu._active_mode_scene as FormalMatchBootstrap
 	var seed_value := initial.get_snapshot().random_seed
-	var commands := lab.get_node("Editor/Rows/Commands")
+	var commands := lab.get_node("Editor/Scroll/Rows/Commands")
 	_check(commands.get_child_count() == 4, "The editor has only four action buttons")
 	lab_button.pressed.emit()
 	_check(not lab.is_editor_open() and menu._active_mode_scene == initial,
@@ -82,6 +88,8 @@ func _run() -> void:
 		and baseline.get_snapshot().away_team_id == replay.get_snapshot().away_team_id,
 		"Baseline uses the same teams")
 	_test_team_trial(menu, lab, seed_value)
+	_test_overlay_trial(menu, lab, seed_value)
+	_test_generation_guards(lab)
 	menu.free()
 	for failure in _failures:
 		push_error(failure)
@@ -122,6 +130,52 @@ func _test_team_trial(menu: GameModeController, lab: PlayerAIScriptLab, seed_val
 	var baseline := menu._active_mode_scene as FormalMatchBootstrap
 	_check(baseline.get_snapshot().random_seed == seed_value and baseline.scripted_team_id.is_empty()
 		and baseline._production_ai._decision_strategy == null, "Team baseline retains the seed and disables binding")
+
+
+## Binds a version 3 overlay through the same team path and replays it deterministically.
+func _test_overlay_trial(menu: GameModeController, lab: PlayerAIScriptLab, seed_value: int) -> void:
+	var overlay := '{"version":3,"mode":"overlay","scope":{"role":"back"},"modifiers":[' \
+		+ '{"when":[["phase","==","defend"]],"weights":{"tackle":0,"attack":2}}]}'
+	lab._source.text = overlay
+	_check(lab.submit(overlay), "A version 3 overlay passes submission")
+	lab._run.pressed.emit()
+	var formal := menu._active_mode_scene as FormalMatchBootstrap
+	_check(formal.scripted_team_id == "home" and formal._production_ai._decision_strategy == lab._program,
+		"A version 3 overlay binds the selected team")
+	var first := _trace(formal)
+	lab._run.pressed.emit()
+	var replay := menu._active_mode_scene as FormalMatchBootstrap
+	_check(_trace(replay) == first, "A version 3 overlay replays with identical actions and positions")
+	menu.show_mode(GameModeController.Mode.FORMAL_MATCH, seed_value)
+	var baseline := menu._active_mode_scene as FormalMatchBootstrap
+	_check(baseline.get_snapshot().random_seed == seed_value and baseline.scripted_team_id.is_empty(),
+		"Baseline clears the overlay binding with the same seed")
+
+
+## Covers missing keys, secret handling, failed generation and cancellation states.
+func _test_generation_guards(lab: PlayerAIScriptLab) -> void:
+	var path := "user://test_lab_generation_%s.cfg" % OS.get_process_id()
+	OS.set_environment(PlayerAISettings.ENV_NAME, "")
+	lab._settings = PlayerAISettings.new(path)
+	lab._tactic.text = "后卫防守时用冲撞不要铲球"
+	lab._generate_from_text()
+	_check(lab._diagnostic.text.contains("DeepSeek Key") and not lab._busy,
+		"A missing key stops before any request")
+	lab._api_key_input.text = "sk-secret-123456"
+	lab._save_api_key()
+	_check(not lab._diagnostic.text.contains("sk-secret-123456"), "Saving a key never echoes the secret")
+	_check(lab._api_key_input.placeholder_text.contains("sk-s")
+		and not lab._api_key_input.placeholder_text.contains("123456"),
+		"The saved key is shown masked")
+	var before := lab._program
+	lab._finish_generation({"ok": false, "error_kind": "COMPILE", "error": "bad"})
+	_check(lab._program == before, "A failed generation keeps the validated program")
+	lab._busy = true
+	lab._cancel_generation()
+	_check(not lab._busy and lab._diagnostic.text.contains("取消"),
+		"Cancelling clears the busy state without binding")
+	lab._settings.clear_key()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 ## Reads each published JSON block through the exact parser used by the editor.

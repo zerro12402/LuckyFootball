@@ -7,11 +7,15 @@ const MAX_JSON_DEPTH := 8
 const MAX_RULES := 24
 const MAX_CONDITIONS := 8
 const MAX_INSTRUCTIONS := 128
+const OVERLAY_VERSION := 3
+const SCOPE_KEYS := ["role", "position", "duty"]
 const OPERATORS := ["==", "!=", "<", "<=", ">", ">="]
 
 var _version := 1
 var _rules: Array[Dictionary] = []
 var _default: Dictionary = {}
+var _scope: Dictionary = {}
+var _modifiers: Array[Dictionary] = []
 
 
 ## Reports JSON lines and schema paths before constructing a reusable, typed rule list.
@@ -27,8 +31,11 @@ static func compile(source: String) -> Dictionary:
 		return {"error": "根节点必须是对象"}
 	var root: Dictionary = json.data
 	var version: Variant = root.get("version")
-	if root.size() != 3 or not (version is int or version is float) or float(version) not in [1.0, 2.0] \
-			or not root.get("rules") is Array or not root.get("default") is Dictionary:
+	if not (version is int or version is float) or float(version) not in [1.0, 2.0, 3.0]:
+		return {"error": "version 须为 1、2 或 3"}
+	if int(version) == OVERLAY_VERSION:
+		return _compile_overlay(root)
+	if root.size() != 3 or not root.get("rules") is Array or not root.get("default") is Dictionary:
 		return {"error": "根节点须包含 version: 1 或 2、rules 和 default"}
 	if root["rules"].size() > MAX_RULES:
 		return {"error": "rules 最多 24 条"}
@@ -44,6 +51,34 @@ static func compile(source: String) -> Dictionary:
 			return {"error": "rules[%d]：%s" % [index, error]}
 		script._rules.append(rule)
 	script._default = root["default"]
+	return {"script": script}
+
+
+## Validates a version 3 overlay document and rejects keys reserved for v1/v2 documents.
+static func _compile_overlay(root: Dictionary) -> Dictionary:
+	if root.size() != 4 or not root.get("mode") is String or root["mode"] != "overlay" \
+			or not root.get("scope") is Dictionary or not root.get("modifiers") is Array:
+		return {"error": "v3 根节点须包含 version、mode: overlay、scope 和 modifiers"}
+	var scope: Dictionary = root["scope"]
+	if scope.size() > SCOPE_KEYS.size():
+		return {"error": "scope 最多 3 个键"}
+	for key in scope:
+		if not key is String or key not in SCOPE_KEYS:
+			return {"error": "scope 仅支持 role、position、duty"}
+		if not scope[key] is String or String(scope[key]).length() > 32:
+			return {"error": "scope.%s 须为不超过 32 字符的字符串" % key}
+	var modifiers: Array = root["modifiers"]
+	if modifiers.is_empty() or modifiers.size() > MAX_RULES:
+		return {"error": "modifiers 须有 1 至 24 项"}
+	var script := PlayerAIScript.new()
+	script._version = OVERLAY_VERSION
+	script._scope = scope.duplicate(true)
+	for index in range(modifiers.size()):
+		var modifier: Variant = modifiers[index]
+		var error := _modifier_error(modifier, OVERLAY_VERSION)
+		if not error.is_empty():
+			return {"error": "modifiers[%d]：%s" % [index, error]}
+		script._modifiers.append(modifier)
 	return {"script": script}
 
 
@@ -73,10 +108,18 @@ static func _rule_error(rule: Variant, version: int) -> String:
 	if not rule is Dictionary or rule.size() != 2 or not rule.get("when") is Array \
 			or not rule.get("then") is Dictionary:
 		return "须包含 when 数组和 then 对象"
-	if rule["when"].is_empty() or rule["when"].size() > MAX_CONDITIONS:
+	var conditions_error := _conditions_error(rule["when"], version)
+	if not conditions_error.is_empty():
+		return conditions_error
+	return _result_error(rule["then"], version)
+
+
+## Shares condition validation between full scripts and overlay modifiers.
+static func _conditions_error(conditions: Array, version: int) -> String:
+	if conditions.is_empty() or conditions.size() > MAX_CONDITIONS:
 		return "when 须有 1 至 8 个条件"
-	for index in range(rule["when"].size()):
-		var condition: Variant = rule["when"][index]
+	for index in range(conditions.size()):
+		var condition: Variant = conditions[index]
 		if not condition is Array or condition.size() != 3 or not condition[0] is String \
 				or condition[1] not in OPERATORS:
 			return "when[%d] 须为 [字段, 比较符, 值]" % index
@@ -89,7 +132,18 @@ static func _rule_error(rule: Variant, version: int) -> String:
 				and condition[1] in ["==", "!="]:
 			continue
 		return "when[%d] 的字段、比较符或值类型无效：%s" % [index, field]
-	return _result_error(rule["then"], version)
+	return ""
+
+
+## Validates an overlay modifier, which may only adjust candidate weights.
+static func _modifier_error(modifier: Variant, version: int) -> String:
+	if not modifier is Dictionary or modifier.size() != 2 or not modifier.get("when") is Array \
+			or not modifier.get("weights") is Dictionary:
+		return "须包含 when 数组和 weights 对象"
+	var conditions_error := _conditions_error(modifier["when"], version)
+	if not conditions_error.is_empty():
+		return conditions_error
+	return _weights_error(modifier["weights"], version)
 
 
 ## Restricts output to fallback, finite multipliers, or an advertised behavior and target ID.
@@ -101,26 +155,32 @@ static func _result_error(result: Dictionary, version: int) -> String:
 			return ""
 		return "未知行为或目标 ID 过长"
 	if result.size() == 1 and result.get("weights") is Dictionary:
-		var weights: Dictionary = result["weights"]
-		if weights.is_empty():
-			return "weights 不能为空"
-		for behavior in weights:
-			var amount: Variant = weights[behavior]
-			if not ScriptedAIContract.behaviors(version).has(behavior) or not (amount is float or amount is int) \
-					or not is_finite(float(amount)) or float(amount) < 0.0:
-				return "无效的行为倍率：%s" % behavior
-		return ""
+		return _weights_error(result["weights"], version)
 	return "结果须为 {}、weights 对象或 behavior/target 对象"
+
+
+## Rejects unknown behaviors and negative or non-finite multipliers.
+static func _weights_error(weights: Dictionary, version: int) -> String:
+	if weights.is_empty():
+		return "weights 不能为空"
+	for behavior in weights:
+		var amount: Variant = weights[behavior]
+		if not ScriptedAIContract.behaviors(version).has(behavior) or not (amount is float or amount is int) \
+				or not is_finite(float(amount)) or float(amount) < 0.0:
+			return "无效的行为倍率：%s" % behavior
+	return ""
 
 
 func interface_version() -> int:
 	return _version
 
 
-## Evaluates bounded ordered rules using only detached public input values.
+## Evaluates bounded rules or merges every matching overlay modifier using only public input values.
 func decide(view: Dictionary) -> Dictionary:
 	if view.get("version") != _version:
 		return {"error": "脚本接口版本不匹配"}
+	if _version == OVERLAY_VERSION:
+		return _decide_overlay(view)
 	var instructions := 0
 	for rule in _rules:
 		var matches := true
@@ -134,6 +194,50 @@ func decide(view: Dictionary) -> Dictionary:
 		if matches:
 			return rule["then"].duplicate(true)
 	return _default.duplicate(true)
+
+
+## Multiplies every matching modifier per behavior and drops behaviors unavailable in this decision.
+func _decide_overlay(view: Dictionary) -> Dictionary:
+	if not _scope_matches(view):
+		return {}
+	var merged: Dictionary = {}
+	var instructions := 0
+	for modifier in _modifiers:
+		var matches := true
+		for condition in modifier["when"]:
+			instructions += 1
+			if instructions > MAX_INSTRUCTIONS:
+				return {"error": "超过单次决策的 128 次比较预算"}
+			if not _matches(view, condition):
+				matches = false
+				break
+		if not matches:
+			continue
+		for behavior in modifier["weights"]:
+			if not view["candidates"].has(behavior):
+				continue
+			var amount := float(modifier["weights"][behavior])
+			merged[behavior] = float(merged.get(behavior, 1.0)) * amount
+	if merged.is_empty():
+		return {}
+	var positive := false
+	for value in merged.values():
+		if float(value) > 0.0:
+			positive = true
+	if not positive:
+		return {"error": "覆盖补丁没有正权重"}
+	return {"weights": merged}
+
+
+## Restricts a patch to the declared role, position and duty before any condition runs.
+func _scope_matches(view: Dictionary) -> bool:
+	if _scope.is_empty():
+		return true
+	var self_view: Dictionary = view.get("self", {})
+	for key in _scope:
+		if str(self_view.get(key, "")) != str(_scope[key]):
+			return false
+	return true
 
 
 ## Dispatches only the six comparison operators validated at submission.

@@ -9,50 +9,96 @@ script = ExtResource("1_lab")
 
 [node name="Editor" type="PanelContainer" parent="."]
 unique_name_in_owner = true
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -310.0
-offset_top = -197.0
-offset_right = 310.0
-offset_bottom = 197.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 20.0
+offset_right = -40.0
+offset_bottom = -20.0
 
-[node name="Rows" type="VBoxContainer" parent="Editor"]
+[node name="Scroll" type="ScrollContainer" parent="Editor"]
 layout_mode = 2
+horizontal_scroll_mode = 0
 
-[node name="ScriptSource" type="TextEdit" parent="Editor/Rows"]
+[node name="Rows" type="VBoxContainer" parent="Editor/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TacticPrompt" type="LineEdit" parent="Editor/Scroll/Rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 230)
 layout_mode = 2
-size_flags_vertical = 3
+placeholder_text = "用一句话描述战术，例如：后卫防守时用冲撞不要铲球"
+max_length = 500
+
+[node name="GenerateRow" type="HBoxContainer" parent="Editor/Scroll/Rows"]
+layout_mode = 2
+
+[node name="GenerateButton" type="Button" parent="Editor/Scroll/Rows/GenerateRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "自然语言生成"
+
+[node name="CancelButton" type="Button" parent="Editor/Scroll/Rows/GenerateRow"]
+unique_name_in_owner = true
+layout_mode = 2
+disabled = true
+text = "取消生成"
+
+[node name="ApiKeyInput" type="LineEdit" parent="Editor/Scroll/Rows/GenerateRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "DeepSeek Key（仅保存在本机）"
+secret = true
+
+[node name="SaveKeyButton" type="Button" parent="Editor/Scroll/Rows/GenerateRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "保存 Key"
+
+[node name="ClearKeyButton" type="Button" parent="Editor/Scroll/Rows/GenerateRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "清除 Key"
+
+[node name="ScriptSource" type="TextEdit" parent="Editor/Scroll/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 180)
+layout_mode = 2
 placeholder_text = "粘贴或编辑 JSON 策略"
 
-[node name="Diagnostic" type="Label" parent="Editor/Rows"]
+[node name="OverlaySummary" type="Label" parent="Editor/Scroll/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
 autowrap_mode = 3
 text = ""
 
-[node name="Commands" type="HBoxContainer" parent="Editor/Rows"]
+[node name="Diagnostic" type="Label" parent="Editor/Scroll/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+text = ""
+
+[node name="Commands" type="HBoxContainer" parent="Editor/Scroll/Rows"]
+unique_name_in_owner = true
 layout_mode = 2
 
-[node name="ValidateButton" type="Button" parent="Editor/Rows/Commands"]
+[node name="ValidateButton" type="Button" parent="Editor/Scroll/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "校验脚本"
 
-[node name="RunButton" type="Button" parent="Editor/Rows/Commands"]
+[node name="RunButton" type="Button" parent="Editor/Scroll/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "绑定并试跑"
 
-[node name="TeamManualButton" type="Button" parent="Editor/Rows/Commands"]
+[node name="TeamManualButton" type="Button" parent="Editor/Scroll/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "复制 v2 手册"
 
-[node name="SaveTeamManualButton" type="Button" parent="Editor/Rows/Commands"]
+[node name="SaveTeamManualButton" type="Button" parent="Editor/Scroll/Rows/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "保存 v2 手册"

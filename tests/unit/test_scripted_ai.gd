@@ -40,6 +40,8 @@ func _init() -> void:
 	_test_compiler_and_budget()
 	_test_team_binding()
 	_test_no_header_contract()
+	_test_overlay_contract()
+	_test_overlay_runtime()
 	for failure in _failures:
 		push_error(failure)
 	print("Scripted AI failures: ", _failures.size())
@@ -182,6 +184,101 @@ func _test_no_header_contract() -> void:
 	]:
 		_check(PlayerAIScript.compile(source).has("error"),
 			"Header conditions and behaviors must be rejected at submission")
+
+
+## Confirms overlay patches merge every match, isolate by scope and reject reserved keys.
+func _test_overlay_contract() -> void:
+	var source := '{"version":3,"mode":"overlay","scope":{"role":"back"},"modifiers":[' \
+		+ '{"when":[["phase","==","defend"],["has.tackle","==",true]],"weights":{"tackle":0}},' \
+		+ '{"when":[["phase","==","defend"],["has.attack","==",true]],"weights":{"attack":2}},' \
+		+ '{"when":[["phase","==","defend"]],"weights":{"attack":3}}]}'
+	var compiled := PlayerAIScript.compile(source)
+	_check(compiled.has("script") and compiled["script"].interface_version() == 3,
+		"A version 3 overlay compiles for team binding")
+	var view := {
+		"version": 3,
+		"self": {"id": "back", "role": "back", "position": "back_left", "duty": "press"},
+		"phase": "defend",
+		"candidates": {"tackle": {"targets": []}, "attack": {"targets": []}},
+	}
+	var merged: Dictionary = compiled["script"].decide(view)
+	_check(merged.get("weights", {}).get("tackle") == 0.0
+		and merged.get("weights", {}).get("attack") == 6.0,
+		"Every matching modifier merges and multiplies per behavior")
+	var forward := view.duplicate(true)
+	forward["self"]["role"] = "forward"
+	_check(compiled["script"].decide(forward).is_empty(),
+		"Scope keeps the patch away from other roles")
+	var limited := view.duplicate(true)
+	limited["candidates"] = {"tackle": {"targets": []}}
+	var partial := PlayerAIScript.compile('{"version":3,"mode":"overlay","scope":{"role":"back"},' \
+		+ '"modifiers":[{"when":[["phase","==","defend"]],"weights":{"tackle":2,"attack":3}}]}')
+	var partial_weights: Dictionary = partial["script"].decide(limited).get("weights", {})
+	_check(partial_weights.get("tackle") == 2.0 and not partial_weights.has("attack"),
+		"An unavailable behavior only drops its own factor")
+	for invalid in [
+		'{"version":3,"mode":"overlay","scope":{"role":"back"},"modifiers":[],"rules":[]}',
+		'{"version":3,"rules":[],"default":{}}',
+		'{"version":3,"mode":"overlay","scope":{"team":"home"},"modifiers":[{"when":[["phase","==","defend"]],"weights":{"attack":2}}]}',
+		'{"version":3,"mode":"overlay","scope":{},"modifiers":[{"when":[["phase","==","defend"]],"weights":{"attack":-1}}]}',
+	]:
+		_check(PlayerAIScript.compile(invalid).has("error"),
+			"Reserved keys, unknown scope and invalid weights are rejected")
+
+
+## Runs the overlay through the real lottery: scoped suppression, isolation and zero fallback.
+func _test_overlay_runtime() -> void:
+	var f := Fixture.new()
+	var carrier := f.player("away_carrier", Vector2.ZERO, "away")
+	carrier.state_machine.set_possession_state(PlayerMatchState.PossessionState.POSSESSING)
+	var ball := BallMatchState.new(carrier.state.position_m)
+	ball._set_owner(carrier.player_id)
+	var defender := f.player("home_back", Vector2(1.5, 0))
+	var snapshot := f.snapshot([carrier, defender], ball)
+	var builder := RoleCandidateBuilder.new(f.tuning, f.rules, f.formal.field)
+	var goal := Vector2(25.0, 0.0)
+	var back_candidates := builder.build(snapshot, defender.player_id, "back", Vector2.ZERO, goal, "", true)
+	var forward_candidates := builder.build(snapshot, defender.player_id, "forward", Vector2.ZERO, goal, "", true)
+	var patch := PlayerAIScript.compile('{"version":3,"mode":"overlay","scope":{"role":"back"},' \
+		+ '"modifiers":[{"when":[["phase","==","defend"]],"weights":{"tackle":0,"attack":2}}]}')
+	_check(patch.has("script"), "The scoped overlay compiles")
+	if not patch.has("script"):
+		return
+	var baseline_tackles := 0
+	var patched_tackles := 0
+	var isolated_differences := 0
+	for seed_value in range(1, 41):
+		var built_in := PlayerAI.new(seed_value, defender.player_id)
+		built_in.choose(snapshot, defender.player_id, back_candidates, f.rules)
+		if built_in.selected_behavior == AIActionCandidate.Behavior.TACKLE:
+			baseline_tackles += 1
+		var patched := PlayerAI.new(seed_value, defender.player_id)
+		var action := patched.choose(snapshot, defender.player_id, back_candidates, f.rules,
+			patch["script"], goal, true, {"role": "back"})
+		_check(action != null and ActionEligibility.allows(snapshot, action, f.rules),
+			"A patched decision still returns a legal action")
+		if patched.selected_behavior == AIActionCandidate.Behavior.TACKLE:
+			patched_tackles += 1
+		var plain_forward := PlayerAI.new(seed_value, defender.player_id)
+		var plain_action := plain_forward.choose(snapshot, defender.player_id, forward_candidates,
+			f.rules, null, goal, true)
+		var scoped_forward := PlayerAI.new(seed_value, defender.player_id)
+		var scoped_action := scoped_forward.choose(snapshot, defender.player_id, forward_candidates,
+			f.rules, patch["script"], goal, true, {"role": "forward"})
+		if plain_action.action_type != scoped_action.action_type \
+				or plain_action.target_player_id != scoped_action.target_player_id \
+				or plain_forward.random_draws != scoped_forward.random_draws:
+			isolated_differences += 1
+	_check(baseline_tackles > 0, "The defending fixture can select a tackle without a patch")
+	_check(patched_tackles == 0, "The overlay removes tackles only inside its scope")
+	_check(isolated_differences == 0, "Out-of-scope decisions keep the baseline draws and actions")
+	var zero := PlayerAIScript.compile('{"version":3,"mode":"overlay","scope":{},' \
+		+ '"modifiers":[{"when":[["phase","==","defend"]],"weights":{"tackle":0,"attack":0}}]}')
+	var fallback := PlayerAI.new(7, defender.player_id)
+	var fallback_action := fallback.choose(snapshot, defender.player_id, back_candidates, f.rules,
+		zero["script"], goal, true, {"role": "back"})
+	_check(fallback_action != null and not fallback.strategy_error.is_empty(),
+		"An all-zero overlay falls back to built-in AI with a diagnostic")
 
 
 ## Reports independent contract failures together.

@@ -46,14 +46,14 @@ const V2_FIELDS := {"self.role": TYPE_STRING, "self.position": TYPE_STRING,
 
 ## Keeps v1 names stable while adding explicitly versioned choices.
 static func behaviors(version: int) -> Dictionary:
-	return BEHAVIORS.merged(V2_BEHAVIORS) if version == 2 else BEHAVIORS
+	return BEHAVIORS.merged(V2_BEHAVIORS) if version >= 2 else BEHAVIORS
 
 
 ## Validates public names and exact-target availability conditions at compile time.
 static func field_type(field: String, version: int) -> int:
 	if field.begins_with("has.") and behaviors(version).has(field.substr(4)):
 		return TYPE_BOOL
-	if version == 2:
+	if version >= 2:
 		if field.begins_with("has_target."):
 			var parts := field.split(".", false, 2)
 			if parts.size() == 3 and behaviors(version).has(parts[1]) and parts[2].length() <= 64:
@@ -104,7 +104,7 @@ static func make_view(snapshot: MatchStateSnapshot, player_id: String,
 		"nearest_opponent_m": nearest_opponent if is_finite(nearest_opponent) else -1.0,
 		"candidates": _public_candidates(legal, actor.position_m.x * sign_x, sign_x, version,
 			context.get("role", ""), actor.jump_phase == PlayerMatchState.JumpPhase.AIRBORNE)}
-	if version == 2:
+	if version >= 2:
 		var owner := snapshot.get_player(ball.owner_player_id)
 		var relation := "none"
 		if owner != null:
@@ -122,7 +122,7 @@ static func _public_candidates(legal: Array[AIActionCandidate], actor_x: float, 
 	var candidates := {}
 	var names := behaviors(version)
 	for id in names:
-		if version == 2 and not _visible_for_role(id, role, airborne):
+		if version >= 2 and not _visible_for_role(id, role, airborne):
 			continue
 		for candidate in legal:
 			if candidate.behavior != names[id]:
